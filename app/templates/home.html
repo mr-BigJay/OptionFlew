@@ -18,18 +18,21 @@
     </div>
     <div class="home-report-badges">
       <span class="bias-pill bias-{{ report.bias }}">{{ bias_fa(report.bias) }}</span>
-      <span class="type-pill">
+      <div class="timeframe-group">
         <span class="btc-mini" aria-hidden="true">₿</span>
-        {% if kind_key == 'daily' %}📆{% else %}⏱{% endif %}
-        {{ kind_label }}
-      </span>
+        <span class="type-pill">
+          {% if kind_key == 'daily' %}📆{% else %}⏱{% endif %}
+          {{ kind_label }}
+        </span>
+      </div>
     </div>
   </header>
 
+  <p class="home-headline">
+    بازار {{ bias_fa(report.bias) }} — امتیاز {{ report.score }} | اطمینان {{ report.confidence_pct }}٪
+  </p>
+
   <div class="home-report-body">
-    <p class="home-headline">
-      بازار {{ bias_fa(report.bias) }} — امتیاز {{ report.score }} | اطمینان {{ report.confidence_pct }}٪
-    </p>
     <p class="home-paragraph paragraph-justify">{{ clean_paragraph(report.paragraph) }}</p>
   </div>
 

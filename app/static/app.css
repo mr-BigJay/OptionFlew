@@ -212,6 +212,13 @@ html, body {
   flex-wrap: wrap;
   gap: 6px;
   justify-content: flex-end;
+  align-items: center;
+}
+
+.timeframe-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .bias-pill {
@@ -246,21 +253,22 @@ html, body {
   white-space: nowrap;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
 }
 
 .btc-mini {
+  flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
-  font-size: 0.62rem;
+  font-size: 0.7rem;
   font-weight: 800;
   color: #fbbf24;
-  background: rgba(251, 191, 36, 0.15);
-  border: 1px solid rgba(251, 191, 36, 0.35);
+  background: rgba(251, 191, 36, 0.12);
+  border: 1.5px solid rgba(251, 191, 36, 0.45);
 }
 
 .kind-daily .btc-mini {
@@ -287,14 +295,23 @@ html, body {
 
 .home-report-body {
   margin-bottom: 14px;
+  width: 100%;
 }
 
 .home-headline {
-  margin: 0 0 10px;
+  margin: 0 0 12px;
+  padding: 0 2px;
+  width: 100%;
   font-size: 0.95rem;
   font-weight: 700;
   color: var(--text);
-  line-height: 1.45;
+  line-height: 1.5;
+  text-align: right;
+}
+
+.home-paragraph {
+  width: 100%;
+  margin: 0;
 }
 
 .home-metrics {
