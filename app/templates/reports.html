@@ -36,7 +36,7 @@
     {{ fmt_date_header(items[0].created_at) }}
   </h2>
   <div class="timeline">
-    {% for r in items|reverse %}
+    {% for r in items %}
     {% set kind = r.get('report_kind', '4h') %}
     <div class="timeline-item kind-{{ kind }}">
       <div class="timeline-rail">
