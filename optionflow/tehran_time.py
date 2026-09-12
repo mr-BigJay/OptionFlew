@@ -7,8 +7,8 @@ TEHRAN = ZoneInfo("Asia/Tehran")
 
 REPORT_MINUTE = 31
 CANDLE_CLOSE_MINUTE = 30
-DAILY_REPORT_HOUR = 15
-DAILY_REPORT_MINUTE = 30
+DAILY_REPORT_HOUR = 17
+DAILY_REPORT_MINUTE = 0
 # 4h candle closes at :30 on these hours (Tehran); report at :31
 CRON_4H_HOURS = "3,7,11,15,19,23"
 CRON_DAILY_HOUR = str(DAILY_REPORT_HOUR)
@@ -72,7 +72,7 @@ def last_closed_4h_candle_end(at: datetime | None = None) -> datetime:
 
 
 def last_closed_daily_end(at: datetime | None = None) -> datetime:
-    """Last 15:30 Tehran boundary for the daily flow window."""
+    """Last 17:00 Tehran boundary for the daily flow window (US session open)."""
     t = (at or now_tehran()).astimezone(TEHRAN)
     close = t.replace(
         hour=DAILY_REPORT_HOUR,
