@@ -200,7 +200,7 @@ def _fetch_news_hint() -> str | None:
             if now <= dt <= horizon:
                 hits.append(f"{ev.get('title', 'رویداد')} ({dt.astimezone().strftime('%m/%d %H:%M')})")
         if not hits:
-            return "۴۸ ساعت آینده: رویداد مهم دلاری در تقویim دیده نشد."
+            return "۴۸ ساعت آینده: رویداد مهم اقتصادی دلار در تقویم دیده نشد."
         return "اخبار نزدیک: " + "؛ ".join(hits[:2])
     except Exception:
         return None
