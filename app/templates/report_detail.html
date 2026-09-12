@@ -11,7 +11,7 @@
     <span class="muted">امتیاز {{ report.score }} · {{ report.confidence_pct }}%</span>
   </div>
   <p class="headline">{{ report.headline }}</p>
-  <p class="paragraph paragraph-justify">{{ report.paragraph }}</p>
+  <p class="paragraph paragraph-justify">{{ clean_paragraph(report.paragraph) }}</p>
   <div class="stats">
     <span>{{ report.trade_count }} معامله</span>
     <span>Spot {{ "{:,.0f}".format(report.spot) }}</span>

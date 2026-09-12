@@ -50,7 +50,7 @@
             <span class="kind-pill">{{ 'روزانه' if kind == 'daily' else '۴ ساعته' }}</span>
             <span class="bias-mini">{{ r.bias }}</span>
           </div>
-          <p class="timeline-preview">{{ r.paragraph[:140] }}{% if r.paragraph|length > 140 %}…{% endif %}</p>
+          <p class="timeline-preview">{{ clean_paragraph(r.paragraph)[:140] }}{% if clean_paragraph(r.paragraph)|length > 140 %}…{% endif %}</p>
           <span class="timeline-meta">Spot {{ "{:,.0f}".format(r.spot) }} · {{ r.trade_count }} معامله</span>
         </div>
       </a>

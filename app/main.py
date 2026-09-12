@@ -70,6 +70,15 @@ def _bias_fa(bias: str) -> str:
     )
 
 
+def _clean_paragraph(text: str) -> str:
+    for phrase in (
+        "این جمع‌بندی یک سناریو است، نه سیگنال قطعی.",
+        "این جمع‌بندی سناریو است و جایگزین تحلیل قطعی نیست.",
+    ):
+        text = text.replace(phrase, "")
+    return text.strip()
+
+
 def _template_ctx(**extra: Any) -> dict[str, Any]:
     return {
         "fmt_dt": _fmt_dt,
@@ -77,6 +86,7 @@ def _template_ctx(**extra: Any) -> dict[str, Any]:
         "fmt_date_header": _fmt_day_header,
         "fmt_date": format_date_tehran,
         "bias_fa": _bias_fa,
+        "clean_paragraph": _clean_paragraph,
         **extra,
     }
 

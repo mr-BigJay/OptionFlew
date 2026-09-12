@@ -244,6 +244,29 @@ html, body {
   padding: 4px 10px;
   border-radius: 999px;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.btc-mini {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 0.62rem;
+  font-weight: 800;
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.15);
+  border: 1px solid rgba(251, 191, 36, 0.35);
+}
+
+.kind-daily .btc-mini {
+  color: #c4b5fd;
+  background: rgba(167, 139, 250, 0.15);
+  border-color: rgba(167, 139, 250, 0.35);
 }
 
 .kind-4h .type-pill {
@@ -263,37 +286,7 @@ html, body {
 }
 
 .home-report-body {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
   margin-bottom: 14px;
-}
-
-.asset-badge {
-  flex-shrink: 0;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.35rem;
-  font-weight: 700;
-  color: #fbbf24;
-  background: radial-gradient(circle at 30% 30%, #422006, #1a1208);
-  border: 2px solid rgba(251, 191, 36, 0.35);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-}
-
-.kind-daily .asset-badge {
-  color: #c4b5fd;
-  border-color: rgba(167, 139, 250, 0.4);
-  background: radial-gradient(circle at 30% 30%, #2e1065, #1a1033);
-}
-
-.home-report-copy {
-  flex: 1;
-  min-width: 0;
 }
 
 .home-headline {
@@ -553,6 +546,8 @@ html, body {
   background: var(--kind-daily);
   box-shadow: 0 0 0 3px var(--kind-daily-bg);
 }
+
+.timeline-card {
   display: flex;
   align-items: flex-start;
   gap: 12px;

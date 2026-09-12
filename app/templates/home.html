@@ -19,24 +19,18 @@
     <div class="home-report-badges">
       <span class="bias-pill bias-{{ report.bias }}">{{ bias_fa(report.bias) }}</span>
       <span class="type-pill">
+        <span class="btc-mini" aria-hidden="true">₿</span>
         {% if kind_key == 'daily' %}📆{% else %}⏱{% endif %}
         {{ kind_label }}
       </span>
     </div>
   </header>
 
-  {% if report.window_label %}
-  <p class="home-window muted">{{ report.window_label }}</p>
-  {% endif %}
-
   <div class="home-report-body">
-    <div class="asset-badge" aria-hidden="true">₿</div>
-    <div class="home-report-copy">
-      <p class="home-headline">
-        بازار {{ bias_fa(report.bias) }} — امتیاز {{ report.score }} | اطمینان {{ report.confidence_pct }}٪
-      </p>
-      <p class="home-paragraph paragraph-justify">{{ report.paragraph }}</p>
-    </div>
+    <p class="home-headline">
+      بازار {{ bias_fa(report.bias) }} — امتیاز {{ report.score }} | اطمینان {{ report.confidence_pct }}٪
+    </p>
+    <p class="home-paragraph paragraph-justify">{{ clean_paragraph(report.paragraph) }}</p>
   </div>
 
   <footer class="home-metrics">

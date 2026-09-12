@@ -320,7 +320,6 @@ def format_simple_paragraph(main: FlowAnalysis, guidance: Guidance) -> str:
         )
 
     return (
-        f"بر اساس معاملات آپشن بیت‌کوین در {main.window_label}، {tone}. "
-        f"{path_text} "
-        f"این جمع‌بندی یک سناریو است، نه سیگنال قطعی."
+        f"بر اساس {main.trade_count} معاملهٔ آپشن BTC در Deribit، {tone}. "
+        f"{path_text}"
     )
