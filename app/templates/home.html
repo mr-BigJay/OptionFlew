@@ -36,26 +36,38 @@
     <p class="home-paragraph paragraph-justify">{{ clean_paragraph(report.paragraph) }}</p>
   </div>
 
-  <footer class="home-metrics">
+  <footer class="home-metrics home-metrics-dense">
     <div class="metric-box">
-      <span class="metric-icon">↘</span>
       <span class="metric-label">حمایت</span>
       <span class="metric-val">{{ "{:,}".format(report.support_zone) }}</span>
     </div>
     <div class="metric-box metric-spot">
-      <span class="metric-icon">◎</span>
       <span class="metric-label">Spot</span>
       <span class="metric-val">{{ "{:,.0f}".format(report.spot) }}</span>
     </div>
     <div class="metric-box">
-      <span class="metric-icon">↗</span>
       <span class="metric-label">هدف</span>
       <span class="metric-val">{{ "{:,}".format(report.target_zone) }}</span>
     </div>
-    <div class="metric-box metric-trades">
-      <span class="metric-icon">▤</span>
+    <div class="metric-box">
       <span class="metric-label">معاملات</span>
       <span class="metric-val">{{ report.trade_count }}</span>
+    </div>
+    <div class="metric-box metric-level">
+      <span class="metric-label">PDH</span>
+      <span class="metric-val">{% if report.pdh %}{{ "{:,}".format(report.pdh) }}{% else %}—{% endif %}</span>
+    </div>
+    <div class="metric-box metric-level">
+      <span class="metric-label">PDL</span>
+      <span class="metric-val">{% if report.pdl %}{{ "{:,}".format(report.pdl) }}{% else %}—{% endif %}</span>
+    </div>
+    <div class="metric-box metric-level">
+      <span class="metric-label">PWH</span>
+      <span class="metric-val">{% if report.pwh %}{{ "{:,}".format(report.pwh) }}{% else %}—{% endif %}</span>
+    </div>
+    <div class="metric-box metric-level">
+      <span class="metric-label">PWL</span>
+      <span class="metric-val">{% if report.pwl %}{{ "{:,}".format(report.pwl) }}{% else %}—{% endif %}</span>
     </div>
   </footer>
 </article>

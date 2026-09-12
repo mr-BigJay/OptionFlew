@@ -7,6 +7,7 @@ from typing import Literal
 from optionflow.deribit_client import DeribitClient
 from optionflow.flow_analyzer import analyze_trades
 from optionflow.guide import build_guidance, format_simple_paragraph
+from optionflow.price_levels import fetch_price_levels
 
 from optionflow.tehran_time import (
     candle_window_4h,
@@ -32,6 +33,10 @@ class ReportSnapshot:
     spot: float
     trade_count: int
     window_label: str = ""
+    pdh: int | None = None
+    pdl: int | None = None
+    pwh: int | None = None
+    pwl: int | None = None
 
     def to_row(self) -> dict:
         return asdict(self)
@@ -73,6 +78,7 @@ def produce_report(
     )
     guidance = build_guidance(analysis)
     paragraph = format_simple_paragraph(analysis, guidance)
+    levels = fetch_price_levels()
     now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
     return ReportSnapshot(
@@ -89,4 +95,8 @@ def produce_report(
         spot=round(analysis.spot, 2),
         trade_count=analysis.trade_count,
         window_label=window_label,
+        pdh=levels.pdh,
+        pdl=levels.pdl,
+        pwh=levels.pwh,
+        pwl=levels.pwl,
     )

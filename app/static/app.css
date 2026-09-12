@@ -316,7 +316,7 @@ html, body {
 
 .home-metrics {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 8px;
   padding: 10px;
   border-radius: 14px;
@@ -324,39 +324,55 @@ html, body {
   border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
+.home-metrics-dense {
+  gap: 5px;
+  padding: 8px;
+}
+
 .metric-box {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  grid-template-rows: auto auto;
-  gap: 2px 8px;
-  align-items: center;
-  padding: 8px 10px;
-  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  padding: 6px 8px;
+  border-radius: 10px;
   background: rgba(255, 255, 255, 0.04);
+  min-height: 0;
+}
+
+.metric-level {
+  padding: 5px 7px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.metric-level .metric-label {
+  font-size: 0.58rem;
+  letter-spacing: 0.04em;
+  opacity: 0.85;
+}
+
+.metric-level .metric-val {
+  font-size: 0.78rem;
+  font-weight: 600;
 }
 
 .metric-icon {
-  grid-row: 1 / 3;
-  font-size: 1rem;
-  opacity: 0.7;
-  color: var(--kind-4h);
-}
-
-.kind-daily .metric-icon {
-  color: var(--kind-daily);
+  display: none;
 }
 
 .metric-label {
-  font-size: 0.68rem;
+  font-size: 0.65rem;
   color: var(--muted);
 }
 
 .metric-val {
-  font-size: 0.82rem;
+  font-size: 0.84rem;
   font-weight: 700;
   color: var(--text);
   direction: ltr;
   text-align: left;
+  width: 100%;
 }
 
 .metric-spot .metric-val {

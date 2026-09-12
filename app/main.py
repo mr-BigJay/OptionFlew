@@ -28,6 +28,7 @@ from app.storage import (
     set_setting,
 )
 from app.telegram_notify import send_telegram_message, telegram_enabled
+from optionflow.price_levels import fetch_price_levels
 from optionflow.tehran_time import (
     CRON_4H_HOURS,
     CRON_DAILY_HOUR,
@@ -71,11 +72,18 @@ def _bias_fa(bias: str) -> str:
 
 
 def _clean_paragraph(text: str) -> str:
+    import re
+
     for phrase in (
         "این جمع‌بندی یک سناریو است، نه سیگنال قطعی.",
         "این جمع‌بندی سناریو است و جایگزین تحلیل قطعی نیست.",
     ):
         text = text.replace(phrase, "")
+    text = re.sub(
+        r"بر اساس معاملات آپشن بیت‌کوین در [^،]+،\s*",
+        "بر اساس معاملات آپشن بیت‌کوین، ",
+        text,
+    )
     return text.strip()
 
 

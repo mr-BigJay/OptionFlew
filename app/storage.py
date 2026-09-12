@@ -51,7 +51,11 @@ def init_db() -> None:
                 target_zone INTEGER,
                 spot REAL,
                 trade_count INTEGER,
-                window_label TEXT DEFAULT ''
+                window_label TEXT DEFAULT '',
+                pdh INTEGER,
+                pdl INTEGER,
+                pwh INTEGER,
+                pwl INTEGER
             );
             CREATE INDEX IF NOT EXISTS idx_reports_created ON reports(created_at);
 
@@ -68,6 +72,9 @@ def init_db() -> None:
             conn.execute(
                 "ALTER TABLE reports ADD COLUMN report_kind TEXT DEFAULT '4h'"
             )
+        for col in ("pdh", "pdl", "pwh", "pwl"):
+            if col not in cols:
+                conn.execute(f"ALTER TABLE reports ADD COLUMN {col} INTEGER")
 
 
 def insert_report(snapshot: ReportSnapshot) -> int:
@@ -78,11 +85,11 @@ def insert_report(snapshot: ReportSnapshot) -> int:
             INSERT INTO reports (
                 created_at, window_hours, report_kind, paragraph, headline, bias, score,
                 confidence_pct, support_zone, target_zone, spot, trade_count,
-                window_label
+                window_label, pdh, pdl, pwh, pwl
             ) VALUES (
                 :created_at, :window_hours, :report_kind, :paragraph, :headline, :bias, :score,
                 :confidence_pct, :support_zone, :target_zone, :spot, :trade_count,
-                :window_label
+                :window_label, :pdh, :pdl, :pwh, :pwl
             )
             """,
             row,
