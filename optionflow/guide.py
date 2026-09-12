@@ -104,7 +104,7 @@ def build_guidance(
     if bias == "bullish":
         headline = f"ادامهٔ تمایل صعودی — امتیاز {score} — اطمینان {confidence}%"
     elif bias == "bearish":
-        headline = f"فشار محافظتی/نزولی در flow — امتیاز {score} — اطمینان {confidence}%"
+        headline = f"تمایل محافظتی/نزولی در معاملات — امتیاز {score} — اطمینان {confidence}%"
     else:
         headline = f"بازار خنثی — امتیاز {score} — اطمینان {confidence}%"
 
@@ -236,11 +236,17 @@ def format_simple_paragraph(main: FlowAnalysis, guidance: Guidance) -> str:
     support = guidance.support_zone
 
     if c.buyer_call > c.buyer_put * 1.1:
-        tone = "فشار options بیشتر سمت خرید کال است و تمایل کوتاه‌مدت صعودی دیده می‌شود"
+        tone = (
+            "فشار معاملات بیشتر سمت خرید کال است و تمایل کوتاه‌مدت صعودی دیده می‌شود"
+        )
     elif c.buyer_put > c.buyer_call * 1.1:
-        tone = "خرید پوت غالب است و بازار در برابر افت hedge گرفته؛ مسیر اولیه محافظتی‌تر است"
+        tone = (
+            "فشار معاملات بیشتر سمت خرید پوت است و تمایل کوتاه‌مدت به سمت افت یا تست حمایت دیده می‌شود"
+        )
     else:
-        tone = "flow کال و پوت متعادل است و جهت از روی سطوح strike قوی‌تر دیده می‌شود"
+        tone = (
+            "خرید کال و پوت نزدیک به هم است؛ جهت حرکت بیشتر از روی سطوحی که معاملات روی آن‌ها متمرکز شده مشخص می‌شود"
+        )
 
     pause_up = int(round(spot + (target - spot) * 0.42))
     pause_down = int(round(support + (spot - support) * 0.35))
@@ -253,21 +259,22 @@ def format_simple_paragraph(main: FlowAnalysis, guidance: Guidance) -> str:
         if a.direction == "up" and b.direction == "down":
             path_text = (
                 f"تک سناریوی محتمل: قیمت از محدودهٔ فعلی حدود {spot:,.2f} وارد فاز صعودی می‌شود؛ "
-                f"در مسیر، نزدیک {pause_up:,} ممکن است رally کند شود یا یک‌بار نفس بگیرد، "
+                f"در مسیر، نزدیک {pause_up:,} ممکن است شتاب صعود کم شود یا یک‌بار مکث کند، "
                 f"سپس حرکت به سمت {target:,} ادامه پیدا کند. "
                 f"از آنجا برگشت و اصلاح به محدوده {support:,} محتمل است؛ "
-                f"در صورت نگه‌داشتن این ناحیه، احتمال تثبیت و جمع‌شدن volatility در همان محدوده وجود دارد."
+                f"در صورت نگه‌داشتن این ناحیه، احتمال تثبیت و آرام‌تر شدن نوسان در همان محدوده وجود دارد."
             )
         elif a.direction == "down" and b.direction == "up":
             path_text = (
-                f"تک سناریوی محتمل: ابتدا فشار نزولی به سمت {a.to_level:,} (حمایت flow) دیده می‌شود؛ "
-                f"اگر این سطح بگیرد، برگشت تدریجی به {b.to_level:,} محتمل است؛ "
-                f"در میانهٔ این حرکت، نزدیک {pause_down:,} می‌تواند نقطهٔ چرخش کوتاه‌مدت باشد."
+                f"تک سناریوی محتمل: ابتدا قیمت به سمت {a.to_level:,} پایین می‌آید "
+                f"(همان ناحیه‌ای که در معاملات پوت به‌عنوان حمایت دیده می‌شود)؛ "
+                f"اگر آنجا بایستد، برگشت تدریجی به {b.to_level:,} محتمل است و "
+                f"نزدیک {pause_down:,} می‌تواند محل چرخش کوتاه‌مدت باشد."
             )
         else:
             path_text = (
                 f"تک سناریوی محتمل: نوسان بین {support:,} و {target:,} "
-                f"با شروع از {spot:,.2f} تا break واضح‌تر."
+                f"با شروع از {spot:,.2f} تا شکست واضح‌تر یکی از سطوح."
             )
     elif p and len(p.legs) == 1:
         leg = p.legs[0]
@@ -283,14 +290,14 @@ def format_simple_paragraph(main: FlowAnalysis, guidance: Guidance) -> str:
             )
     else:
         path_text = (
-            f"تک سناریوی محتمل: range میان {support:,} و {target:,} "
-            f"حول {spot:,.2f}."
+            f"تک سناریوی محتمل: نوسان در محدوده {support:,} تا {target:,} "
+            f"با محور حدود {spot:,.2f}."
         )
 
     return (
-        f"بر اساس flow آپشن Deribit در {main.window_label}، {tone}. "
+        f"بر اساس معاملات آپشن بیت‌کوین در {main.window_label}، {tone}. "
         f"{path_text} "
-        f"این جمع‌بندی سناریو است، نه سیگنال قطعی."
+        f"این جمع‌بندی یک سناریو است، نه سیگنال قطعی."
     )
 
 
