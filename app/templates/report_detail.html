@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}جزئیات گزارش — OptionFlow{% endblock %}
+{% block header %}گزارش{% endblock %}
+{% block subheader %}<p class="muted">{{ fmt_dt(report.created_at) }}</p>{% endblock %}
+
+{% block content %}
+<article class="card hero">
+  <div class="meta-row">
+    <span class="badge">{{ report.bias }}</span>
+    <span class="muted">امتیاز {{ report.score }} · {{ report.confidence_pct }}%</span>
+  </div>
+  <p class="headline">{{ report.headline }}</p>
+  <p class="paragraph">{{ report.paragraph }}</p>
+  <div class="stats">
+    <span>{{ report.trade_count }} معامله</span>
+    <span>Spot {{ "{:,.0f}".format(report.spot) }}</span>
+    <span>حمایت {{ "{:,}".format(report.support_zone) }}</span>
+    <span>هدف {{ "{:,}".format(report.target_zone) }}</span>
+  </div>
+</article>
+<a href="/reports" class="btn secondary full">بازگشت به لیست</a>
+{% endblock %}

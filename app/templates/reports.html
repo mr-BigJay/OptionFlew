@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}گزارش‌ها — OptionFlow{% endblock %}
+{% block header %}گزارش‌ها{% endblock %}
+{% block subheader %}<p class="muted">{{ count }} مورد در بازهٔ انتخاب‌شده</p>{% endblock %}
+
+{% block content %}
+<div class="tabs">
+  <a href="/reports?period=day{% if date %}&date={{ date }}{% endif %}" class="{% if period == 'day' %}on{% endif %}">روز</a>
+  <a href="/reports?period=week{% if date %}&date={{ date }}{% endif %}" class="{% if period == 'week' %}on{% endif %}">هفته</a>
+  <a href="/reports?period=month{% if date %}&date={{ date }}{% endif %}" class="{% if period == 'month' %}on{% endif %}">ماه</a>
+</div>
+
+<form class="filter-card" method="get" action="/reports">
+  <input type="hidden" name="period" value="range">
+  <label>از تاریخ</label>
+  <input type="date" name="from_date" value="{{ from_date }}">
+  <label>تا تاریخ</label>
+  <input type="date" name="to_date" value="{{ to_date }}">
+  <button type="submit" class="btn primary full">بازهٔ دلخواه</button>
+</form>
+
+<form class="filter-row" method="get" action="/reports">
+  <input type="hidden" name="period" value="{{ period }}">
+  <input type="date" name="date" value="{{ date }}" aria-label="تاریخ">
+  <button type="submit" class="btn secondary">برو</button>
+</form>
+
+{% if grouped %}
+<section class="notes-list">
+  {% for day_key, items in grouped %}
+  <h2 class="date-stick">{{ fmt_date_header(items[0].created_at) }}</h2>
+  {% for r in items %}
+  <a href="/reports/{{ r.id }}" class="note-card">
+    <div class="note-time">{{ fmt_time(r.created_at) }}</div>
+    <div class="note-body">
+      <p class="note-preview">{{ r.paragraph[:120] }}{% if r.paragraph|length > 120 %}…{% endif %}</p>
+      <span class="note-tags">{{ r.bias }} · {{ "{:,.0f}".format(r.spot) }}</span>
+    </div>
+    <span class="chevron">‹</span>
+  </a>
+  {% endfor %}
+  {% endfor %}
+</section>
+{% else %}
+<div class="empty"><p>در این بازه گزارشی نیست.</p></div>
+{% endif %}
+{% endblock %}

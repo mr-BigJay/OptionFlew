@@ -1,0 +1,245 @@
+from __future__ import annotations
+
+import logging
+import os
+from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
+from typing import Any
+from urllib.parse import quote
+
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.interval import IntervalTrigger
+from fastapi import FastAPI, Form, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+
+from app.jobs import run_scheduled_report
+from app.storage import (
+    get_latest_report,
+    get_report,
+    get_setting,
+    init_db,
+    list_reports,
+    set_setting,
+)
+from app.telegram_notify import send_telegram_message, telegram_enabled
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("optionflow.web")
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
+scheduler = BackgroundScheduler()
+
+
+def _fmt_dt(iso: str) -> str:
+    try:
+        dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+        return dt.astimezone().strftime("%Y/%m/%d — %H:%M")
+    except ValueError:
+        return iso
+
+
+def _fmt_time(iso: str) -> str:
+    try:
+        dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+        return dt.astimezone().strftime("%H:%M")
+    except ValueError:
+        return ""
+
+
+def _fmt_date_header(iso: str) -> str:
+    try:
+        dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+        return dt.astimezone().strftime("%Y/%m/%d")
+    except ValueError:
+        return iso
+
+
+def _template_ctx(**extra: Any) -> dict[str, Any]:
+    return {
+        "fmt_dt": _fmt_dt,
+        "fmt_time": _fmt_time,
+        "fmt_date_header": _fmt_date_header,
+        **extra,
+    }
+
+
+def _interval_hours() -> float:
+    return float(os.environ.get("OPTIONFLOW_INTERVAL_HOURS", "2"))
+
+
+def _group_by_date(reports: list[dict[str, Any]]) -> list[tuple[str, list[dict]]]:
+    groups: dict[str, list[dict]] = {}
+    order: list[str] = []
+    for r in reports:
+        key = r["created_at"][:10]
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(r)
+    return [(k, groups[k]) for k in order]
+
+
+def _range_for_period(period: str, anchor: str | None) -> tuple[str, str]:
+    now = datetime.now(timezone.utc)
+    if anchor:
+        try:
+            base = datetime.fromisoformat(anchor + "T00:00:00+00:00")
+        except ValueError:
+            base = now
+    else:
+        base = now
+
+    if period == "day":
+        start = base.replace(hour=0, minute=0, second=0, microsecond=0)
+        end = start + timedelta(days=1)
+    elif period == "week":
+        start = base - timedelta(days=base.weekday())
+        start = start.replace(hour=0, minute=0, second=0, microsecond=0)
+        end = start + timedelta(days=7)
+    else:
+        start = base.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        if start.month == 12:
+            end = start.replace(year=start.year + 1, month=1)
+        else:
+            end = start.replace(month=start.month + 1)
+
+    def iso(dt: datetime) -> str:
+        return dt.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+    return iso(start), iso(end)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    hours = _interval_hours()
+    scheduler.add_job(
+        run_scheduled_report,
+        trigger=IntervalTrigger(hours=hours),
+        id="flow_report",
+        replace_existing=True,
+        next_run_time=datetime.now(timezone.utc),
+    )
+    scheduler.start()
+    logger.info("Scheduler started every %s hour(s)", hours)
+    yield
+    scheduler.shutdown(wait=False)
+
+
+app = FastAPI(title="OptionFlow Dashboard", lifespan=lifespan)
+app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
+
+
+@app.get("/", response_class=HTMLResponse)
+async def home(request: Request):
+    report = get_latest_report()
+    return templates.TemplateResponse(
+        request,
+        "home.html",
+        _template_ctx(
+            report=report,
+            active="home",
+            interval_hours=_interval_hours(),
+        ),
+    )
+
+
+@app.get("/reports", response_class=HTMLResponse)
+async def reports_page(
+    request: Request,
+    period: str = "day",
+    date: str = "",
+    from_date: str = "",
+    to_date: str = "",
+):
+    if period not in ("day", "week", "month", "range"):
+        period = "day"
+
+    if period == "range" and from_date and to_date:
+        start_iso = from_date + "T00:00:00Z"
+        end_iso = to_date + "T23:59:59Z"
+    else:
+        anchor = date or None
+        if period == "range":
+            period = "day"
+        start_iso, end_iso = _range_for_period(period, anchor)
+
+    items = list_reports(start_iso=start_iso, end_iso=end_iso)
+    grouped = _group_by_date(items)
+
+    return templates.TemplateResponse(
+        request,
+        "reports.html",
+        _template_ctx(
+            active="reports",
+            period=period,
+            date=date,
+            from_date=from_date,
+            to_date=to_date,
+            grouped=grouped,
+            count=len(items),
+        ),
+    )
+
+
+@app.get("/reports/{report_id}", response_class=HTMLResponse)
+async def report_detail(request: Request, report_id: int):
+    report = get_report(report_id)
+    if not report:
+        return RedirectResponse("/reports", status_code=302)
+    return templates.TemplateResponse(
+        request,
+        "report_detail.html",
+        _template_ctx(active="reports", report=report),
+    )
+
+
+@app.get("/telegram", response_class=HTMLResponse)
+async def telegram_page(request: Request, msg: str = "", ok: str = ""):
+    return templates.TemplateResponse(
+        request,
+        "telegram.html",
+        _template_ctx(
+            active="telegram",
+            bot_token=get_setting("telegram_bot_token", ""),
+            chat_id=get_setting("telegram_chat_id", ""),
+            enabled=telegram_enabled(),
+            on_schedule=get_setting("telegram_on_schedule", "1") == "1",
+            message=msg,
+            success=ok == "1",
+        ),
+    )
+
+
+@app.post("/telegram")
+async def telegram_save(
+    bot_token: str = Form(""),
+    chat_id: str = Form(""),
+    enabled: str = Form(""),
+    on_schedule: str = Form(""),
+):
+    set_setting("telegram_bot_token", bot_token.strip())
+    set_setting("telegram_chat_id", chat_id.strip())
+    set_setting("telegram_enabled", "1" if enabled == "on" else "0")
+    set_setting("telegram_on_schedule", "1" if on_schedule == "on" else "0")
+    return RedirectResponse("/telegram?ok=1", status_code=303)
+
+
+@app.post("/telegram/test")
+async def telegram_test():
+    latest = get_latest_report()
+    text = latest["paragraph"] if latest else "تست OptionFlow — اتصال تلگرام برقرار است."
+    ok, msg = send_telegram_message(text)
+    return RedirectResponse(
+        f"/telegram?ok={'1' if ok else '0'}&msg={quote(msg)}",
+        status_code=303,
+    )
+
+
+@app.post("/admin/run-now")
+async def run_now():
+    run_scheduled_report()
+    return RedirectResponse("/", status_code=303)
