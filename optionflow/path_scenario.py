@@ -51,7 +51,7 @@ def infer_movement_paths(
     spot: float,
 ) -> tuple[MovementPath, MovementPath | None]:
     c = main.contracts
-    spot_i = int(round(spot / 500) * 500)
+    spot_i = int(round(spot))
 
     call_sell_at_target = _sum_strikes_in_band(
         main.call_sell_by_strike,

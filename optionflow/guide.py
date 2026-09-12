@@ -21,8 +21,9 @@ class Guidance:
     path_alternate: MovementPath | None = None
 
 
-def _round_zone(price: float, step: int = 500) -> int:
-    return int(round(price / step) * step)
+def _round_zone(price: float) -> int:
+    """Keep strike-derived levels at full dollar precision (no 500-step rounding)."""
+    return int(round(price))
 
 
 def _dominance_ratio(a: float, b: float) -> float:
@@ -74,8 +75,8 @@ def build_guidance(
     if put_support_center is None:
         put_support_center = spot * 0.98
 
-    target_zone = _round_zone(call_target_center, 500)
-    support_zone = _round_zone(put_support_center, 500)
+    target_zone = _round_zone(call_target_center)
+    support_zone = _round_zone(put_support_center)
 
     path_primary, path_alternate = infer_movement_paths(
         main,
