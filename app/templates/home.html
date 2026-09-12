@@ -1,42 +1,79 @@
 {% extends "base.html" %}
 {% block title %}خانه — OptionFlow{% endblock %}
-{% block header %}آخرین تحلیل{% endblock %}
+{% block header %}<span class="header-title">📈 آخرین تحلیل</span>{% endblock %}
 {% block subheader %}
-<p class="muted">تهران · ۴h بعد از close :30 (گزارش :31) · روزانه ساعت 15:30</p>
+<p class="home-schedule muted">تهران · ۴h گزارش :31 · روزانه 15:30</p>
 {% endblock %}
 
 {% block content %}
-{% macro report_card(report, kind_label) %}
+<div class="home-feed">
+{% macro report_card(report, kind_key, kind_label) %}
 {% if report %}
-<article class="card hero">
-  <div class="meta-row">
-    <span class="badge">{{ kind_label }}</span>
-    <span class="badge">{{ report.bias }}</span>
-    <time>{{ fmt_dt(report.created_at) }}</time>
-  </div>
+<article class="home-report-card kind-{{ kind_key }}">
+  <header class="home-report-head">
+    <div class="home-report-date">
+      <span class="home-cal" aria-hidden="true">📅</span>
+      <span>{{ fmt_date(report.created_at) }}</span>
+      <span class="home-time-mini">{{ fmt_time(report.created_at) }}</span>
+    </div>
+    <div class="home-report-badges">
+      <span class="bias-pill bias-{{ report.bias }}">{{ bias_fa(report.bias) }}</span>
+      <span class="type-pill">
+        {% if kind_key == 'daily' %}📆{% else %}⏱{% endif %}
+        {{ kind_label }}
+      </span>
+    </div>
+  </header>
+
   {% if report.window_label %}
-  <p class="muted">{{ report.window_label }}</p>
+  <p class="home-window muted">{{ report.window_label }}</p>
   {% endif %}
-  <p class="headline">{{ report.headline }}</p>
-  <p class="paragraph">{{ report.paragraph }}</p>
-  <div class="stats">
-    <span>{{ report.trade_count }} معامله</span>
-    <span>Spot {{ "{:,.0f}".format(report.spot) }}</span>
-    <span>حمایت {{ "{:,}".format(report.support_zone) }}</span>
-    <span>هدف {{ "{:,}".format(report.target_zone) }}</span>
+
+  <div class="home-report-body">
+    <div class="asset-badge" aria-hidden="true">₿</div>
+    <div class="home-report-copy">
+      <p class="home-headline">
+        بازار {{ bias_fa(report.bias) }} — امتیاز {{ report.score }} | اطمینان {{ report.confidence_pct }}٪
+      </p>
+      <p class="home-paragraph paragraph-justify">{{ report.paragraph }}</p>
+    </div>
   </div>
+
+  <footer class="home-metrics">
+    <div class="metric-box">
+      <span class="metric-icon">↘</span>
+      <span class="metric-label">حمایت</span>
+      <span class="metric-val">{{ "{:,}".format(report.support_zone) }}</span>
+    </div>
+    <div class="metric-box metric-spot">
+      <span class="metric-icon">◎</span>
+      <span class="metric-label">Spot</span>
+      <span class="metric-val">{{ "{:,.0f}".format(report.spot) }}</span>
+    </div>
+    <div class="metric-box">
+      <span class="metric-icon">↗</span>
+      <span class="metric-label">هدف</span>
+      <span class="metric-val">{{ "{:,}".format(report.target_zone) }}</span>
+    </div>
+    <div class="metric-box metric-trades">
+      <span class="metric-icon">▤</span>
+      <span class="metric-label">معاملات</span>
+      <span class="metric-val">{{ report.trade_count }}</span>
+    </div>
+  </footer>
 </article>
 {% else %}
-<div class="card empty">
+<div class="card empty home-empty">
   <p>هنوز گزارش {{ kind_label }} ذخیره نشده.</p>
 </div>
 {% endif %}
 {% endmacro %}
 
-{{ report_card(report_4h, "۴ ساعته") }}
-{{ report_card(report_daily, "روزانه") }}
+{{ report_card(report_4h, '4h', '۴ ساعته') }}
+{{ report_card(report_daily, 'daily', 'روزانه') }}
+</div>
 
 <form method="post" action="/admin/run-now" class="inline-form">
-  <button type="submit" class="btn secondary">تولید هر دو گزارش الان</button>
+  <button type="submit" class="btn secondary full">تولید هر دو گزارش الان</button>
 </form>
 {% endblock %}

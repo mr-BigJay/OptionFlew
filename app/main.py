@@ -64,11 +64,19 @@ def _fmt_day_header(iso: str) -> str:
     return format_day_header_tehran(iso)
 
 
+def _bias_fa(bias: str) -> str:
+    return {"bullish": "صعودی", "bearish": "نزولی", "neutral": "خنثی"}.get(
+        bias, bias
+    )
+
+
 def _template_ctx(**extra: Any) -> dict[str, Any]:
     return {
         "fmt_dt": _fmt_dt,
         "fmt_time": _fmt_time,
         "fmt_date_header": _fmt_day_header,
+        "fmt_date": format_date_tehran,
+        "bias_fa": _bias_fa,
         **extra,
     }
 

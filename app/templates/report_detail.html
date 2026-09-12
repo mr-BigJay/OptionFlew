@@ -6,12 +6,12 @@
 {% block content %}
 <article class="card hero">
   <div class="meta-row">
-    <span class="badge">{{ report.get('report_kind', '4h') }}</span>
+    <span class="kind-pill kind-pill-{{ report.get('report_kind', '4h') }}">{{ 'روزانه' if report.get('report_kind') == 'daily' else '۴ ساعته' }}</span>
     <span class="badge">{{ report.bias }}</span>
     <span class="muted">امتیاز {{ report.score }} · {{ report.confidence_pct }}%</span>
   </div>
   <p class="headline">{{ report.headline }}</p>
-  <p class="paragraph">{{ report.paragraph }}</p>
+  <p class="paragraph paragraph-justify">{{ report.paragraph }}</p>
   <div class="stats">
     <span>{{ report.trade_count }} معامله</span>
     <span>Spot {{ "{:,.0f}".format(report.spot) }}</span>
