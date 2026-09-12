@@ -3,7 +3,11 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from optionflow.flow_analyzer import FlowAnalysis, top_strikes, weighted_strike_center
+from optionflow.flow_analyzer import (
+    FlowAnalysis,
+    top_strikes,
+    weighted_strike_center_near_spot,
+)
 from optionflow.path_scenario import MovementPath, infer_movement_paths, format_path_section
 
 
@@ -39,8 +43,7 @@ def _filter_strikes_near(
     high_pct: float,
 ) -> dict[float, float]:
     lo, hi = spot * low_pct, spot * high_pct
-    filtered = {k: v for k, v in strikes.items() if lo <= k <= hi}
-    return filtered if filtered else strikes
+    return {k: v for k, v in strikes.items() if lo <= k <= hi}
 
 
 def build_guidance(
@@ -64,19 +67,23 @@ def build_guidance(
 
     spot = main.spot
 
-    call_target_center = weighted_strike_center(
-        _filter_strikes_near(main.call_buy_by_strike, spot, 0.98, 1.12)
-    )
-    put_support_center = weighted_strike_center(
-        _filter_strikes_near(main.put_buy_by_strike, spot, 0.88, 1.02)
-    )
-    if call_target_center is None:
-        call_target_center = spot * 1.02
-    if put_support_center is None:
-        put_support_center = spot * 0.98
+    call_strikes = _filter_strikes_near(main.call_buy_by_strike, spot, 1.0, 1.08)
+    put_strikes = _filter_strikes_near(main.put_buy_by_strike, spot, 0.85, 1.0)
 
-    target_zone = _round_zone(call_target_center)
-    support_zone = _round_zone(put_support_center)
+    call_target_center = weighted_strike_center_near_spot(call_strikes, spot)
+    put_support_center = weighted_strike_center_near_spot(put_strikes, spot)
+
+    if call_target_center is None:
+        call_target_center = spot * 1.015
+    if put_support_center is None:
+        put_support_center = spot * 0.985
+
+    target_zone = _round_zone(min(call_target_center, spot * 1.065))
+    support_zone = _round_zone(max(put_support_center, spot * 0.935))
+    if target_zone <= int(round(spot)):
+        target_zone = int(round(spot * 1.01))
+    if support_zone >= int(round(spot)):
+        support_zone = int(round(spot * 0.99))
 
     path_primary, path_alternate = infer_movement_paths(
         main,
@@ -234,11 +241,11 @@ def format_simple_paragraph(main: FlowAnalysis, guidance: Guidance) -> str:
     target = guidance.target_zone
     support = guidance.support_zone
 
-    if c.buyer_call > c.buyer_put * 1.1:
+    if guidance.bias == "bullish":
         tone = (
             "فشار معاملات بیشتر سمت خرید کال است و تمایل کوتاه‌مدت صعودی دیده می‌شود"
         )
-    elif c.buyer_put > c.buyer_call * 1.1:
+    elif guidance.bias == "bearish":
         tone = (
             "فشار معاملات بیشتر سمت خرید پوت است و تمایل کوتاه‌مدت به سمت افت یا تست حمایت دیده می‌شود"
         )

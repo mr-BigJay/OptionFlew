@@ -121,5 +121,29 @@ def weighted_strike_center(strikes: dict[float, float]) -> float | None:
     return sum(k * v for k, v in strikes.items()) / total
 
 
+def weighted_strike_center_near_spot(
+    strikes: dict[float, float],
+    spot: float,
+    *,
+    half_range_pct: float = 0.025,
+) -> float | None:
+    """Volume-weighted strike center; far OTM strikes decay (short-horizon levels)."""
+    if not strikes or spot <= 0:
+        return None
+    half = max(half_range_pct, 0.005)
+    total_w = 0.0
+    weighted = 0.0
+    for strike, vol in strikes.items():
+        if vol <= 0:
+            continue
+        dist_pct = abs(strike - spot) / spot
+        w = vol / (1.0 + (dist_pct / half) ** 2)
+        weighted += strike * w
+        total_w += w
+    if total_w <= 0:
+        return None
+    return weighted / total_w
+
+
 def top_strikes(strikes: dict[float, float], n: int = 3) -> list[tuple[float, float]]:
     return sorted(strikes.items(), key=lambda x: -x[1])[:n]

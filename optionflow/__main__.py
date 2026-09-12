@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 from optionflow.deribit_client import DeribitClient
 from optionflow.flow_analyzer import analyze_trades
 from optionflow.guide import build_guidance, format_report, format_simple_paragraph
+from optionflow.report_service import produce_report
+from optionflow.tehran_time import candle_window, to_utc_ms
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -41,10 +43,27 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="فقط یک پاراگراف روند و مسیر (متن ساده)",
     )
+    parser.add_argument(
+        "--rolling",
+        action="store_true",
+        help="پنجرهٔ rolling به‌جای کندل ۲ ساعته تهران (مثل داشبورد نیست)",
+    )
     args = parser.parse_args(argv)
 
-    start, end = DeribitClient.window_ms(args.hours)
-    window_label = f"{args.hours:g} ساعت اخیر"
+    if args.simple and not args.rolling and not args.pre_event_minutes:
+        snap = produce_report(
+            window_hours=args.hours,
+            use_candle_window=True,
+        )
+        print(snap.paragraph)
+        return 0
+
+    if args.rolling:
+        start, end = DeribitClient.window_ms(args.hours)
+        window_label = f"{args.hours:g} ساعت اخیر"
+    else:
+        start_dt, end_dt, window_label = candle_window()
+        start, end = to_utc_ms(start_dt), to_utc_ms(end_dt)
 
     with DeribitClient() as client:
         trades = client.fetch_option_trades(start_ms=start, end_ms=end)

@@ -71,8 +71,12 @@ def infer_movement_paths(
 
     paths: list[MovementPath] = []
 
-    # 1) Up then down — call buyers push up, puts/sold calls cap and reverse
-    if bullish_calls and (capped_upside or hedged_rally):
+    pullback_credible = hedged_rally or put_buy_near_support >= max(
+        c.buyer_call * 0.12, 1.0
+    )
+
+    # 1) Up then down — needs upside cap AND evidence puts/support invite a pullback
+    if bullish_calls and capped_upside and pullback_credible:
         legs = (
             PathLeg("up", spot_i, target_zone),
             PathLeg("down", target_zone, support_zone),
