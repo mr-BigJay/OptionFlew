@@ -5,7 +5,8 @@ from datetime import datetime, timezone
 
 from optionflow.deribit_client import DeribitClient
 from optionflow.flow_analyzer import analyze_trades
-from optionflow.guide import build_guidance, format_simple_paragraph
+from optionflow.guide import build_guidance, format_enriched_simple_paragraph, format_simple_paragraph
+from optionflow.market_context import collect_market_context
 
 from optionflow.tehran_time import candle_window, to_utc_ms
 
@@ -29,7 +30,12 @@ class ReportSnapshot:
         return asdict(self)
 
 
-def produce_report(*, window_hours: float = 2.0, use_candle_window: bool = True) -> ReportSnapshot:
+def produce_report(
+    *,
+    window_hours: float = 2.0,
+    use_candle_window: bool = True,
+    enriched: bool = False,
+) -> ReportSnapshot:
     if use_candle_window:
         start_dt, end_dt, window_label = candle_window()
         start_ms = to_utc_ms(start_dt)
@@ -51,7 +57,11 @@ def produce_report(*, window_hours: float = 2.0, use_candle_window: bool = True)
         window_label=window_label,
     )
     guidance = build_guidance(analysis)
-    paragraph = format_simple_paragraph(analysis, guidance)
+    if enriched:
+        ctx = collect_market_context(analysis.spot)
+        paragraph = format_enriched_simple_paragraph(analysis, guidance, ctx)
+    else:
+        paragraph = format_simple_paragraph(analysis, guidance)
     now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
     return ReportSnapshot(
