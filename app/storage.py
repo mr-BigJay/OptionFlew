@@ -59,6 +59,9 @@ def init_db() -> None:
             );
             """
         )
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(reports)")}
+        if "window_label" not in cols:
+            conn.execute("ALTER TABLE reports ADD COLUMN window_label TEXT DEFAULT ''")
 
 
 def insert_report(snapshot: ReportSnapshot) -> int:
@@ -68,10 +71,12 @@ def insert_report(snapshot: ReportSnapshot) -> int:
             """
             INSERT INTO reports (
                 created_at, window_hours, paragraph, headline, bias, score,
-                confidence_pct, support_zone, target_zone, spot, trade_count
+                confidence_pct, support_zone, target_zone, spot, trade_count,
+                window_label
             ) VALUES (
                 :created_at, :window_hours, :paragraph, :headline, :bias, :score,
-                :confidence_pct, :support_zone, :target_zone, :spot, :trade_count
+                :confidence_pct, :support_zone, :target_zone, :spot, :trade_count,
+                :window_label
             )
             """,
             row,

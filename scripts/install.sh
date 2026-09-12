@@ -42,7 +42,6 @@ fi
 if [[ -z "${OPTIONFLOW_EMAIL:-}" ]]; then
   read -rp "[OptionFlow] Email baraye SSL/Let's Encrypt (Enter = bedune email): " OPTIONFLOW_EMAIL
 fi
-CERTBOT_EMAIL=("${OPTIONFLOW_EMAIL:-}")
 
 say "=========================================="
 say "  OptionFlow Dashboard — shoro nasb"
@@ -187,8 +186,8 @@ fi
 # --- SSL ---
 say "SSL certificate (Let's Encrypt)..."
 CERTBOT_ARGS=(certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --redirect)
-if [[ -n "${CERTBOT_EMAIL[0]:-}" ]]; then
-  CERTBOT_ARGS+=(--email "${CERTBOT_EMAIL[0]}" --no-eff-email)
+if [[ -n "${OPTIONFLOW_EMAIL:-}" ]]; then
+  CERTBOT_ARGS+=(--email "$OPTIONFLOW_EMAIL" --no-eff-email)
 else
   CERTBOT_ARGS+=(--register-unsafely-without-email)
 fi

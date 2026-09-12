@@ -11,9 +11,8 @@ logger = logging.getLogger("optionflow.jobs")
 
 
 def run_scheduled_report() -> None:
-    window = float(os.environ.get("OPTIONFLOW_WINDOW_HOURS", "2"))
-    logger.info("Generating scheduled report (window=%sh)", window)
-    snapshot = produce_report(window_hours=window)
+    logger.info("Generating scheduled report (2h candle window, Tehran)")
+    snapshot = produce_report(use_candle_window=True)
     insert_report(snapshot)
     maybe_send_report(snapshot.paragraph)
     logger.info("Report saved at %s", snapshot.created_at)

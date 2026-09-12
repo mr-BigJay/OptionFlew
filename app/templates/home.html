@@ -2,7 +2,10 @@
 {% block title %}خانه — OptionFlow{% endblock %}
 {% block header %}آخرین تحلیل{% endblock %}
 {% block subheader %}
-<p class="muted">گزارش خودکار هر {{ interval_hours|int }} ساعت · دادهٔ ۲ ساعت اخیر flow</p>
+<p class="muted">Saat dashboard: Tehran · gozaresh har 2h saat :31 (1 daghighe bad az close candle :30)</p>
+{% if report and report.window_label %}
+<p class="muted">{{ report.window_label }}</p>
+{% endif %}
 {% endblock %}
 
 {% block content %}

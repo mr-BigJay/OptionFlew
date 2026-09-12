@@ -7,6 +7,8 @@ from optionflow.deribit_client import DeribitClient
 from optionflow.flow_analyzer import analyze_trades
 from optionflow.guide import build_guidance, format_simple_paragraph
 
+from optionflow.tehran_time import candle_window, to_utc_ms
+
 
 @dataclass
 class ReportSnapshot:
@@ -21,17 +23,23 @@ class ReportSnapshot:
     target_zone: int
     spot: float
     trade_count: int
+    window_label: str = ""
 
     def to_row(self) -> dict:
         return asdict(self)
 
 
-def produce_report(*, window_hours: float = 2.0) -> ReportSnapshot:
-    start, end = DeribitClient.window_ms(window_hours)
-    window_label = f"{window_hours:g} ساعت اخیر"
+def produce_report(*, window_hours: float = 2.0, use_candle_window: bool = True) -> ReportSnapshot:
+    if use_candle_window:
+        start_dt, end_dt, window_label = candle_window()
+        start_ms = to_utc_ms(start_dt)
+        end_ms = to_utc_ms(end_dt)
+    else:
+        start_ms, end_ms = DeribitClient.window_ms(window_hours)
+        window_label = f"{window_hours:g} ساعت اخیر"
 
     with DeribitClient() as client:
-        trades = client.fetch_option_trades(start_ms=start, end_ms=end)
+        trades = client.fetch_option_trades(start_ms=start_ms, end_ms=end_ms)
         try:
             spot = client.get_index_price()
         except Exception:
@@ -58,4 +66,5 @@ def produce_report(*, window_hours: float = 2.0) -> ReportSnapshot:
         target_zone=guidance.target_zone,
         spot=round(analysis.spot, 2),
         trade_count=analysis.trade_count,
+        window_label=window_label,
     )

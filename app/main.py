@@ -8,7 +8,7 @@ from typing import Any
 from urllib.parse import quote
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.triggers.interval import IntervalTrigger
+from apscheduler.triggers.cron import CronTrigger
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -24,6 +24,18 @@ from app.storage import (
     set_setting,
 )
 from app.telegram_notify import send_telegram_message, telegram_enabled
+from optionflow.tehran_time import (
+    CRON_ODD_HOURS,
+    REPORT_MINUTE,
+    TEHRAN,
+    format_date_tehran,
+    format_dt_tehran,
+    format_time_tehran,
+    tehran_date_key,
+    tehran_day_bounds_utc,
+    tehran_month_bounds_utc,
+    tehran_week_bounds_utc,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("optionflow.web")
@@ -34,27 +46,15 @@ scheduler = BackgroundScheduler()
 
 
 def _fmt_dt(iso: str) -> str:
-    try:
-        dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
-        return dt.astimezone().strftime("%Y/%m/%d — %H:%M")
-    except ValueError:
-        return iso
+    return format_dt_tehran(iso)
 
 
 def _fmt_time(iso: str) -> str:
-    try:
-        dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
-        return dt.astimezone().strftime("%H:%M")
-    except ValueError:
-        return ""
+    return format_time_tehran(iso)
 
 
 def _fmt_date_header(iso: str) -> str:
-    try:
-        dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
-        return dt.astimezone().strftime("%Y/%m/%d")
-    except ValueError:
-        return iso
+    return format_date_tehran(iso)
 
 
 def _template_ctx(**extra: Any) -> dict[str, Any]:
@@ -66,15 +66,11 @@ def _template_ctx(**extra: Any) -> dict[str, Any]:
     }
 
 
-def _interval_hours() -> float:
-    return float(os.environ.get("OPTIONFLOW_INTERVAL_HOURS", "2"))
-
-
 def _group_by_date(reports: list[dict[str, Any]]) -> list[tuple[str, list[dict]]]:
     groups: dict[str, list[dict]] = {}
     order: list[str] = []
     for r in reports:
-        key = r["created_at"][:10]
+        key = tehran_date_key(r["created_at"])
         if key not in groups:
             groups[key] = []
             order.append(key)
@@ -83,48 +79,46 @@ def _group_by_date(reports: list[dict[str, Any]]) -> list[tuple[str, list[dict]]
 
 
 def _range_for_period(period: str, anchor: str | None) -> tuple[str, str]:
-    now = datetime.now(timezone.utc)
-    if anchor:
-        try:
-            base = datetime.fromisoformat(anchor + "T00:00:00+00:00")
-        except ValueError:
-            base = now
-    else:
-        base = now
-
+    anchor = anchor or None
     if period == "day":
-        start = base.replace(hour=0, minute=0, second=0, microsecond=0)
-        end = start + timedelta(days=1)
-    elif period == "week":
-        start = base - timedelta(days=base.weekday())
-        start = start.replace(hour=0, minute=0, second=0, microsecond=0)
-        end = start + timedelta(days=7)
-    else:
-        start = base.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        if start.month == 12:
-            end = start.replace(year=start.year + 1, month=1)
-        else:
-            end = start.replace(month=start.month + 1)
+        return tehran_day_bounds_utc(anchor)
+    if period == "week":
+        return tehran_week_bounds_utc(anchor)
+    return tehran_month_bounds_utc(anchor)
 
-    def iso(dt: datetime) -> str:
-        return dt.replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
-    return iso(start), iso(end)
+def _range_custom_tehran(from_date: str, to_date: str) -> tuple[str, str]:
+    start_iso, _ = tehran_day_bounds_utc(from_date)
+    base_end = datetime.fromisoformat(to_date + "T00:00:00").replace(tzinfo=TEHRAN)
+    end_local = base_end + timedelta(days=1) - timedelta(seconds=1)
+    end_iso = (
+        end_local.astimezone(timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
+    return start_iso, end_iso
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    hours = _interval_hours()
     scheduler.add_job(
         run_scheduled_report,
-        trigger=IntervalTrigger(hours=hours),
+        trigger=CronTrigger(
+            minute=REPORT_MINUTE,
+            hour=CRON_ODD_HOURS,
+            timezone=TEHRAN,
+        ),
         id="flow_report",
         replace_existing=True,
-        next_run_time=datetime.now(timezone.utc),
+        misfire_grace_time=900,
     )
     scheduler.start()
-    logger.info("Scheduler started every %s hour(s)", hours)
+    logger.info(
+        "Scheduler: report at :%s on odd hours (Asia/Tehran), 1 min after 2h candle",
+        REPORT_MINUTE,
+    )
     yield
     scheduler.shutdown(wait=False)
 
@@ -142,7 +136,6 @@ async def home(request: Request):
         _template_ctx(
             report=report,
             active="home",
-            interval_hours=_interval_hours(),
         ),
     )
 
@@ -159,8 +152,7 @@ async def reports_page(
         period = "day"
 
     if period == "range" and from_date and to_date:
-        start_iso = from_date + "T00:00:00Z"
-        end_iso = to_date + "T23:59:59Z"
+        start_iso, end_iso = _range_custom_tehran(from_date, to_date)
     else:
         anchor = date or None
         if period == "range":
