@@ -1,16 +1,12 @@
 #!/usr/bin/env bash
-# OptionFlow VPS installer (Finglish UI, nginx + SSL)
-# Behtarin ravesh:
-#   curl -fsSL https://raw.githubusercontent.com/mr-BigJay/OptionFlew/cursor/optionflow-guide-9890/scripts/install.sh -o install.sh
-#   sudo bash install.sh
-#
-# Ya non-interactive:
-#   sudo OPTIONFLOW_DOMAIN=flow.example.com OPTIONFLOW_EMAIL=you@mail.com bash install.sh
+# OptionFlow STABLE v1 — VPS installer (Finglish, nginx + SSL)
+# One-line:
+#   curl -fsSL https://raw.githubusercontent.com/mr-BigJay/OptionFlew/main/scripts/install.sh | sudo bash
 set -euo pipefail
 
 INSTALL_DIR="${OPTIONFLOW_DIR:-/opt/optionflow-dashboard}"
 REPO="${OPTIONFLOW_REPO:-https://github.com/mr-BigJay/OptionFlew.git}"
-BRANCH="${OPTIONFLOW_BRANCH:-cursor/optionflow-guide-9890}"
+BRANCH="${OPTIONFLOW_BRANCH:-main}"
 PORT="${OPTIONFLOW_PORT:-8080}"
 INTERVAL_HOURS="${OPTIONFLOW_INTERVAL_HOURS:-2}"
 WINDOW_HOURS="${OPTIONFLOW_WINDOW_HOURS:-2}"
@@ -103,6 +99,7 @@ OPTIONFLOW_PORT=$PORT
 OPTIONFLOW_INTERVAL_HOURS=$INTERVAL_HOURS
 OPTIONFLOW_WINDOW_HOURS=$WINDOW_HOURS
 OPTIONFLOW_PUBLIC_URL=https://$DOMAIN
+OPTIONFLOW_CHANNEL=stable
 EOF
 
 # --- systemd (local only — nginx miyad jolo) ---
