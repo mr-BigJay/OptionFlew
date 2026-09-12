@@ -81,16 +81,16 @@ def infer_movement_paths(
         if capped_upside:
             why.append("فروش کال نزدیک هدف (سقف احتمالی)")
         if hedged_rally:
-            why.append("هم‌زمان خرید پوت (احتمال برگشت بعد از رally)")
+            why.append("هم‌زمان خرید پوت (احتمال برگشت بعد از صعود)")
         paths.append(
             MovementPath(
                 id="up_then_down",
                 title_fa="مسیر محتمل: اول بالا، بعد برگشت پایین",
                 legs=legs,
                 narrative_fa=(
-                    f"بر اساس flow، **احتمال حرکت به سمت {target_zone:,}** هست "
-                    f"(خریدار کال غالب)، ولی {' و '.join(why)}؛ "
-                    f"پس سناریوی **برگشت به ناحیهٔ {support_zone:,}** بعد از لمس یا نزدیک شدن به هدف منطقی است."
+                    f"احتمال حرکت به سمت {target_zone:,} هست (خریدار کال غالب)، "
+                    f"ولی {' و '.join(why)}؛ "
+                    f"پس برگشت به ناحیهٔ {support_zone:,} بعد از نزدیک شدن به هدف منطقی است."
                 ),
                 likelihood="primary",
             )
@@ -109,8 +109,8 @@ def infer_movement_paths(
                     title_fa="مسیر محتمل: اول پایین (یا حمله به حمایت)، بعد برگشت بالا",
                     legs=legs,
                     narrative_fa=(
-                        f"خرید پوت نزدیک **{support_zone:,}** «حمله» یا flush کوتاه‌مدت را پیشنهاد می‌دهد؛ "
-                        f"اگر حمایت بگیرد، flow کال همچنان **{target_zone:,}** را به‌عنوان هدف بالاتر نشان می‌دهد."
+                        f"خرید پوت نزدیک {support_zone:,} می‌تواند یک افت کوتاه‌مدت بسازد؛ "
+                        f"اگر حمایت بگیرد، خرید کال همچنان {target_zone:,} را به‌عنوان هدف بالاتر نشان می‌دهد."
                     ),
                     likelihood="primary" if not paths else "alternate",
                 )
@@ -125,7 +125,7 @@ def infer_movement_paths(
                 legs=(PathLeg("up", spot_i, target_zone),),
                 narrative_fa=(
                     f"غلبهٔ خریدار کال بدون سقف قوی فروش کال در {target_zone:,}; "
-                    f"مسیر کوتاه‌مدت بیشتر **یک‌طرفه به سمت هدف** دیده می‌شود."
+                    f"مسیر کوتاه‌مدت بیشتر یک‌طرفه به سمت هدف دیده می‌شود."
                 ),
                 likelihood="primary",
             )
@@ -141,7 +141,7 @@ def infer_movement_paths(
                 title_fa="مسیر محتمل: فشار به پایین",
                 legs=(PathLeg("down", spot_i, support_zone),),
                 narrative_fa=(
-                    f"flow محافظتی غالب است؛ مسیر اولیه به سمت **{support_zone:,}** "
+                    f"تمایل محافظتی غالب است؛ مسیر اولیه به سمت {support_zone:,} "
                     f"قبل از هر برگشت صعودی محتمل‌تر است."
                 ),
                 likelihood="primary" if not paths else "alternate",
@@ -159,8 +159,8 @@ def infer_movement_paths(
                     PathLeg("down", target_zone, support_zone),
                 ),
                 narrative_fa=(
-                    f"flow متعادل است؛ **امکان دارد** قیمت بین **{support_zone:,}** و **{target_zone:,}** "
-                    "چند بار بالا-پایین شود بدون break قطعی."
+                    f"معاملات متعادل است؛ امکان دارد قیمت بین {support_zone:,} و {target_zone:,} "
+                    f"چند بار بالا و پایین شود تا یکی از سطوح شکسته شود."
                 ),
                 likelihood="primary",
             )
@@ -202,6 +202,6 @@ def format_path_section(
     if top_c or top_p:
         lines.append("")
         lines.append(
-            "_منطق: مسیر از تضاد/هم‌راستایی خرید کال (هدف بالا) و خرید/فروش در strikeهای کلیدی ساخته شده._"
+            "_منطق: مسیر از هم‌راستایی یا تضاد خرید کال (هدف بالا) و خرید پوت (حمایت پایین) ساخته شده._"
         )
     return "\n".join(lines)
