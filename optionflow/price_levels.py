@@ -35,16 +35,20 @@ def fetch_price_levels() -> PriceLevels:
                 f"{BINANCE}/api/v3/klines",
                 params={"symbol": "BTCUSDT", "interval": "1d", "limit": 5},
             )
+            if day.status_code == 200:
+                d = _closed_candle_hl(day.json())
+            else:
+                d = None
             week = client.get(
                 f"{BINANCE}/api/v3/klines",
                 params={"symbol": "BTCUSDT", "interval": "1w", "limit": 5},
             )
-        day.raise_for_status()
-        week.raise_for_status()
-        d = _closed_candle_hl(day.json())
-        w = _closed_candle_hl(week.json())
+            if week.status_code == 200:
+                w = _closed_candle_hl(week.json())
+            else:
+                w = None
     except Exception:
-        return PriceLevels(None, None, None, None)
+        d = w = None
 
     pdh = pdl = pwh = pwl = None
     if d:
