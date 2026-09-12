@@ -228,61 +228,69 @@ def format_report(main: FlowAnalysis, guidance: Guidance) -> str:
 
 
 def format_simple_paragraph(main: FlowAnalysis, guidance: Guidance) -> str:
-    """یک پاراگراف روند و مسیر، مبتنی بر دادهٔ flow."""
+    """یک پاراگراف روند و مسیر (تک سناریو، متن کامل، بدون لیست داده)."""
     c = main.contracts
     p = guidance.path_primary
-    alt = guidance.path_alternate
-    spot = int(round(main.spot))
+    spot = round(main.spot, 2)
+    target = guidance.target_zone
+    support = guidance.support_zone
 
-    flow_hint = (
-        f"خرید کال ({c.buyer_call:.0f} قرارداد) از خرید پوت ({c.buyer_put:.0f}) قوی‌تر است"
-        if c.buyer_call > c.buyer_put * 1.1
-        else (
-            f"خرید پوت ({c.buyer_put:.0f} قرارداد) فشار محافظتی بیشتری از کال ({c.buyer_call:.0f}) نشان می‌دهد"
-            if c.buyer_put > c.buyer_call * 1.1
-            else "جریان کال و پوت نزدیک به هم و بدون غلبهٔ شدید"
-        )
-    )
+    if c.buyer_call > c.buyer_put * 1.1:
+        tone = "فشار options بیشتر سمت خرید کال است و تمایل کوتاه‌مدت صعودی دیده می‌شود"
+    elif c.buyer_put > c.buyer_call * 1.1:
+        tone = "خرید پوت غالب است و بازار در برابر افت hedge گرفته؛ مسیر اولیه محافظتی‌تر است"
+    else:
+        tone = "flow کال و پوت متعادل است و جهت از روی سطوح strike قوی‌تر دیده می‌شود"
+
+    pause_up = int(round(spot + (target - spot) * 0.42))
+    pause_down = int(round(support + (spot - support) * 0.35))
 
     if p and len(p.legs) >= 2:
         a, b = p.legs[0], p.legs[1]
+        target = a.to_level
+        support = b.to_level
+        pause_up = int(round(spot + (target - spot) * 0.42))
         if a.direction == "up" and b.direction == "down":
             path_text = (
-                f"مسیر محتمل‌تر این است که قیمت از محدودهٔ فعلی (~{spot:,}) "
-                f"به سمت ~{a.to_level:,} حرکت کند و پس از آن احتمال اصلاح یا برگشت به ~{b.to_level:,} وجود دارد"
+                f"تک سناریوی محتمل: قیمت از محدودهٔ فعلی حدود {spot:,.2f} وارد فاز صعودی می‌شود؛ "
+                f"در مسیر، نزدیک {pause_up:,} ممکن است رally کند شود یا یک‌بار نفس بگیرد، "
+                f"سپس حرکت به سمت {target:,} ادامه پیدا کند. "
+                f"از آنجا برگشت و اصلاح به محدوده {support:,} محتمل است؛ "
+                f"در صورت نگه‌داشتن این ناحیه، احتمال تثبیت و جمع‌شدن volatility در همان محدوده وجود دارد."
             )
         elif a.direction == "down" and b.direction == "up":
             path_text = (
-                f"مسیر محتمل‌تر این است که ابتدا فشار به سمت ~{a.to_level:,} (حمایت flow) دیده شود "
-                f"و در صورت نگه‌داشتن آن سطح، برگشت به ~{b.to_level:,} محتمل است"
+                f"تک سناریوی محتمل: ابتدا فشار نزولی به سمت {a.to_level:,} (حمایت flow) دیده می‌شود؛ "
+                f"اگر این سطح بگیرد، برگشت تدریجی به {b.to_level:,} محتمل است؛ "
+                f"در میانهٔ این حرکت، نزدیک {pause_down:,} می‌تواند نقطهٔ چرخش کوتاه‌مدت باشد."
             )
         else:
-            path_text = f"مسیر کوتاه‌مدت بین ~{guidance.support_zone:,} و ~{guidance.target_zone:,} نوسانی پیش‌بینی می‌شود"
+            path_text = (
+                f"تک سناریوی محتمل: نوسان بین {support:,} و {target:,} "
+                f"با شروع از {spot:,.2f} تا break واضح‌تر."
+            )
     elif p and len(p.legs) == 1:
         leg = p.legs[0]
         if leg.direction == "up":
-            path_text = f"تمایل داده‌ها بیشتر به حرکت یک‌طرفه به سمت ~{leg.to_level:,} است"
-        else:
-            path_text = f"تمایل داده‌ها بیشتر به فشار به سمت ~{leg.to_level:,} است"
-    else:
-        path_text = (
-            f"قیمت احتمالاً بین ~{guidance.support_zone:,} و ~{guidance.target_zone:,} نوسان کند"
-        )
-
-    alt_text = ""
-    if alt and alt.legs:
-        if len(alt.legs) >= 2:
-            alt_text = (
-                f" سناریوی جایگزین: {alt.diagram().replace('  ', ' سپس ')}."
+            path_text = (
+                f"تک سناریوی محتمل: حرکت یک‌طرفه به سمت {leg.to_level:,} "
+                f"از {spot:,.2f}، با توقف احتمالی نزدیک {pause_up:,}."
             )
         else:
-            alt_text = f" سناریوی جایگزین نیز {alt.title_fa.replace('مسیر محتمل: ', '')} مطرح است."
+            path_text = (
+                f"تک سناریوی محتمل: فشار به سمت {leg.to_level:,} "
+                f"از {spot:,.2f}."
+            )
+    else:
+        path_text = (
+            f"تک سناریوی محتمل: range میان {support:,} و {target:,} "
+            f"حول {spot:,.2f}."
+        )
 
     return (
-        f"بر اساس {main.trade_count} معاملهٔ آپشن BTC در Deribit ({main.window_label}) "
-        f"و قیمت شاخص حدود {spot:,} دلار، {flow_hint}. "
-        f"{path_text}.{alt_text} "
-        f"این جمع‌بندی سناریو است و جایگزین تحلیل قطعی نیست."
+        f"بر اساس flow آپشن Deribit در {main.window_label}، {tone}. "
+        f"{path_text} "
+        f"این جمع‌بندی سناریو است، نه سیگنال قطعی."
     )
 
 
