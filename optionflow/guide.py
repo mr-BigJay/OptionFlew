@@ -307,9 +307,6 @@ def format_enriched_simple_paragraph(
 
     spot = round(main.spot, 2)
     base = format_simple_paragraph(main, guidance)
-    # Replace integer spot in base with precise spot if base used int
-    base = base.replace(f"{int(round(main.spot)):,}", f"{spot:,.2f}")
-
     hints: list[str] = []
     if ctx.binance_spot:
         diff = ctx.binance_spot - spot
