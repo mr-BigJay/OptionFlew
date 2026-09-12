@@ -41,7 +41,18 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="فقط یک پاراگراف روند و مسیر (متن ساده)",
     )
+    parser.add_argument(
+        "--enriched",
+        action="store_true",
+        help="همراه --simple: funding، OI، liquid، gamma، max pain، اخبار",
+    )
     args = parser.parse_args(argv)
+
+    if args.simple and args.enriched:
+        from optionflow.report_service import produce_report
+
+        print(produce_report(enriched=True, use_candle_window=True).paragraph)
+        return 0
 
     start, end = DeribitClient.window_ms(args.hours)
     window_label = f"{args.hours:g} ساعت اخیر"

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import Any
 
 from optionflow.flow_analyzer import FlowAnalysis, top_strikes, weighted_strike_center
 from optionflow.path_scenario import MovementPath, infer_movement_paths, format_path_section
@@ -283,3 +284,65 @@ def format_simple_paragraph(main: FlowAnalysis, guidance: Guidance) -> str:
         f"{path_text}.{alt_text} "
         f"این جمع‌بندی سناریو است و جایگزین تحلیل قطعی نیست."
     )
+
+
+def format_enriched_simple_paragraph(
+    main: FlowAnalysis,
+    guidance: Guidance,
+    ctx: Any,
+) -> str:
+    """پاراگراف ساده + زمینه futures/gamma/max pain/اخبار (بدون لیست خام)."""
+    from optionflow.market_context import MarketContext
+
+    if not isinstance(ctx, MarketContext):
+        return format_simple_paragraph(main, guidance)
+
+    spot = round(main.spot, 2)
+    base = format_simple_paragraph(main, guidance)
+    # Replace integer spot in base with precise spot if base used int
+    base = base.replace(f"{int(round(main.spot)):,}", f"{spot:,.2f}")
+
+    hints: list[str] = []
+    if ctx.binance_spot:
+        diff = ctx.binance_spot - spot
+        if abs(diff) > 5:
+            hints.append(
+                f"اسپات Binance حدود {ctx.binance_spot:,.2f} است (اختلاف جزئی با شاخص Deribit)."
+            )
+    if ctx.funding_rate is not None:
+        fr_pct = ctx.funding_rate * 100
+        tone = "لانگ‌ها هزینهٔ نگه‌داری بیشتری می‌پردازند" if fr_pct > 0.005 else (
+            "فاندینگ خنثی یا منفی و فشار کمتری روی لانگ leveraged"
+            if fr_pct <= 0
+            else "فاندینگ مثبت ملایم"
+        )
+        hints.append(f"Funding فعلی حدود {fr_pct:.4f}٪؛ {tone}.")
+    if ctx.open_interest is not None:
+        hints.append(f"OI قرارداد BTCUSDT روی Binance حدود {ctx.open_interest:,.0f} BTC است.")
+    if ctx.liq_long_usd or ctx.liq_short_usd:
+        hints.append(
+            "در لیکوئیدیشن‌های اخیر futures، "
+            f"حدود {ctx.liq_long_usd or 0:,.0f} دلار long و {ctx.liq_short_usd or 0:,.0f} دلار short "
+            "(نمونهٔ ۱۰۰ رخداد آخر؛ برای تصویر لحظه‌ای)."
+        )
+    if ctx.gamma_resistance or ctx.gamma_support:
+        hints.append(
+            "از gamma/options open interest، "
+            f"مقاومت dealer نزدیک {ctx.gamma_resistance or guidance.target_zone:,} "
+            f"و حمایت نزدیک {ctx.gamma_support or guidance.support_zone:,} برآورد می‌شود."
+        )
+    if ctx.max_pain and ctx.max_pain_expiry:
+        hints.append(
+            f"Max pain نزدیک expiry {ctx.max_pain_expiry} حدود {ctx.max_pain:,} است "
+            f"و می‌تواند قبل از break-out قیمت را به آن ناحیه بکشد."
+        )
+    if ctx.news_hint:
+        hints.append(ctx.news_hint + ".")
+
+    if not hints:
+        note = " (دادهٔ Binance از این IP در دسترس نبود؛ روی VPS معمولاً funding/OI/liquid هم اضافه می‌شود.)"
+        if ctx.fetch_notes:
+            note = f" ({'; '.join(ctx.fetch_notes[:2])})"
+        return base + note
+
+    return base + " " + " ".join(hints)
