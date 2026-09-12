@@ -50,6 +50,8 @@ html, body {
 }
 
 .muted { color: var(--muted); font-size: 0.85rem; margin: 4px 0 0; }
+.mono { font-family: ui-monospace, monospace; font-size: 0.78rem; letter-spacing: 0.02em; }
+.code-mini { font-size: 0.72rem; opacity: 0.85; }
 
 .page {
   padding: 12px 16px calc(var(--nav-h) + var(--safe-b) + 20px);

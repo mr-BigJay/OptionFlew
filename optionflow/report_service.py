@@ -37,6 +37,9 @@ class ReportSnapshot:
     pdl: int | None = None
     pwh: int | None = None
     pwl: int | None = None
+    report_code: str = ""
+    is_manual: int = 0
+    expires_at: str | None = None
 
     def to_row(self) -> dict:
         return asdict(self)

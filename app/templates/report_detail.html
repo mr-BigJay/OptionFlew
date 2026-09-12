@@ -6,7 +6,8 @@
 {% block content %}
 <article class="card hero">
   <div class="meta-row">
-    <span class="kind-pill kind-pill-{{ report.get('report_kind', '4h') }}">{{ 'روزانه' if report.get('report_kind') == 'daily' else '۴ ساعته' }}</span>
+    <span class="kind-pill kind-pill-{{ report.get('report_kind', '4h') }}">{{ 'روزانه' if report.get('report_kind') == 'daily' else '۴ ساعته' }}{% if report.get('is_manual') %} · دستی{% endif %}</span>
+    {% if report.get('report_code') %}<span class="muted mono">{{ report.report_code }}</span>{% endif %}
     <span class="badge">{{ report.bias }}</span>
     <span class="muted">امتیاز {{ report.score }} · {{ report.confidence_pct }}%</span>
   </div>

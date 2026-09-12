@@ -47,7 +47,8 @@
         <span class="timeline-play" aria-hidden="true">▶</span>
         <div class="timeline-body">
           <div class="timeline-top">
-            <span class="kind-pill">{{ 'روزانه' if kind == 'daily' else '۴ ساعته' }}</span>
+            <span class="kind-pill">{{ 'روزانه' if kind == 'daily' else '۴ ساعته' }}{% if r.get('is_manual') %} · دستی{% endif %}</span>
+            {% if r.get('report_code') %}<span class="code-mini muted">{{ r.report_code }}</span>{% endif %}
             <span class="bias-mini">{{ r.bias }}</span>
           </div>
           <p class="timeline-preview">{{ clean_paragraph(r.paragraph)[:140] }}{% if clean_paragraph(r.paragraph)|length > 140 %}…{% endif %}</p>

@@ -3,11 +3,12 @@ from __future__ import annotations
 import os
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
-from optionflow.report_service import ReportSnapshot
+from optionflow.report_codes import manual_report_code, scheduled_report_code, tehran_date_key_compact
+from optionflow.report_service import ReportKind, ReportSnapshot
 
 DEFAULT_DATA_DIR = Path(os.environ.get("OPTIONFLOW_DATA", "data"))
 
@@ -75,21 +76,146 @@ def init_db() -> None:
         for col in ("pdh", "pdl", "pwh", "pwl"):
             if col not in cols:
                 conn.execute(f"ALTER TABLE reports ADD COLUMN {col} INTEGER")
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(reports)")}
+        if "report_code" not in cols:
+            conn.execute("ALTER TABLE reports ADD COLUMN report_code TEXT")
+        if "is_manual" not in cols:
+            conn.execute(
+                "ALTER TABLE reports ADD COLUMN is_manual INTEGER NOT NULL DEFAULT 0"
+            )
+        if "expires_at" not in cols:
+            conn.execute("ALTER TABLE reports ADD COLUMN expires_at TEXT")
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_reports_code "
+            "ON reports(report_code) WHERE report_code IS NOT NULL AND report_code != ''"
+        )
 
 
-def insert_report(snapshot: ReportSnapshot) -> int:
-    row = snapshot.to_row()
+def _upsert_scheduled(conn: sqlite3.Connection, row: dict[str, Any]) -> int:
+    code = row["report_code"]
+    existing = conn.execute(
+        "SELECT id FROM reports WHERE report_code = ?", (code,)
+    ).fetchone()
+    cols = _report_columns()
+    if existing:
+        conn.execute(
+            f"""
+            UPDATE reports SET
+                created_at = :created_at,
+                window_hours = :window_hours,
+                report_kind = :report_kind,
+                paragraph = :paragraph,
+                headline = :headline,
+                bias = :bias,
+                score = :score,
+                confidence_pct = :confidence_pct,
+                support_zone = :support_zone,
+                target_zone = :target_zone,
+                spot = :spot,
+                trade_count = :trade_count,
+                window_label = :window_label,
+                pdh = :pdh,
+                pdl = :pdl,
+                pwh = :pwh,
+                pwl = :pwl,
+                is_manual = 0,
+                expires_at = NULL
+            WHERE report_code = :report_code
+            """,
+            row,
+        )
+        return int(existing["id"])
+    cur = conn.execute(
+        f"""
+        INSERT INTO reports ({cols}) VALUES (
+            :created_at, :window_hours, :report_kind, :paragraph, :headline, :bias, :score,
+            :confidence_pct, :support_zone, :target_zone, :spot, :trade_count,
+            :window_label, :pdh, :pdl, :pwh, :pwl, :report_code, :is_manual, :expires_at
+        )
+        """,
+        row,
+    )
+    return int(cur.lastrowid)
+
+
+def _report_columns() -> str:
+    return """
+                created_at, window_hours, report_kind, paragraph, headline, bias, score,
+                confidence_pct, support_zone, target_zone, spot, trade_count,
+                window_label, pdh, pdl, pwh, pwl, report_code, is_manual, expires_at
+            """
+
+
+def _scheduled_only_sql(extra: str = "") -> str:
+    return (
+        f"(is_manual IS NULL OR is_manual = 0) {extra}"
+    )
+
+
+def purge_expired_manual_reports() -> int:
+    now = utc_now_iso()
     with connect() as conn:
         cur = conn.execute(
             """
-            INSERT INTO reports (
-                created_at, window_hours, report_kind, paragraph, headline, bias, score,
-                confidence_pct, support_zone, target_zone, spot, trade_count,
-                window_label, pdh, pdl, pwh, pwl
-            ) VALUES (
+            DELETE FROM reports
+            WHERE is_manual = 1 AND expires_at IS NOT NULL AND expires_at <= ?
+            """,
+            (now,),
+        )
+        return cur.rowcount
+
+
+def _next_manual_index(conn: sqlite3.Connection, date_key: str) -> int:
+    prefix = f"{date_key}-j"
+    rows = conn.execute(
+        "SELECT report_code FROM reports WHERE report_code LIKE ? ESCAPE '\\'",
+        (f"{prefix}%",),
+    ).fetchall()
+    max_n = 0
+    for row in rows:
+        code = row["report_code"] or ""
+        if not code.startswith(prefix):
+            continue
+        suffix = code[len(prefix) :]
+        if suffix.isdigit():
+            max_n = max(max_n, int(suffix))
+    return max_n + 1
+
+
+def save_scheduled_report(snapshot: ReportSnapshot) -> int:
+    """Insert or replace scheduled report keyed by report_code (4h slot / daily)."""
+    purge_expired_manual_reports()
+    kind: ReportKind = snapshot.report_kind  # type: ignore[assignment]
+    code = snapshot.report_code or scheduled_report_code(kind)
+    row = snapshot.to_row()
+    row["report_code"] = code
+    row["is_manual"] = 0
+    row["expires_at"] = None
+    with connect() as conn:
+        return _upsert_scheduled(conn, row)
+
+
+def save_manual_report(snapshot: ReportSnapshot) -> int:
+    """Manual run (تولید الان): YYYYMMDD-jn, expires 24h after creation."""
+    purge_expired_manual_reports()
+    created = parse_iso(snapshot.created_at)
+    expires = (created + timedelta(hours=24)).replace(microsecond=0)
+    expires_iso = expires.isoformat().replace("+00:00", "Z")
+    date_key = tehran_date_key_compact(created)
+    row = snapshot.to_row()
+    with connect() as conn:
+        idx = _next_manual_index(conn, date_key)
+        code = manual_report_code(date_key, idx)
+        row["report_code"] = code
+        row["is_manual"] = 1
+        row["expires_at"] = expires_iso
+        cols = _report_columns()
+        cur = conn.execute(
+            f"""
+            INSERT INTO reports ({cols}) VALUES (
                 :created_at, :window_hours, :report_kind, :paragraph, :headline, :bias, :score,
                 :confidence_pct, :support_zone, :target_zone, :spot, :trade_count,
-                :window_label, :pdh, :pdl, :pwh, :pwl
+                :window_label, :pdh, :pdl, :pwh, :pwl, :report_code, :is_manual, :expires_at
             )
             """,
             row,
@@ -97,28 +223,46 @@ def insert_report(snapshot: ReportSnapshot) -> int:
         return int(cur.lastrowid)
 
 
+def insert_report(snapshot: ReportSnapshot) -> int:
+    """Backward-compatible alias for scheduled save."""
+    return save_scheduled_report(snapshot)
+
+
 def get_report(report_id: int) -> dict[str, Any] | None:
+    purge_expired_manual_reports()
     with connect() as conn:
         row = conn.execute(
             "SELECT * FROM reports WHERE id = ?", (report_id,)
         ).fetchone()
-        return dict(row) if row else None
+        if not row:
+            return None
+        r = dict(row)
+        if r.get("is_manual") and r.get("expires_at"):
+            if r["expires_at"] <= utc_now_iso():
+                conn.execute("DELETE FROM reports WHERE id = ?", (report_id,))
+                return None
+        return r
 
 
 def get_latest_report(report_kind: str | None = None) -> dict[str, Any] | None:
+    purge_expired_manual_reports()
     with connect() as conn:
         if report_kind:
             row = conn.execute(
-                """
+                f"""
                 SELECT * FROM reports
-                WHERE report_kind = ?
+                WHERE report_kind = ? AND {_scheduled_only_sql()}
                 ORDER BY created_at DESC LIMIT 1
                 """,
                 (report_kind,),
             ).fetchone()
         else:
             row = conn.execute(
-                "SELECT * FROM reports ORDER BY created_at DESC LIMIT 1"
+                f"""
+                SELECT * FROM reports
+                WHERE {_scheduled_only_sql()}
+                ORDER BY created_at DESC LIMIT 1
+                """
             ).fetchone()
         return dict(row) if row else None
 
@@ -136,8 +280,14 @@ def list_reports(
     end_iso: str | None = None,
     limit: int = 200,
 ) -> list[dict[str, Any]]:
-    q = "SELECT * FROM reports WHERE 1=1"
-    params: list[Any] = []
+    purge_expired_manual_reports()
+    now = utc_now_iso()
+    q = """
+        SELECT * FROM reports WHERE 1=1
+        AND (is_manual IS NULL OR is_manual = 0
+             OR (expires_at IS NOT NULL AND expires_at > ?))
+    """
+    params: list[Any] = [now]
     if start_iso:
         q += " AND created_at >= ?"
         params.append(start_iso)
