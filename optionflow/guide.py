@@ -319,40 +319,46 @@ def format_enriched_simple_paragraph(
         diff = ctx.binance_spot - spot
         if abs(diff) > 5:
             hints.append(
-                f"اسپات Binance حدود {ctx.binance_spot:,.2f} است (اختلاف جزئی با شاخص Deribit)."
+                f"قیمت نقدی در صرافی دیگر حدود {ctx.binance_spot:,.2f} است (اختلاف جزئی با شاخص فعلی)."
             )
     if ctx.funding_rate is not None:
         fr_pct = ctx.funding_rate * 100
-        tone = "لانگ‌ها هزینهٔ نگه‌داری بیشتری می‌پردازند" if fr_pct > 0.005 else (
-            "فاندینگ خنثی یا منفی و فشار کمتری روی لانگ leveraged"
-            if fr_pct <= 0
-            else "فاندینگ مثبت ملایم"
+        tone = (
+            "خریداران با اهرم برای نگه‌داشتن خرید، هزینهٔ بیشتری می‌پردازند"
+            if fr_pct > 0.005
+            else (
+                "فشار هزینه روی خریداران اهرم‌دار کم است"
+                if fr_pct <= 0
+                else "تمایل خرید با اهرم ملایم است"
+            )
         )
-        hints.append(f"Funding فعلی حدود {fr_pct:.4f}٪؛ {tone}.")
+        hints.append(f"نرخ تأمین وجه تضمین آتی حدود {fr_pct:.4f}٪؛ {tone}.")
     if ctx.open_interest is not None:
-        hints.append(f"OI قرارداد BTCUSDT روی Binance حدود {ctx.open_interest:,.0f} BTC است.")
+        hints.append(
+            f"حجم باز قراردادهای آتی بیت‌کوین حدود {ctx.open_interest:,.0f} BTC گزارش شده است."
+        )
     if ctx.liq_long_usd or ctx.liq_short_usd:
         hints.append(
-            "در لیکوئیدیشن‌های اخیر futures، "
-            f"حدود {ctx.liq_long_usd or 0:,.0f} دلار long و {ctx.liq_short_usd or 0:,.0f} دلار short "
-            "(نمونهٔ ۱۰۰ رخداد آخر؛ برای تصویر لحظه‌ای)."
+            "در بستن اجباری پوزیشن‌های اخیر، "
+            f"حدود {ctx.liq_long_usd or 0:,.0f} دلار از پوزیشن خرید و "
+            f"{ctx.liq_short_usd or 0:,.0f} دلار از پوزیشن فروش دیده شده (نمونهٔ کوتاه‌مدت)."
         )
     if ctx.gamma_resistance or ctx.gamma_support:
         hints.append(
-            "از gamma/options open interest، "
-            f"مقاومت dealer نزدیک {ctx.gamma_resistance or guidance.target_zone:,} "
+            "از روی ماندهٔ قراردادهای باز، "
+            f"مقاومت سنگین‌تر نزدیک {ctx.gamma_resistance or guidance.target_zone:,} "
             f"و حمایت نزدیک {ctx.gamma_support or guidance.support_zone:,} برآورد می‌شود."
         )
     if ctx.max_pain and ctx.max_pain_expiry:
         hints.append(
-            f"Max pain نزدیک expiry {ctx.max_pain_expiry} حدود {ctx.max_pain:,} است "
-            f"و می‌تواند قبل از break-out قیمت را به آن ناحیه بکشد."
+            f"برای سررسید {ctx.max_pain_expiry}، سطح «کم‌دردسر» برای نگه‌دارندگان قرارداد "
+            f"حدود {ctx.max_pain:,} است و ممکن است قیمت را موقتاً به آن ناحیه نزدیک کند."
         )
     if ctx.news_hint:
-        hints.append(ctx.news_hint + ".")
+        hints.append(ctx.news_hint)
 
     if not hints:
-        note = " (دادهٔ Binance از این IP در دسترس نبود؛ روی VPS معمولاً funding/OI/liquid هم اضافه می‌شود.)"
+        note = " (بخشی از دادهٔ بازار آتی از این سرور در دسترس نبود.)"
         if ctx.fetch_notes:
             note = f" ({'; '.join(ctx.fetch_notes[:2])})"
         return base + note
