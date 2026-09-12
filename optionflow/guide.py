@@ -356,6 +356,8 @@ def format_enriched_simple_paragraph(
         )
     if ctx.news_hint:
         hints.append(ctx.news_hint)
+    if ctx.structure_notes:
+        hints.extend(ctx.structure_notes[:3])
 
     if not hints:
         note = " (بخشی از دادهٔ بازار آتی از این سرور در دسترس نبود.)"

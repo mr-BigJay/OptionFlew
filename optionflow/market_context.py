@@ -26,6 +26,7 @@ class MarketContext:
     max_pain_expiry: str | None = None
     news_hint: str | None = None
     fetch_notes: list[str] = field(default_factory=list)
+    structure_notes: list[str] = field(default_factory=list)
 
 
 def _parse_instrument(name: str) -> tuple[str, float, str]:
@@ -242,4 +243,17 @@ def collect_market_context(deribit_spot: float) -> MarketContext:
 
     ctx.news_hint = _fetch_news_hint()
     ctx.fetch_notes = notes
+
+    try:
+        from optionflow.structure_context import collect_structure_context
+
+        struct = collect_structure_context(deribit_spot)
+        ctx.structure_notes = struct.notes_fa
+        if struct.fetch_notes:
+            notes.extend(struct.fetch_notes)
+            ctx.fetch_notes = notes
+    except Exception as e:
+        notes.append(f"structure: {e}")
+        ctx.fetch_notes = notes
+
     return ctx
