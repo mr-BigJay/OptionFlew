@@ -86,6 +86,32 @@ def main(argv: list[str] | None = None) -> int:
                     "spot": round(main_analysis.spot, 2),
                     "trade_count": main_analysis.trade_count,
                     "metrics": guidance.metrics,
+                    "path": {
+                        "primary": {
+                            "id": guidance.path_primary.id,
+                            "title": guidance.path_primary.title_fa,
+                            "diagram": guidance.path_primary.diagram(),
+                            "narrative": guidance.path_primary.narrative_fa,
+                            "legs": [
+                                {
+                                    "direction": leg.direction,
+                                    "from": leg.from_level,
+                                    "to": leg.to_level,
+                                }
+                                for leg in (guidance.path_primary.legs if guidance.path_primary else ())
+                            ],
+                        },
+                        "alternate": (
+                            None
+                            if guidance.path_alternate is None
+                            else {
+                                "id": guidance.path_alternate.id,
+                                "title": guidance.path_alternate.title_fa,
+                                "diagram": guidance.path_alternate.diagram(),
+                                "narrative": guidance.path_alternate.narrative_fa,
+                            }
+                        ),
+                    },
                 },
                 ensure_ascii=False,
                 indent=2,

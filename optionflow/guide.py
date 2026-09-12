@@ -4,6 +4,7 @@ import math
 from dataclasses import dataclass
 
 from optionflow.flow_analyzer import FlowAnalysis, top_strikes, weighted_strike_center
+from optionflow.path_scenario import MovementPath, infer_movement_paths, format_path_section
 
 
 @dataclass
@@ -16,6 +17,8 @@ class Guidance:
     headline_fa: str
     sections_fa: list[str]
     metrics: dict[str, float]
+    path_primary: MovementPath | None = None
+    path_alternate: MovementPath | None = None
 
 
 def _round_zone(price: float, step: int = 500) -> int:
@@ -73,6 +76,13 @@ def build_guidance(
 
     target_zone = _round_zone(call_target_center, 500)
     support_zone = _round_zone(put_support_center, 500)
+
+    path_primary, path_alternate = infer_movement_paths(
+        main,
+        support_zone=support_zone,
+        target_zone=target_zone,
+        spot=spot,
+    )
 
     # Score: log-scaled flow imbalance + call-buy concentration
     bc_share = c.buyer_call / max(c.total, 1)
@@ -135,6 +145,8 @@ def build_guidance(
             )
         )
 
+    sections.append(format_path_section(path_primary, path_alternate, main))
+
     sections.append(
         f"**سناریوی حمایت (از flow پوت):** واکنش یا «حمله» احتمالی به ناحیهٔ **{support_zone:,}** "
         f"— اگر این سطح در spot نگه داشته شود، برگشت به بالا با flow فعلی هم‌راستاتر است."
@@ -189,6 +201,8 @@ def build_guidance(
             "ratio": ratio,
             "buyer_call": c.buyer_call,
         },
+        path_primary=path_primary,
+        path_alternate=path_alternate,
     )
 
 
