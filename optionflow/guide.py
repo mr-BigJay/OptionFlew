@@ -223,3 +223,62 @@ def format_report(main: FlowAnalysis, guidance: Guidance) -> str:
         "Disclaimer: خروجی آماری از flow عمومی است؛ جایگزین تحلیل انسانی یا dankbit نیست."
     )
     return "\n".join(lines)
+
+
+def format_simple_paragraph(main: FlowAnalysis, guidance: Guidance) -> str:
+    """یک پاراگراف روند و مسیر، مبتنی بر دادهٔ flow."""
+    c = main.contracts
+    p = guidance.path_primary
+    alt = guidance.path_alternate
+    spot = int(round(main.spot))
+
+    flow_hint = (
+        f"خرید کال ({c.buyer_call:.0f} قرارداد) از خرید پوت ({c.buyer_put:.0f}) قوی‌تر است"
+        if c.buyer_call > c.buyer_put * 1.1
+        else (
+            f"خرید پوت ({c.buyer_put:.0f} قرارداد) فشار محافظتی بیشتری از کال ({c.buyer_call:.0f}) نشان می‌دهد"
+            if c.buyer_put > c.buyer_call * 1.1
+            else "جریان کال و پوت نزدیک به هم و بدون غلبهٔ شدید"
+        )
+    )
+
+    if p and len(p.legs) >= 2:
+        a, b = p.legs[0], p.legs[1]
+        if a.direction == "up" and b.direction == "down":
+            path_text = (
+                f"مسیر محتمل‌تر این است که قیمت از محدودهٔ فعلی (~{spot:,}) "
+                f"به سمت ~{a.to_level:,} حرکت کند و پس از آن احتمال اصلاح یا برگشت به ~{b.to_level:,} وجود دارد"
+            )
+        elif a.direction == "down" and b.direction == "up":
+            path_text = (
+                f"مسیر محتمل‌تر این است که ابتدا فشار به سمت ~{a.to_level:,} (حمایت flow) دیده شود "
+                f"و در صورت نگه‌داشتن آن سطح، برگشت به ~{b.to_level:,} محتمل است"
+            )
+        else:
+            path_text = f"مسیر کوتاه‌مدت بین ~{guidance.support_zone:,} و ~{guidance.target_zone:,} نوسانی پیش‌بینی می‌شود"
+    elif p and len(p.legs) == 1:
+        leg = p.legs[0]
+        if leg.direction == "up":
+            path_text = f"تمایل داده‌ها بیشتر به حرکت یک‌طرفه به سمت ~{leg.to_level:,} است"
+        else:
+            path_text = f"تمایل داده‌ها بیشتر به فشار به سمت ~{leg.to_level:,} است"
+    else:
+        path_text = (
+            f"قیمت احتمالاً بین ~{guidance.support_zone:,} و ~{guidance.target_zone:,} نوسان کند"
+        )
+
+    alt_text = ""
+    if alt and alt.legs:
+        if len(alt.legs) >= 2:
+            alt_text = (
+                f" سناریوی جایگزین: {alt.diagram().replace('  ', ' سپس ')}."
+            )
+        else:
+            alt_text = f" سناریوی جایگزین نیز {alt.title_fa.replace('مسیر محتمل: ', '')} مطرح است."
+
+    return (
+        f"بر اساس {main.trade_count} معاملهٔ آپشن BTC در Deribit ({main.window_label}) "
+        f"و قیمت شاخص حدود {spot:,} دلار، {flow_hint}. "
+        f"{path_text}.{alt_text} "
+        f"این جمع‌بندی سناریو است و جایگزین تحلیل قطعی نیست."
+    )

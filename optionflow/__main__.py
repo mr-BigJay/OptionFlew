@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 from optionflow.deribit_client import DeribitClient
 from optionflow.flow_analyzer import analyze_trades
-from optionflow.guide import build_guidance, format_report
+from optionflow.guide import build_guidance, format_report, format_simple_paragraph
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -35,6 +35,11 @@ def main(argv: list[str] | None = None) -> int:
         "--json",
         action="store_true",
         help="خروجی JSON خلاصه (برای ربات)",
+    )
+    parser.add_argument(
+        "--simple",
+        action="store_true",
+        help="فقط یک پاراگراف روند و مسیر (متن ساده)",
     )
     args = parser.parse_args(argv)
 
@@ -78,6 +83,7 @@ def main(argv: list[str] | None = None) -> int:
             json.dumps(
                 {
                     "headline": guidance.headline_fa,
+                    "paragraph": format_simple_paragraph(main_analysis, guidance),
                     "bias": guidance.bias,
                     "score": guidance.score,
                     "confidence_pct": guidance.confidence_pct,
@@ -117,6 +123,8 @@ def main(argv: list[str] | None = None) -> int:
                 indent=2,
             )
         )
+    elif args.simple:
+        print(format_simple_paragraph(main_analysis, guidance))
     else:
         print(format_report(main_analysis, guidance))
 
