@@ -1,53 +1,34 @@
-# OptionFlow Guide
+# OptionFlow
 
-راهنمای **فارسی** بر اساس **option order flow واقعی** Deribit (BTC) — CLI + **داشبورد موبایل** + ذخیرهٔ گزارش + تلگرام.
+## Stable v1 (production) — `main`
 
-## نصب یک‌خطی روی VPS (Finglish + SSL)
-
-**پیشنهاد:** اسکریپت را دانلود کنید و با root اجرا کنید تا دامنه بپرسد و SSL بگیرد:
+Deribit flow، داشبورد، گزارش ساده، تلگرام، Tehran :31 — **بدون** enriched/Binance/gamma.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/mr-BigJay/OptionFlew/cursor/optionflow-guide-9890/scripts/install.sh -o install.sh
-sudo bash install.sh
+curl -fsSL https://raw.githubusercontent.com/mr-BigJay/OptionFlew/main/scripts/install.sh | sudo bash
 ```
 
-در حین نصب: **domain** (مثلاً `flow.example.com`) و اختیاری **email** برای Let's Encrypt.  
-پیام‌های نصب **Finglish** هستند. پیش‌نیازها (`git`, `python3`, `nginx`, `certbot`) خودکار نصب می‌شوند.
-
-**بدون سوال (non-interactive):**
+به‌روزرسانی:
 
 ```bash
-sudo OPTIONFLOW_DOMAIN=flow.example.com OPTIONFLOW_EMAIL=you@mail.com bash install.sh
+cd /opt/optionflow-dashboard
+sudo git fetch origin main && sudo git checkout main && sudo git reset --hard origin/main
+sudo .venv/bin/pip install -r requirements.txt -q
+sudo systemctl restart optionflow-dashboard
 ```
 
-قبل از SSL، رکورد **A** دامنه باید به IP همان VPS اشاره کند.
+---
 
-متغیرهای اختیاری: `OPTIONFLOW_DIR=/opt/optionflow-dashboard` · `OPTIONFLOW_INTERVAL_HOURS=2`
+## Pre-release / dev — `pre-release`
 
-## داشبورد
-
-- **خانه:** آخرین گزارش (پاراگراف ساده + مسیر)
-- **گزارش‌ها:** تب روز / هفته / ماه + بازهٔ تاریخ (لیست شبیه یادداشت)
-- **تلگرام:** Bot Token، Chat ID، ارسال خودکار با هر گزارش
-
-گزارش‌ها هر **۲ ساعت** (قابل تنظیم با `OPTIONFLOW_INTERVAL_HOURS`) در SQLite ذخیره می‌شوند.
-
-## توسعهٔ محلی
++ Binance funding/OI/liquid، gamma، max pain، `--enriched`، `OPTIONFLOW_ENRICHED=1` در scheduler.
 
 ```bash
-pip install -r requirements.txt
-export OPTIONFLOW_DATA=./data
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8080
+curl -fsSL https://raw.githubusercontent.com/mr-BigJay/OptionFlew/pre-release/scripts/install-prerelease.sh | sudo bash
 ```
 
-## CLI (بدون داشبورد)
+پوشه پیش‌فرض: `/opt/optionflow-dashboard-pre` · پورت **8081** · سرویس `optionflow-dashboard-pre`
 
 ```bash
-python3 -m optionflow --simple
-python3 -m optionflow --hours 2 --pre-event-minutes 30 --event-at 2026-09-11T12:30:00Z
+python3 -m optionflow --simple --enriched
 ```
-
-## محدودیت‌ها
-
-- Deribit BTC options · سناریو نه سیگنال قطعی
-- Expiry Compass / gamma اختصاصی dankbit نیست

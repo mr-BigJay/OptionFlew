@@ -11,8 +11,12 @@ logger = logging.getLogger("optionflow.jobs")
 
 
 def run_scheduled_report() -> None:
-    logger.info("Generating scheduled report (2h candle window, Tehran)")
-    snapshot = produce_report(use_candle_window=True)
+    enriched = os.environ.get("OPTIONFLOW_ENRICHED", "0") == "1"
+    logger.info(
+        "Generating scheduled report (Tehran candle, enriched=%s)",
+        enriched,
+    )
+    snapshot = produce_report(use_candle_window=True, enriched=enriched)
     insert_report(snapshot)
     maybe_send_report(snapshot.paragraph)
     logger.info("Report saved at %s", snapshot.created_at)
