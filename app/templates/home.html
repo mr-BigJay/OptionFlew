@@ -53,19 +53,19 @@
       <span class="metric-label">معاملات</span>
       <span class="metric-val">{{ report.trade_count }}</span>
     </div>
-    <div class="metric-box metric-level">
+    <div class="metric-box metric-level metric-resist">
       <span class="metric-label">PDH</span>
       <span class="metric-val">{% if report.pdh %}{{ "{:,}".format(report.pdh) }}{% else %}—{% endif %}</span>
     </div>
-    <div class="metric-box metric-level">
+    <div class="metric-box metric-level metric-support">
       <span class="metric-label">PDL</span>
       <span class="metric-val">{% if report.pdl %}{{ "{:,}".format(report.pdl) }}{% else %}—{% endif %}</span>
     </div>
-    <div class="metric-box metric-level">
+    <div class="metric-box metric-level metric-resist">
       <span class="metric-label">PWH</span>
       <span class="metric-val">{% if report.pwh %}{{ "{:,}".format(report.pwh) }}{% else %}—{% endif %}</span>
     </div>
-    <div class="metric-box metric-level">
+    <div class="metric-box metric-level metric-support">
       <span class="metric-label">PWL</span>
       <span class="metric-val">{% if report.pwl %}{{ "{:,}".format(report.pwl) }}{% else %}—{% endif %}</span>
     </div>

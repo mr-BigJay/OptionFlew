@@ -14,6 +14,8 @@
   --kind-daily-bg: rgba(167, 139, 250, 0.1);
   --accent2: #34d399;
   --danger: #f87171;
+  --level-resist: #fca5a5;
+  --level-support: #6ee7b7;
   --radius: 18px;
   --nav-h: 62px;
   --safe-b: env(safe-area-inset-bottom, 0px);
@@ -355,6 +357,22 @@ html, body {
 .metric-level .metric-val {
   font-size: 0.78rem;
   font-weight: 600;
+}
+
+.metric-resist .metric-val {
+  color: var(--level-resist);
+}
+
+.metric-support .metric-val {
+  color: var(--level-support);
+}
+
+.metric-resist {
+  background: rgba(248, 113, 113, 0.06);
+}
+
+.metric-support {
+  background: rgba(52, 211, 153, 0.06);
 }
 
 .metric-icon {
