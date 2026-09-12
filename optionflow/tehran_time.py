@@ -7,9 +7,12 @@ TEHRAN = ZoneInfo("Asia/Tehran")
 
 REPORT_MINUTE = 31
 CANDLE_CLOSE_MINUTE = 30
+DAILY_REPORT_HOUR = 15
+DAILY_REPORT_MINUTE = 30
 # 4h candle closes at :30 on these hours (Tehran); report at :31
 CRON_4H_HOURS = "3,7,11,15,19,23"
-CRON_DAILY_HOUR = "0"
+CRON_DAILY_HOUR = str(DAILY_REPORT_HOUR)
+CRON_DAILY_MINUTE = str(DAILY_REPORT_MINUTE)
 # Legacy alias
 CRON_ODD_HOURS = CRON_4H_HOURS
 
@@ -69,12 +72,17 @@ def last_closed_4h_candle_end(at: datetime | None = None) -> datetime:
 
 
 def last_closed_daily_end(at: datetime | None = None) -> datetime:
-    """Midnight Tehran at start of the calendar day that just finished."""
+    """Last 15:30 Tehran boundary for the daily flow window."""
     t = (at or now_tehran()).astimezone(TEHRAN)
-    end = t.replace(hour=0, minute=0, second=0, microsecond=0)
-    if t < end + timedelta(minutes=1):
-        end -= timedelta(days=1)
-    return end
+    close = t.replace(
+        hour=DAILY_REPORT_HOUR,
+        minute=DAILY_REPORT_MINUTE,
+        second=0,
+        microsecond=0,
+    )
+    if t < close:
+        close -= timedelta(days=1)
+    return close
 
 
 def candle_window_4h(at: datetime | None = None) -> tuple[datetime, datetime, str]:
@@ -89,7 +97,10 @@ def candle_window_4h(at: datetime | None = None) -> tuple[datetime, datetime, st
 def candle_window_daily(at: datetime | None = None) -> tuple[datetime, datetime, str]:
     end = last_closed_daily_end(at)
     start = end - timedelta(days=1)
-    label = f"روز معاملاتی {start.strftime('%Y/%m/%d')} (وقت تهران)"
+    label = (
+        f"گزارش روزانه {start.strftime('%Y/%m/%d %H:%M')} – "
+        f"{end.strftime('%Y/%m/%d %H:%M')} (تهران)"
+    )
     return start, end, label
 
 
@@ -153,6 +164,25 @@ def tehran_month_bounds_utc(anchor_date: str | None = None) -> tuple[str, str]:
     return iso(start), iso(end)
 
 
+def format_day_header_tehran(iso: str) -> str:
+    """Weekday + Gregorian date for timeline headers."""
+    try:
+        dt = parse_utc_iso(iso).astimezone(TEHRAN)
+    except ValueError:
+        return iso
+    weekdays = (
+        "دوشنبه",
+        "سه‌شنبه",
+        "چهارشنبه",
+        "پنج‌شنبه",
+        "جمعه",
+        "شنبه",
+        "یکشنبه",
+    )
+    wd = weekdays[dt.weekday()]
+    return f"{wd}، {dt.strftime('%Y/%m/%d')}"
+
+
 def next_report_times_tehran(count: int = 4) -> list[str]:
     """Human-readable next 4h + daily report times in Tehran."""
     t = now_tehran()
@@ -160,10 +190,10 @@ def next_report_times_tehran(count: int = 4) -> list[str]:
     probe = t.replace(second=0, microsecond=0)
     for _ in range(72 * 60):
         h, m = probe.hour, probe.minute
-        if m == REPORT_MINUTE and probe > t:
-            if h in FOUR_H_CLOSE_HOURS:
+        if probe > t:
+            if h in FOUR_H_CLOSE_HOURS and m == REPORT_MINUTE:
                 times.append((probe, f"۴h {probe.strftime('%H:%M')}"))
-            if h == 0:
+            if h == DAILY_REPORT_HOUR and m == DAILY_REPORT_MINUTE:
                 times.append((probe, f"روزانه {probe.strftime('%H:%M')}"))
         if len(times) >= count:
             break

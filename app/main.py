@@ -31,9 +31,11 @@ from app.telegram_notify import send_telegram_message, telegram_enabled
 from optionflow.tehran_time import (
     CRON_4H_HOURS,
     CRON_DAILY_HOUR,
+    CRON_DAILY_MINUTE,
     REPORT_MINUTE,
     TEHRAN,
     format_date_tehran,
+    format_day_header_tehran,
     format_dt_tehran,
     format_time_tehran,
     tehran_date_key,
@@ -58,15 +60,15 @@ def _fmt_time(iso: str) -> str:
     return format_time_tehran(iso)
 
 
-def _fmt_date_header(iso: str) -> str:
-    return format_date_tehran(iso)
+def _fmt_day_header(iso: str) -> str:
+    return format_day_header_tehran(iso)
 
 
 def _template_ctx(**extra: Any) -> dict[str, Any]:
     return {
         "fmt_dt": _fmt_dt,
         "fmt_time": _fmt_time,
-        "fmt_date_header": _fmt_date_header,
+        "fmt_date_header": _fmt_day_header,
         **extra,
     }
 
@@ -122,7 +124,7 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(
         run_scheduled_daily_report,
         trigger=CronTrigger(
-            minute=REPORT_MINUTE,
+            minute=CRON_DAILY_MINUTE,
             hour=CRON_DAILY_HOUR,
             timezone=TEHRAN,
         ),
@@ -132,10 +134,11 @@ async def lifespan(app: FastAPI):
     )
     scheduler.start()
     logger.info(
-        "Scheduler: 4h at :%s on hours %s; daily at :%s (Asia/Tehran)",
+        "Scheduler: 4h at :%s (hours %s); daily at %s:%s (Asia/Tehran)",
         REPORT_MINUTE,
         CRON_4H_HOURS,
-        REPORT_MINUTE,
+        CRON_DAILY_HOUR,
+        CRON_DAILY_MINUTE,
     )
     yield
     scheduler.shutdown(wait=False)
@@ -173,13 +176,14 @@ async def reports_page(
 
     if period == "range" and from_date and to_date:
         start_iso, end_iso = _range_custom_tehran(from_date, to_date)
+        items = list_reports(start_iso=start_iso, end_iso=end_iso)
+    elif period == "range":
+        items = []
     else:
         anchor = date or None
-        if period == "range":
-            period = "day"
         start_iso, end_iso = _range_for_period(period, anchor)
+        items = list_reports(start_iso=start_iso, end_iso=end_iso)
 
-    items = list_reports(start_iso=start_iso, end_iso=end_iso)
     grouped = _group_by_date(items)
 
     return templates.TemplateResponse(
