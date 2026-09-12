@@ -2,19 +2,27 @@
 
 راهنمای **فارسی** بر اساس **option order flow واقعی** Deribit (BTC) — CLI + **داشبورد موبایل** + ذخیرهٔ گزارش + تلگرام.
 
-## نصب یک‌خطی روی VPS
+## نصب یک‌خطی روی VPS (Finglish + SSL)
+
+**پیشنهاد:** اسکریپت را دانلود کنید و با root اجرا کنید تا دامنه بپرسد و SSL بگیرد:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/mr-BigJay/OptionFlew/cursor/optionflow-guide-9890/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/mr-BigJay/OptionFlew/cursor/optionflow-guide-9890/scripts/install.sh -o install.sh
+sudo bash install.sh
 ```
 
-با root اجرا کنید تا **systemd** ساخته شود؛ بدون root با `nohup` بالا می‌آید.
+در حین نصب: **domain** (مثلاً `flow.example.com`) و اختیاری **email** برای Let's Encrypt.  
+پیام‌های نصب **Finglish** هستند. پیش‌نیازها (`git`, `python3`, `nginx`, `certbot`) خودکار نصب می‌شوند.
 
-متغیرهای اختیاری قبل از نصب:
+**بدون سوال (non-interactive):**
 
 ```bash
-OPTIONFLOW_PORT=8080 OPTIONFLOW_INTERVAL_HOURS=2 OPTIONFLOW_DIR=$HOME/optionflow-dashboard bash -c 'curl -fsSL ... | bash'
+sudo OPTIONFLOW_DOMAIN=flow.example.com OPTIONFLOW_EMAIL=you@mail.com bash install.sh
 ```
+
+قبل از SSL، رکورد **A** دامنه باید به IP همان VPS اشاره کند.
+
+متغیرهای اختیاری: `OPTIONFLOW_DIR=/opt/optionflow-dashboard` · `OPTIONFLOW_INTERVAL_HOURS=2`
 
 ## داشبورد
 
