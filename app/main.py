@@ -175,10 +175,26 @@ app = FastAPI(title="OptionFlow Dashboard", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 
 
+def _ensure_price_levels(report: dict[str, Any] | None) -> dict[str, Any] | None:
+    if report is None:
+        return None
+    levels = fetch_price_levels()
+    out = dict(report)
+    if levels.pdh is not None:
+        out["pdh"] = levels.pdh
+    if levels.pdl is not None:
+        out["pdl"] = levels.pdl
+    if levels.pwh is not None:
+        out["pwh"] = levels.pwh
+    if levels.pwl is not None:
+        out["pwl"] = levels.pwl
+    return out
+
+
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
-    report_4h = get_latest_report("4h")
-    report_daily = get_latest_report("daily")
+    report_4h = _ensure_price_levels(get_latest_report("4h"))
+    report_daily = _ensure_price_levels(get_latest_report("daily"))
     return templates.TemplateResponse(
         request,
         "home.html",
