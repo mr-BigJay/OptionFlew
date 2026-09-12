@@ -2,36 +2,41 @@
 {% block title %}خانه — OptionFlow{% endblock %}
 {% block header %}آخرین تحلیل{% endblock %}
 {% block subheader %}
-<p class="muted">Saat dashboard: Tehran · gozaresh har 2h saat :31 (1 daghighe bad az close candle :30)</p>
-{% if report and report.window_label %}
-<p class="muted">{{ report.window_label }}</p>
-{% endif %}
+<p class="muted">تهران · گزارش ۴ ساعته :31 (بعد از close :30) · روزانه :31 نیمه‌شب</p>
 {% endblock %}
 
 {% block content %}
+{% macro report_card(report, kind_label) %}
 {% if report %}
 <article class="card hero">
   <div class="meta-row">
+    <span class="badge">{{ kind_label }}</span>
     <span class="badge">{{ report.bias }}</span>
     <time>{{ fmt_dt(report.created_at) }}</time>
   </div>
+  {% if report.window_label %}
+  <p class="muted">{{ report.window_label }}</p>
+  {% endif %}
   <p class="headline">{{ report.headline }}</p>
   <p class="paragraph">{{ report.paragraph }}</p>
   <div class="stats">
+    <span>{{ report.trade_count }} معامله</span>
     <span>Spot {{ "{:,.0f}".format(report.spot) }}</span>
     <span>حمایت {{ "{:,}".format(report.support_zone) }}</span>
     <span>هدف {{ "{:,}".format(report.target_zone) }}</span>
   </div>
 </article>
-<form method="post" action="/admin/run-now" class="inline-form">
-  <button type="submit" class="btn secondary">تولید گزارش الان</button>
-</form>
 {% else %}
-<div class="empty">
-  <p>هنوز گزارشی ذخیره نشده.</p>
-  <form method="post" action="/admin/run-now">
-    <button type="submit" class="btn primary">اولین گزارش را بساز</button>
-  </form>
+<div class="card empty">
+  <p>هنوز گزارش {{ kind_label }} ذخیره نشده.</p>
 </div>
 {% endif %}
+{% endmacro %}
+
+{{ report_card(report_4h, "۴ ساعته") }}
+{{ report_card(report_daily, "روزانه") }}
+
+<form method="post" action="/admin/run-now" class="inline-form">
+  <button type="submit" class="btn secondary">تولید هر دو گزارش الان</button>
+</form>
 {% endblock %}

@@ -41,6 +41,7 @@ def init_db() -> None:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 created_at TEXT NOT NULL,
                 window_hours REAL NOT NULL,
+                report_kind TEXT NOT NULL DEFAULT '4h',
                 paragraph TEXT NOT NULL,
                 headline TEXT,
                 bias TEXT,
@@ -49,7 +50,8 @@ def init_db() -> None:
                 support_zone INTEGER,
                 target_zone INTEGER,
                 spot REAL,
-                trade_count INTEGER
+                trade_count INTEGER,
+                window_label TEXT DEFAULT ''
             );
             CREATE INDEX IF NOT EXISTS idx_reports_created ON reports(created_at);
 
@@ -62,6 +64,10 @@ def init_db() -> None:
         cols = {r[1] for r in conn.execute("PRAGMA table_info(reports)")}
         if "window_label" not in cols:
             conn.execute("ALTER TABLE reports ADD COLUMN window_label TEXT DEFAULT ''")
+        if "report_kind" not in cols:
+            conn.execute(
+                "ALTER TABLE reports ADD COLUMN report_kind TEXT DEFAULT '4h'"
+            )
 
 
 def insert_report(snapshot: ReportSnapshot) -> int:
@@ -70,11 +76,11 @@ def insert_report(snapshot: ReportSnapshot) -> int:
         cur = conn.execute(
             """
             INSERT INTO reports (
-                created_at, window_hours, paragraph, headline, bias, score,
+                created_at, window_hours, report_kind, paragraph, headline, bias, score,
                 confidence_pct, support_zone, target_zone, spot, trade_count,
                 window_label
             ) VALUES (
-                :created_at, :window_hours, :paragraph, :headline, :bias, :score,
+                :created_at, :window_hours, :report_kind, :paragraph, :headline, :bias, :score,
                 :confidence_pct, :support_zone, :target_zone, :spot, :trade_count,
                 :window_label
             )
@@ -92,12 +98,29 @@ def get_report(report_id: int) -> dict[str, Any] | None:
         return dict(row) if row else None
 
 
-def get_latest_report() -> dict[str, Any] | None:
+def get_latest_report(report_kind: str | None = None) -> dict[str, Any] | None:
     with connect() as conn:
-        row = conn.execute(
-            "SELECT * FROM reports ORDER BY created_at DESC LIMIT 1"
-        ).fetchone()
+        if report_kind:
+            row = conn.execute(
+                """
+                SELECT * FROM reports
+                WHERE report_kind = ?
+                ORDER BY created_at DESC LIMIT 1
+                """,
+                (report_kind,),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT * FROM reports ORDER BY created_at DESC LIMIT 1"
+            ).fetchone()
         return dict(row) if row else None
+
+
+def get_latest_reports_by_kind() -> dict[str, dict[str, Any] | None]:
+    return {
+        "4h": get_latest_report("4h"),
+        "daily": get_latest_report("daily"),
+    }
 
 
 def list_reports(

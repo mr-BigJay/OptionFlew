@@ -2,18 +2,26 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
+from typing import Literal
 
 from optionflow.deribit_client import DeribitClient
 from optionflow.flow_analyzer import analyze_trades
 from optionflow.guide import build_guidance, format_simple_paragraph
 
-from optionflow.tehran_time import candle_window, to_utc_ms
+from optionflow.tehran_time import (
+    candle_window_4h,
+    candle_window_daily,
+    to_utc_ms,
+)
+
+ReportKind = Literal["4h", "daily"]
 
 
 @dataclass
 class ReportSnapshot:
     created_at: str
     window_hours: float
+    report_kind: str
     paragraph: str
     headline: str
     bias: str
@@ -29,14 +37,26 @@ class ReportSnapshot:
         return asdict(self)
 
 
-def produce_report(*, window_hours: float = 2.0, use_candle_window: bool = True) -> ReportSnapshot:
+def _window_for_kind(kind: ReportKind) -> tuple[int, int, str, float]:
+    if kind == "daily":
+        start_dt, end_dt, label = candle_window_daily()
+        return to_utc_ms(start_dt), to_utc_ms(end_dt), label, 24.0
+    start_dt, end_dt, label = candle_window_4h()
+    return to_utc_ms(start_dt), to_utc_ms(end_dt), label, 4.0
+
+
+def produce_report(
+    *,
+    report_kind: ReportKind = "4h",
+    use_candle_window: bool = True,
+    window_hours: float | None = None,
+) -> ReportSnapshot:
     if use_candle_window:
-        start_dt, end_dt, window_label = candle_window()
-        start_ms = to_utc_ms(start_dt)
-        end_ms = to_utc_ms(end_dt)
+        start_ms, end_ms, window_label, wh = _window_for_kind(report_kind)
     else:
-        start_ms, end_ms = DeribitClient.window_ms(window_hours)
-        window_label = f"{window_hours:g} ساعت اخیر"
+        wh = window_hours or (24.0 if report_kind == "daily" else 4.0)
+        start_ms, end_ms = DeribitClient.window_ms(wh)
+        window_label = f"{wh:g} ساعت اخیر"
 
     with DeribitClient() as client:
         trades = client.fetch_option_trades(start_ms=start_ms, end_ms=end_ms)
@@ -49,6 +69,7 @@ def produce_report(*, window_hours: float = 2.0, use_candle_window: bool = True)
         trades,
         spot=spot,
         window_label=window_label,
+        window_hours=wh,
     )
     guidance = build_guidance(analysis)
     paragraph = format_simple_paragraph(analysis, guidance)
@@ -56,7 +77,8 @@ def produce_report(*, window_hours: float = 2.0, use_candle_window: bool = True)
 
     return ReportSnapshot(
         created_at=now,
-        window_hours=window_hours,
+        window_hours=wh,
+        report_kind=report_kind,
         paragraph=paragraph,
         headline=guidance.headline_fa,
         bias=guidance.bias,

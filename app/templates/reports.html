@@ -34,7 +34,7 @@
     <div class="note-time">{{ fmt_time(r.created_at) }}</div>
     <div class="note-body">
       <p class="note-preview">{{ r.paragraph[:120] }}{% if r.paragraph|length > 120 %}…{% endif %}</p>
-      <span class="note-tags">{{ r.bias }} · {{ "{:,.0f}".format(r.spot) }}</span>
+      <span class="note-tags">{{ r.get('report_kind', '4h') }} · {{ r.bias }} · {{ "{:,.0f}".format(r.spot) }}</span>
     </div>
     <span class="chevron">‹</span>
   </a>

@@ -66,20 +66,38 @@ def build_guidance(
         bias = "neutral"
 
     spot = main.spot
+    wh = main.window_hours
 
-    call_strikes = _filter_strikes_near(main.call_buy_by_strike, spot, 1.0, 1.08)
-    put_strikes = _filter_strikes_near(main.put_buy_by_strike, spot, 0.85, 1.0)
+    if wh >= 20:
+        call_hi, put_lo = 1.12, 0.88
+        target_cap, support_floor = 1.12, 0.88
+        decay = 0.04
+    elif wh >= 4:
+        call_hi, put_lo = 1.10, 0.90
+        target_cap, support_floor = 1.085, 0.915
+        decay = 0.035
+    else:
+        call_hi, put_lo = 1.08, 0.85
+        target_cap, support_floor = 1.065, 0.935
+        decay = 0.025
 
-    call_target_center = weighted_strike_center_near_spot(call_strikes, spot)
-    put_support_center = weighted_strike_center_near_spot(put_strikes, spot)
+    call_strikes = _filter_strikes_near(main.call_buy_by_strike, spot, 1.0, call_hi)
+    put_strikes = _filter_strikes_near(main.put_buy_by_strike, spot, put_lo, 1.0)
+
+    call_target_center = weighted_strike_center_near_spot(
+        call_strikes, spot, half_range_pct=decay
+    )
+    put_support_center = weighted_strike_center_near_spot(
+        put_strikes, spot, half_range_pct=decay
+    )
 
     if call_target_center is None:
         call_target_center = spot * 1.015
     if put_support_center is None:
         put_support_center = spot * 0.985
 
-    target_zone = _round_zone(min(call_target_center, spot * 1.065))
-    support_zone = _round_zone(max(put_support_center, spot * 0.935))
+    target_zone = _round_zone(min(call_target_center, spot * target_cap))
+    support_zone = _round_zone(max(put_support_center, spot * support_floor))
     if target_zone <= int(round(spot)):
         target_zone = int(round(spot * 1.01))
     if support_zone >= int(round(spot)):
@@ -97,9 +115,11 @@ def build_guidance(
     score = round(min(20.0, max(-20.0, (math.log(ratio) * 8) + (bc_share - 0.25) * 20)), 1)
 
     confidence = 50
-    if main.trade_count >= 100:
+    t1 = int(80 * wh)
+    t2 = int(220 * wh)
+    if main.trade_count >= t1:
         confidence += 10
-    if main.trade_count >= 300:
+    if main.trade_count >= t2:
         confidence += 10
     if abs(score) >= 5:
         confidence += 10
@@ -235,7 +255,6 @@ def format_report(main: FlowAnalysis, guidance: Guidance) -> str:
 
 def format_simple_paragraph(main: FlowAnalysis, guidance: Guidance) -> str:
     """یک پاراگراف روند و مسیر (تک سناریو، متن کامل، بدون لیست داده)."""
-    c = main.contracts
     p = guidance.path_primary
     spot = round(main.spot, 2)
     target = guidance.target_zone

@@ -32,6 +32,7 @@ class FlowAnalysis:
     window_label: str
     contracts: FlowBucket
     effective_usd: EffectiveBucket
+    window_hours: float = 4.0
     call_buy_by_strike: dict[float, float] = field(default_factory=dict)
     put_buy_by_strike: dict[float, float] = field(default_factory=dict)
     call_sell_by_strike: dict[float, float] = field(default_factory=dict)
@@ -56,6 +57,7 @@ def analyze_trades(
     *,
     spot: float | None = None,
     window_label: str = "۲ ساعت اخیر",
+    window_hours: float = 4.0,
 ) -> FlowAnalysis:
     if not trades and spot is None:
         raise ValueError("No trades and no spot price provided")
@@ -103,6 +105,7 @@ def analyze_trades(
         spot=idx_spot,
         trade_count=len(trades),
         window_label=window_label,
+        window_hours=window_hours,
         contracts=contracts,
         effective_usd=effective,
         call_buy_by_strike=dict(call_buy),

@@ -14,7 +14,11 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from app.jobs import run_scheduled_report
+from app.jobs import (
+    run_scheduled_4h_report,
+    run_scheduled_daily_report,
+    run_scheduled_report,
+)
 from app.storage import (
     get_latest_report,
     get_report,
@@ -25,7 +29,8 @@ from app.storage import (
 )
 from app.telegram_notify import send_telegram_message, telegram_enabled
 from optionflow.tehran_time import (
-    CRON_ODD_HOURS,
+    CRON_4H_HOURS,
+    CRON_DAILY_HOUR,
     REPORT_MINUTE,
     TEHRAN,
     format_date_tehran,
@@ -104,19 +109,32 @@ def _range_custom_tehran(from_date: str, to_date: str) -> tuple[str, str]:
 async def lifespan(app: FastAPI):
     init_db()
     scheduler.add_job(
-        run_scheduled_report,
+        run_scheduled_4h_report,
         trigger=CronTrigger(
             minute=REPORT_MINUTE,
-            hour=CRON_ODD_HOURS,
+            hour=CRON_4H_HOURS,
             timezone=TEHRAN,
         ),
-        id="flow_report",
+        id="flow_report_4h",
+        replace_existing=True,
+        misfire_grace_time=900,
+    )
+    scheduler.add_job(
+        run_scheduled_daily_report,
+        trigger=CronTrigger(
+            minute=REPORT_MINUTE,
+            hour=CRON_DAILY_HOUR,
+            timezone=TEHRAN,
+        ),
+        id="flow_report_daily",
         replace_existing=True,
         misfire_grace_time=900,
     )
     scheduler.start()
     logger.info(
-        "Scheduler: report at :%s on odd hours (Asia/Tehran), 1 min after 2h candle",
+        "Scheduler: 4h at :%s on hours %s; daily at :%s (Asia/Tehran)",
+        REPORT_MINUTE,
+        CRON_4H_HOURS,
         REPORT_MINUTE,
     )
     yield
@@ -129,12 +147,14 @@ app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), na
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
-    report = get_latest_report()
+    report_4h = get_latest_report("4h")
+    report_daily = get_latest_report("daily")
     return templates.TemplateResponse(
         request,
         "home.html",
         _template_ctx(
-            report=report,
+            report_4h=report_4h,
+            report_daily=report_daily,
             active="home",
         ),
     )

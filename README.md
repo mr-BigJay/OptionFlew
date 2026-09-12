@@ -1,6 +1,6 @@
 # OptionFlow
 
-**Stable (v1)** — Deribit option flow، داشبورد موبایل، گزارش پارagraph ساده، تلگرام، زمان‌بندی Tehran (:31).
+**Stable (v1)** — Deribit option flow، داشبورد موبایل، گزارش **۴ ساعته + روزانه**، تلگرام، زمان‌بندی Tehran.
 
 ## نصب stable — یک خط
 
@@ -30,5 +30,7 @@ sudo systemctl restart optionflow-dashboard
 ## CLI
 
 ```bash
-python3 -m optionflow --simple
+cd /opt/optionflow-dashboard
+sudo .venv/bin/python3 -m optionflow --simple          # آخرین کندل ۴h
+sudo .venv/bin/python3 -m optionflow --simple --daily   # آخرین روز تهران
 ```

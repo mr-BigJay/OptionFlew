@@ -6,6 +6,7 @@
 {% block content %}
 <article class="card hero">
   <div class="meta-row">
+    <span class="badge">{{ report.get('report_kind', '4h') }}</span>
     <span class="badge">{{ report.bias }}</span>
     <span class="muted">امتیاز {{ report.score }} · {{ report.confidence_pct }}%</span>
   </div>
