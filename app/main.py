@@ -82,6 +82,7 @@ def _group_by_date(reports: list[dict[str, Any]]) -> list[tuple[str, list[dict]]
             groups[key] = []
             order.append(key)
         groups[key].append(r)
+    order.sort(reverse=True)
     return [(k, groups[k]) for k in order]
 
 
