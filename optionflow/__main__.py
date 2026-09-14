@@ -10,6 +10,31 @@ from optionflow.guide import build_guidance, format_report, format_simple_paragr
 from optionflow.report_service import produce_report
 from optionflow.tehran_time import to_utc_ms
 
+REPORT_FORMAT_ID = "prose-v2"
+
+
+def _print_version() -> None:
+    import optionflow.guide as guide_mod
+    import optionflow.scenario_narrative as narrative_mod
+    import subprocess
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    try:
+        rev = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=root,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip()
+    except Exception:
+        rev = "unknown"
+    print(
+        f"OptionFlow report_format={REPORT_FORMAT_ID} git={rev}\n"
+        f"  guide={guide_mod.__file__}\n"
+        f"  scenario_narrative={narrative_mod.__file__}"
+    )
+
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
@@ -53,7 +78,16 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="پنجرهٔ rolling به‌جای کندل تهران (مثل داشبورد نیست)",
     )
+    parser.add_argument(
+        "--version",
+        action="store_true",
+        help="نسخهٔ کد و مسیر ماژول گزارش (برای عیب‌یابی deploy)",
+    )
     args = parser.parse_args(argv)
+
+    if args.version:
+        _print_version()
+        return 0
 
     kind = "daily" if args.daily else "4h"
 
