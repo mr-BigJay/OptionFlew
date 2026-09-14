@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from optionflow.flow_analyzer import (
     FlowAnalysis,
     top_strikes,
-    top_strikes_near_spot,
     weighted_strike_center_near_spot,
 )
 from optionflow.path_scenario import MovementPath, infer_movement_paths, format_path_section
@@ -262,29 +261,6 @@ def _window_phrase(main: FlowAnalysis) -> str:
     return "در ساعات اخیر"
 
 
-def _near_spot_strike_hint(main: FlowAnalysis, spot: float) -> str:
-    """Only strikes close to spot — avoids 58k/170k style outliers in copy."""
-    wh = main.window_hours
-    put_hi = 1.02 if wh >= 20 else 1.01
-    put_lo = 0.88 if wh >= 20 else 0.90
-    call_lo = 0.98 if wh >= 20 else 0.99
-    call_hi = 1.15 if wh >= 20 else 1.12
-    top_p = top_strikes_near_spot(
-        main.put_buy_by_strike, spot, 2, pct_lo=put_lo, pct_hi=put_hi
-    )
-    top_c = top_strikes_near_spot(
-        main.call_buy_by_strike, spot, 2, pct_lo=call_lo, pct_hi=call_hi
-    )
-    bits: list[str] = []
-    if top_p:
-        bits.append("پوشش ریزش پرحجم نزدیک " + " و ".join(f"{int(k):,}" for k, _ in top_p))
-    if top_c:
-        bits.append("شرط رشد پرحجم نزدیک " + " و ".join(f"{int(k):,}" for k, _ in top_c))
-    if not bits:
-        return ""
-    return " (" + "؛ ".join(bits) + ")"
-
-
 def _single_scenario(
     main: FlowAnalysis,
     guidance: Guidance,
@@ -361,8 +337,8 @@ def format_simple_paragraph(main: FlowAnalysis, guidance: Guidance) -> str:
     head = (
         f"{_window_phrase(main)}، {main.trade_count:,} معاملهٔ آپشن بیت‌کوین بررسی شد؛ "
         f"قیمت حدود {spot:,.2f} دلار. "
-        f"حمایت احتمالی {support:,} · هدف {target:,}"
-        f"{_near_spot_strike_hint(main, spot)}. "
+        f"از روی همین معاملات، حمایت احتمالی {support:,} و هدف {target:,} دلار برآورد شده "
+        f"(میانگین وزنی strikeهای نزدیک قیمت، نه عدد دلخواه). "
     )
     body = _single_scenario(
         main,
