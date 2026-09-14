@@ -203,11 +203,111 @@ def infer_movement_paths(
                 alternate = p
                 break
 
-    if flow_neutral and primary.id != "range":
-        alternate = primary
-        primary = _range_path(spot_i, support_zone, target_zone)
-
     return primary, alternate
+
+
+def effective_movement_path(
+    main: FlowAnalysis,
+    *,
+    support_zone: int,
+    target_zone: int,
+    spot: float,
+    primary: MovementPath | None,
+    alternate: MovementPath | None,
+) -> MovementPath:
+    """مسیر جهت‌دار برای گزارش کوتاه؛ از رنج مبهم پرهیز می‌کند."""
+    if primary is not None and primary.id != "range":
+        return primary
+    if alternate is not None and alternate.id != "range":
+        return alternate
+    return _inferred_direction_path(main, spot=spot, support_zone=support_zone, target_zone=target_zone)
+
+
+def _inferred_direction_path(
+    main: FlowAnalysis,
+    *,
+    spot: float,
+    support_zone: int,
+    target_zone: int,
+) -> MovementPath:
+    spot_i = int(round(spot))
+    c = main.contracts
+    bull = c.buyer_call + c.seller_put
+    bear = c.buyer_put + c.seller_call
+    ratio = bull / max(bear, 1e-9)
+
+    if ratio >= 1.08 and target_zone > spot_i:
+        if bear >= bull * 0.38 and support_zone < spot_i:
+            legs = (
+                PathLeg("up", spot_i, target_zone),
+                PathLeg("down", target_zone, support_zone),
+            )
+            return MovementPath(
+                id="up_then_down",
+                title_fa="مسیر محتمل: اول بالا، بعد اصلاح",
+                legs=legs,
+                narrative_fa=(
+                    f"flow کمی صعودی است؛ حرکت اول به {target_zone:,} محتمل‌تر دیده می‌شود "
+                    f"و پس از آن احتمال اصلاح به {support_zone:,}."
+                ),
+                likelihood="primary",
+            )
+        return MovementPath(
+            id="up_continuation",
+            title_fa="مسیر محتمل: حرکت اول به بالا",
+            legs=(PathLeg("up", spot_i, target_zone),),
+            narrative_fa=f"از همین قیمت، مسیر کوتاه‌مدت به سمت {target_zone:,} برآورد می‌شود.",
+            likelihood="primary",
+        )
+
+    if ratio <= 0.92 and support_zone < spot_i:
+        if bull >= bear * 0.35 and target_zone > support_zone:
+            legs = (
+                PathLeg("down", spot_i, support_zone),
+                PathLeg("up", support_zone, target_zone),
+            )
+            return MovementPath(
+                id="down_then_up",
+                title_fa="مسیر محتمل: اول پایین، بعد برگشت",
+                legs=legs,
+                narrative_fa=(
+                    f"فشار محافظتی؛ حرکت اول به {support_zone:,} محتمل‌تر است "
+                    f"و در صورت حمایت، هدف بعدی {target_zone:,}."
+                ),
+                likelihood="primary",
+            )
+        return MovementPath(
+            id="down_continuation",
+            title_fa="مسیر محتمل: حرکت اول به پایین",
+            legs=(PathLeg("down", spot_i, support_zone),),
+            narrative_fa=f"از همین قیمت، مسیر کوتاه‌مدت به سمت {support_zone:,} برآورد می‌شود.",
+            likelihood="primary",
+        )
+
+    # تمایل ضعیف ولی یک جهت اول انتخاب می‌شود (نه «رنج»)
+    if ratio >= 1.0 and target_zone > spot_i:
+        return MovementPath(
+            id="up_continuation",
+            title_fa="مسیر محتمل: تمایل جزئی به بالا",
+            legs=(PathLeg("up", spot_i, target_zone),),
+            narrative_fa=f"تمایل flow اندک به بالا؛ مقصد اول {target_zone:,}.",
+            likelihood="primary",
+        )
+    if support_zone < spot_i:
+        return MovementPath(
+            id="down_continuation",
+            title_fa="مسیر محتمل: تمایل جزئی به پایین",
+            legs=(PathLeg("down", spot_i, support_zone),),
+            narrative_fa=f"تمایل flow اندک به پایین؛ مقصد اول {support_zone:,}.",
+            likelihood="primary",
+        )
+    return MovementPath(
+        id="up_continuation",
+        title_fa="مسیر محتمل: حرکت اول",
+        legs=(PathLeg("up", spot_i, max(target_zone, spot_i + 1)),),
+        narrative_fa="دادهٔ جهت‌دار محدود؛ مسیر اول صعودی فرض شده است.",
+        likelihood="primary",
+    )
 
 
 def format_path_section(
