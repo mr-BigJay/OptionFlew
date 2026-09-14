@@ -17,9 +17,16 @@ say "Remote main:"
 git ls-remote "$REMOTE" "refs/heads/$BRANCH" | head -1 || true
 
 git fetch "$REMOTE" "$BRANCH"
-git checkout "$BRANCH"
-git reset --hard "$REMOTE/$BRANCH"
-say "HEAD: $(git log -1 --oneline)"
+# بعضی cloneها ref محلی origin/main ندارند؛ بعد از fetch از FETCH_HEAD استفاده کن
+if git rev-parse "$REMOTE/$BRANCH" >/dev/null 2>&1; then
+  TARGET_REF="$REMOTE/$BRANCH"
+else
+  say "WARN: $REMOTE/$BRANCH peida nashod; estefade az FETCH_HEAD"
+  TARGET_REF="FETCH_HEAD"
+fi
+git checkout -B "$BRANCH" "$TARGET_REF"
+git reset --hard "$TARGET_REF"
+say "HEAD: $(git log -1 --oneline) (branch: $(git branch --show-current))"
 
 [[ -f optionflow/scenario_narrative.py ]] || die "optionflow/scenario_narrative.py nist — branch/main eshtebahe."
 grep -q "format_narrative_scenario" optionflow/guide.py || die "guide.py ghadimi ast (scenario_narrative nist)."
