@@ -51,7 +51,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.simple and args.enriched:
         from optionflow.report_service import produce_report
 
-        print(produce_report(enriched=True, use_candle_window=True).paragraph)
+        print(produce_report(report_kind="4h", enriched=True, use_candle_window=True).paragraph)
         return 0
 
     start, end = DeribitClient.window_ms(args.hours)

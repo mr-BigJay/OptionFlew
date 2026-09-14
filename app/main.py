@@ -14,7 +14,11 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from app.jobs import run_scheduled_report
+from app.jobs import (
+    run_scheduled_4h_report,
+    run_scheduled_daily_report,
+    run_scheduled_report,
+)
 from app.storage import (
     get_latest_report,
     get_report,
@@ -24,11 +28,15 @@ from app.storage import (
     set_setting,
 )
 from app.telegram_notify import send_telegram_message, telegram_enabled
+from optionflow.price_levels import fetch_price_levels
 from optionflow.tehran_time import (
-    CRON_ODD_HOURS,
+    CRON_4H_HOURS,
+    CRON_DAILY_HOUR,
+    CRON_DAILY_MINUTE,
     REPORT_MINUTE,
     TEHRAN,
     format_date_tehran,
+    format_day_header_tehran,
     format_dt_tehran,
     format_time_tehran,
     tehran_date_key,
@@ -45,7 +53,6 @@ ROOT_DIR = os.path.dirname(BASE_DIR)
 
 
 def _load_env_file() -> None:
-    """Ensure .env is applied (matches systemd EnvironmentFile)."""
     env_path = os.path.join(ROOT_DIR, ".env")
     if not os.path.isfile(env_path):
         return
@@ -74,15 +81,40 @@ def _fmt_time(iso: str) -> str:
     return format_time_tehran(iso)
 
 
-def _fmt_date_header(iso: str) -> str:
-    return format_date_tehran(iso)
+def _fmt_day_header(iso: str) -> str:
+    return format_day_header_tehran(iso)
+
+
+def _bias_fa(bias: str) -> str:
+    return {"bullish": "صعودی", "bearish": "نزولی", "neutral": "خنثی"}.get(
+        bias, bias
+    )
+
+
+def _clean_paragraph(text: str) -> str:
+    import re
+
+    for phrase in (
+        "این جمع‌بندی یک سناریو است، نه سیگنال قطعی.",
+        "این جمع‌بندی سناریو است و جایگزین تحلیل قطعی نیست.",
+    ):
+        text = text.replace(phrase, "")
+    text = re.sub(
+        r"بر اساس معاملات آپشن بیت‌کوین در [^،]+،\s*",
+        "بر اساس معاملات آپشن بیت‌کوین، ",
+        text,
+    )
+    return text.strip()
 
 
 def _template_ctx(**extra: Any) -> dict[str, Any]:
     return {
         "fmt_dt": _fmt_dt,
         "fmt_time": _fmt_time,
-        "fmt_date_header": _fmt_date_header,
+        "fmt_date_header": _fmt_day_header,
+        "fmt_date": format_date_tehran,
+        "bias_fa": _bias_fa,
+        "clean_paragraph": _clean_paragraph,
         **extra,
     }
 
@@ -96,6 +128,7 @@ def _group_by_date(reports: list[dict[str, Any]]) -> list[tuple[str, list[dict]]
             groups[key] = []
             order.append(key)
         groups[key].append(r)
+    order.sort(reverse=True)
     return [(k, groups[k]) for k in order]
 
 
@@ -131,8 +164,8 @@ async def lifespan(app: FastAPI):
         git_head = subprocess.check_output(
             ["git", "rev-parse", "--short", "HEAD"],
             cwd=ROOT_DIR,
-            text=True,
             stderr=subprocess.DEVNULL,
+            text=True,
         ).strip()
     except Exception:
         git_head = "unknown"
@@ -145,20 +178,34 @@ async def lifespan(app: FastAPI):
     )
     init_db()
     scheduler.add_job(
-        run_scheduled_report,
+        run_scheduled_4h_report,
         trigger=CronTrigger(
             minute=REPORT_MINUTE,
-            hour=CRON_ODD_HOURS,
+            hour=CRON_4H_HOURS,
             timezone=TEHRAN,
         ),
-        id="flow_report",
+        id="flow_report_4h",
+        replace_existing=True,
+        misfire_grace_time=900,
+    )
+    scheduler.add_job(
+        run_scheduled_daily_report,
+        trigger=CronTrigger(
+            minute=CRON_DAILY_MINUTE,
+            hour=CRON_DAILY_HOUR,
+            timezone=TEHRAN,
+        ),
+        id="flow_report_daily",
         replace_existing=True,
         misfire_grace_time=900,
     )
     scheduler.start()
     logger.info(
-        "Scheduler: report at :%s on odd hours (Asia/Tehran), 1 min after 2h candle",
+        "Scheduler: 4h at :%s (hours %s); daily at %s:%s (Asia/Tehran)",
         REPORT_MINUTE,
+        CRON_4H_HOURS,
+        CRON_DAILY_HOUR,
+        CRON_DAILY_MINUTE,
     )
     yield
     scheduler.shutdown(wait=False)
@@ -168,14 +215,32 @@ app = FastAPI(title="OptionFlow Dashboard", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 
 
+def _ensure_price_levels(report: dict[str, Any] | None) -> dict[str, Any] | None:
+    if report is None:
+        return None
+    levels = fetch_price_levels()
+    out = dict(report)
+    if levels.pdh is not None:
+        out["pdh"] = levels.pdh
+    if levels.pdl is not None:
+        out["pdl"] = levels.pdl
+    if levels.pwh is not None:
+        out["pwh"] = levels.pwh
+    if levels.pwl is not None:
+        out["pwl"] = levels.pwl
+    return out
+
+
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
-    report = get_latest_report()
+    report_4h = _ensure_price_levels(get_latest_report("4h"))
+    report_daily = _ensure_price_levels(get_latest_report("daily"))
     return templates.TemplateResponse(
         request,
         "home.html",
         _template_ctx(
-            report=report,
+            report_4h=report_4h,
+            report_daily=report_daily,
             active="home",
         ),
     )
@@ -194,13 +259,14 @@ async def reports_page(
 
     if period == "range" and from_date and to_date:
         start_iso, end_iso = _range_custom_tehran(from_date, to_date)
+        items = list_reports(start_iso=start_iso, end_iso=end_iso)
+    elif period == "range":
+        items = []
     else:
         anchor = date or None
-        if period == "range":
-            period = "day"
         start_iso, end_iso = _range_for_period(period, anchor)
+        items = list_reports(start_iso=start_iso, end_iso=end_iso)
 
-    items = list_reports(start_iso=start_iso, end_iso=end_iso)
     grouped = _group_by_date(items)
 
     return templates.TemplateResponse(

@@ -1,46 +1,66 @@
 {% extends "base.html" %}
 {% block title %}گزارش‌ها — OptionFlow{% endblock %}
 {% block header %}گزارش‌ها{% endblock %}
-{% block subheader %}<p class="muted">{{ count }} مورد در بازهٔ انتخاب‌شده</p>{% endblock %}
+{% block subheader %}<p class="muted">{{ count }} گزارش در بازه</p>{% endblock %}
 
 {% block content %}
-<div class="tabs">
-  <a href="/reports?period=day{% if date %}&date={{ date }}{% endif %}" class="{% if period == 'day' %}on{% endif %}">روز</a>
+<nav class="tabs tabs-report" aria-label="بازه">
+  <a href="/reports?period=day{% if date %}&date={{ date }}{% endif %}" class="{% if period == 'day' %}on{% endif %}">امروز</a>
   <a href="/reports?period=week{% if date %}&date={{ date }}{% endif %}" class="{% if period == 'week' %}on{% endif %}">هفته</a>
   <a href="/reports?period=month{% if date %}&date={{ date }}{% endif %}" class="{% if period == 'month' %}on{% endif %}">ماه</a>
-</div>
+  <a href="/reports?period=range" class="{% if period == 'range' %}on{% endif %}">تاریخ مشخص</a>
+</nav>
 
+{% if period == 'range' %}
 <form class="filter-card" method="get" action="/reports">
   <input type="hidden" name="period" value="range">
   <label>از تاریخ</label>
-  <input type="date" name="from_date" value="{{ from_date }}">
+  <input type="date" name="from_date" value="{{ from_date }}" required>
   <label>تا تاریخ</label>
-  <input type="date" name="to_date" value="{{ to_date }}">
-  <button type="submit" class="btn primary full">بازهٔ دلخواه</button>
+  <input type="date" name="to_date" value="{{ to_date }}" required>
+  <button type="submit" class="btn primary full">نمایش بازه</button>
 </form>
-
-<form class="filter-row" method="get" action="/reports">
+{% else %}
+<form class="filter-row filter-compact" method="get" action="/reports">
   <input type="hidden" name="period" value="{{ period }}">
   <input type="date" name="date" value="{{ date }}" aria-label="تاریخ">
   <button type="submit" class="btn secondary">برو</button>
 </form>
+{% endif %}
 
 {% if grouped %}
-<section class="notes-list">
-  {% for day_key, items in grouped %}
-  <h2 class="date-stick">{{ fmt_date_header(items[0].created_at) }}</h2>
-  {% for r in items %}
-  <a href="/reports/{{ r.id }}" class="note-card">
-    <div class="note-time">{{ fmt_time(r.created_at) }}</div>
-    <div class="note-body">
-      <p class="note-preview">{{ r.paragraph[:120] }}{% if r.paragraph|length > 120 %}…{% endif %}</p>
-      <span class="note-tags">{{ r.bias }} · {{ "{:,.0f}".format(r.spot) }}</span>
+{% for day_key, items in grouped %}
+<section class="timeline-section">
+  <h2 class="timeline-day-title">
+    <span class="cal-icon" aria-hidden="true">📅</span>
+    {{ fmt_date_header(items[0].created_at) }}
+  </h2>
+  <div class="timeline">
+    {% for r in items %}
+    {% set kind = r.get('report_kind', '4h') %}
+    <div class="timeline-item kind-{{ kind }}">
+      <div class="timeline-rail">
+        <span class="timeline-time">{{ fmt_time(r.created_at) }}</span>
+        <span class="timeline-dot" aria-hidden="true"></span>
+      </div>
+      <a href="/reports/{{ r.id }}" class="timeline-card">
+        <span class="timeline-play" aria-hidden="true">▶</span>
+        <div class="timeline-body">
+          <div class="timeline-top">
+            <span class="kind-pill">{{ 'روزانه' if kind == 'daily' else '۴ ساعته' }}{% if r.get('is_manual') %} · دستی{% endif %}</span>
+            {% if r.get('report_code') %}<span class="code-mini muted">{{ r.report_code }}</span>{% endif %}
+            <span class="bias-mini">{{ r.bias }}</span>
+          </div>
+          <p class="timeline-preview">{{ clean_paragraph(r.paragraph)[:140] }}{% if clean_paragraph(r.paragraph)|length > 140 %}…{% endif %}</p>
+          <span class="timeline-meta">Spot {{ "{:,.0f}".format(r.spot) }} · {{ r.trade_count }} معامله</span>
+        </div>
+      </a>
     </div>
-    <span class="chevron">‹</span>
-  </a>
-  {% endfor %}
-  {% endfor %}
+    {% endfor %}
+    <div class="timeline-end-cap" aria-hidden="true"></div>
+  </div>
 </section>
+{% endfor %}
 {% else %}
 <div class="empty"><p>در این بازه گزارشی نیست.</p></div>
 {% endif %}

@@ -3,21 +3,34 @@ from __future__ import annotations
 import logging
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
+from typing import Literal
 
 from optionflow.deribit_client import DeribitClient
 from optionflow.flow_analyzer import analyze_trades
-from optionflow.guide import build_guidance, format_enriched_simple_paragraph, format_simple_paragraph
+from optionflow.guide import (
+    build_guidance,
+    format_enriched_simple_paragraph,
+    format_simple_paragraph,
+)
 from optionflow.market_context import collect_market_context
+from optionflow.price_levels import fetch_price_levels
 
-from optionflow.tehran_time import candle_window, to_utc_ms
+from optionflow.tehran_time import (
+    candle_window_4h,
+    candle_window_daily,
+    to_utc_ms,
+)
 
 logger = logging.getLogger("optionflow.report")
+
+ReportKind = Literal["4h", "daily"]
 
 
 @dataclass
 class ReportSnapshot:
     created_at: str
     window_hours: float
+    report_kind: str
     paragraph: str
     headline: str
     bias: str
@@ -28,26 +41,39 @@ class ReportSnapshot:
     spot: float
     trade_count: int
     window_label: str = ""
+    pdh: int | None = None
+    pdl: int | None = None
+    pwh: int | None = None
+    pwl: int | None = None
+    report_code: str = ""
+    is_manual: int = 0
+    expires_at: str | None = None
 
     def to_row(self) -> dict:
         return asdict(self)
 
 
+def _window_for_kind(kind: ReportKind) -> tuple[int, int, str, float]:
+    if kind == "daily":
+        start_dt, end_dt, label = candle_window_daily()
+        return to_utc_ms(start_dt), to_utc_ms(end_dt), label, 24.0
+    start_dt, end_dt, label = candle_window_4h()
+    return to_utc_ms(start_dt), to_utc_ms(end_dt), label, 4.0
+
+
 def produce_report(
     *,
-    window_hours: float = 2.0,
+    report_kind: ReportKind = "4h",
     use_candle_window: bool = True,
+    window_hours: float | None = None,
     enriched: bool = False,
 ) -> ReportSnapshot:
     if use_candle_window:
-        start_dt, end_dt, window_label = candle_window()
-        start_ms = to_utc_ms(start_dt)
-        end_ms = to_utc_ms(end_dt)
-        wh = max((end_ms - start_ms) / 3_600_000, 2.0)
+        start_ms, end_ms, window_label, wh = _window_for_kind(report_kind)
     else:
-        start_ms, end_ms = DeribitClient.window_ms(window_hours)
-        window_label = f"{window_hours:g} ساعت اخیر"
-        wh = window_hours
+        wh = window_hours or (24.0 if report_kind == "daily" else 4.0)
+        start_ms, end_ms = DeribitClient.window_ms(wh)
+        window_label = f"{wh:g} ساعت اخیر"
 
     with DeribitClient() as client:
         trades = client.fetch_option_trades(start_ms=start_ms, end_ms=end_ms)
@@ -68,17 +94,17 @@ def produce_report(
         paragraph = format_enriched_simple_paragraph(analysis, guidance, ctx)
     else:
         paragraph = format_simple_paragraph(analysis, guidance)
-
-    if "نتیجه‌گیری" not in paragraph or "→" not in paragraph:
+    if enriched and ("نتیجه‌گیری" not in paragraph or "→" not in paragraph):
         logger.error(
-            "Report paragraph is missing prose narrative (نتیجه‌گیری / path). "
-            "Redeploy pre-release or cursor/enriched-data-report-9890."
+            "Enriched report missing prose narrative; check deployment."
         )
+    levels = fetch_price_levels()
     now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
     return ReportSnapshot(
         created_at=now,
         window_hours=wh,
+        report_kind=report_kind,
         paragraph=paragraph,
         headline=guidance.headline_fa,
         bias=guidance.bias,
@@ -89,4 +115,8 @@ def produce_report(
         spot=round(analysis.spot, 2),
         trade_count=analysis.trade_count,
         window_label=window_label,
+        pdh=levels.pdh,
+        pdl=levels.pdl,
+        pwh=levels.pwh,
+        pwl=levels.pwl,
     )

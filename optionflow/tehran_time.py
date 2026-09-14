@@ -7,7 +7,16 @@ TEHRAN = ZoneInfo("Asia/Tehran")
 
 REPORT_MINUTE = 31
 CANDLE_CLOSE_MINUTE = 30
-CRON_ODD_HOURS = "1,3,5,7,9,11,13,15,17,19,21,23"
+DAILY_REPORT_HOUR = 17
+DAILY_REPORT_MINUTE = 0
+# 4h candle closes at :30 on these hours (Tehran); report at :31
+CRON_4H_HOURS = "3,7,11,15,19,23"
+CRON_DAILY_HOUR = str(DAILY_REPORT_HOUR)
+CRON_DAILY_MINUTE = str(DAILY_REPORT_MINUTE)
+# Legacy alias
+CRON_ODD_HOURS = CRON_4H_HOURS
+
+FOUR_H_CLOSE_HOURS = (3, 7, 11, 15, 19, 23)
 
 
 def now_tehran() -> datetime:
@@ -46,27 +55,58 @@ def tehran_date_key(iso: str) -> str:
     return parse_utc_iso(iso).astimezone(TEHRAN).strftime("%Y-%m-%d")
 
 
-def last_closed_candle_end(at: datetime | None = None) -> datetime:
+def last_closed_4h_candle_end(at: datetime | None = None) -> datetime:
     t = (at or now_tehran()).astimezone(TEHRAN)
-    odd = t.hour if t.hour % 2 == 1 else t.hour - 1
-    if odd < 0:
-        close = (t - timedelta(days=1)).replace(
-            hour=23, minute=CANDLE_CLOSE_MINUTE, second=0, microsecond=0
-        )
-    else:
-        close = t.replace(hour=odd, minute=CANDLE_CLOSE_MINUTE, second=0, microsecond=0)
-    if t < close + timedelta(minutes=1):
-        close -= timedelta(hours=2)
+    ready = t - timedelta(minutes=1)
+    for day_offset in (0, 1):
+        base = t if day_offset == 0 else t - timedelta(days=1)
+        for h in reversed(FOUR_H_CLOSE_HOURS):
+            close = base.replace(
+                hour=h, minute=CANDLE_CLOSE_MINUTE, second=0, microsecond=0
+            )
+            if ready >= close:
+                return close
+    return (t - timedelta(days=1)).replace(
+        hour=23, minute=CANDLE_CLOSE_MINUTE, second=0, microsecond=0
+    )
+
+
+def last_closed_daily_end(at: datetime | None = None) -> datetime:
+    """Last 17:00 Tehran boundary for the daily flow window (US session open)."""
+    t = (at or now_tehran()).astimezone(TEHRAN)
+    close = t.replace(
+        hour=DAILY_REPORT_HOUR,
+        minute=DAILY_REPORT_MINUTE,
+        second=0,
+        microsecond=0,
+    )
+    if t < close:
+        close -= timedelta(days=1)
     return close
 
 
-def candle_window(at: datetime | None = None) -> tuple[datetime, datetime, str]:
-    end = last_closed_candle_end(at)
-    start = end - timedelta(hours=2)
+def candle_window_4h(at: datetime | None = None) -> tuple[datetime, datetime, str]:
+    end = last_closed_4h_candle_end(at)
+    start = end - timedelta(hours=4)
     label = (
-        f"کندل ۲ ساعته {start.strftime('%H:%M')}–{end.strftime('%H:%M')} (وقت تهران)"
+        f"کندل ۴ ساعته {start.strftime('%H:%M')}–{end.strftime('%H:%M')} (وقت تهران)"
     )
     return start, end, label
+
+
+def candle_window_daily(at: datetime | None = None) -> tuple[datetime, datetime, str]:
+    end = last_closed_daily_end(at)
+    start = end - timedelta(days=1)
+    label = (
+        f"گزارش روزانه {start.strftime('%Y/%m/%d %H:%M')} – "
+        f"{end.strftime('%Y/%m/%d %H:%M')} (تهران)"
+    )
+    return start, end, label
+
+
+def candle_window(at: datetime | None = None) -> tuple[datetime, datetime, str]:
+    """Backward-compatible alias for 4h window."""
+    return candle_window_4h(at)
 
 
 def to_utc_ms(dt: datetime) -> int:
@@ -124,16 +164,39 @@ def tehran_month_bounds_utc(anchor_date: str | None = None) -> tuple[str, str]:
     return iso(start), iso(end)
 
 
-def next_report_times_tehran(count: int = 3) -> list[str]:
-    """Human-readable next run times in Tehran."""
+def format_day_header_tehran(iso: str) -> str:
+    """Weekday + Gregorian date for timeline headers."""
+    try:
+        dt = parse_utc_iso(iso).astimezone(TEHRAN)
+    except ValueError:
+        return iso
+    weekdays = (
+        "دوشنبه",
+        "سه‌شنبه",
+        "چهارشنبه",
+        "پنج‌شنبه",
+        "جمعه",
+        "شنبه",
+        "یکشنبه",
+    )
+    wd = weekdays[dt.weekday()]
+    return f"{wd}، {dt.strftime('%Y/%m/%d')}"
+
+
+def next_report_times_tehran(count: int = 4) -> list[str]:
+    """Human-readable next 4h + daily report times in Tehran."""
     t = now_tehran()
-    times: list[str] = []
+    times: list[tuple[datetime, str]] = []
     probe = t.replace(second=0, microsecond=0)
-    for _ in range(48):
-        h = probe.hour
-        if h % 2 == 1 and probe.minute == REPORT_MINUTE and probe > t:
-            times.append(probe.strftime("%H:%M"))
-            if len(times) >= count:
-                break
+    for _ in range(72 * 60):
+        h, m = probe.hour, probe.minute
+        if probe > t:
+            if h in FOUR_H_CLOSE_HOURS and m == REPORT_MINUTE:
+                times.append((probe, f"۴h {probe.strftime('%H:%M')}"))
+            if h == DAILY_REPORT_HOUR and m == DAILY_REPORT_MINUTE:
+                times.append((probe, f"روزانه {probe.strftime('%H:%M')}"))
+        if len(times) >= count:
+            break
         probe += timedelta(minutes=1)
-    return times
+    times.sort(key=lambda x: x[0])
+    return [label for _, label in times[:count]]
