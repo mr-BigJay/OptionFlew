@@ -286,7 +286,7 @@ def _react_paragraph(plan: _LegPlan, b: int, phrases: dict[str, str]) -> str:
             return base + " " + extra
         return base
     if plan.first_dir == "up" and plan.second_dir == "down":
-        if extra and extra not in base:
+        if extra and extra not in base and not extra.startswith("در " + f"{b:,}"):
             return base + " " + extra
         return base
     if extra and extra not in base:
