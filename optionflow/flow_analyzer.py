@@ -32,6 +32,7 @@ class FlowAnalysis:
     window_label: str
     contracts: FlowBucket
     effective_usd: EffectiveBucket
+    window_hours: float = 4.0
     call_buy_by_strike: dict[float, float] = field(default_factory=dict)
     put_buy_by_strike: dict[float, float] = field(default_factory=dict)
     call_sell_by_strike: dict[float, float] = field(default_factory=dict)
@@ -56,6 +57,7 @@ def analyze_trades(
     *,
     spot: float | None = None,
     window_label: str = "۲ ساعت اخیر",
+    window_hours: float = 4.0,
 ) -> FlowAnalysis:
     if not trades and spot is None:
         raise ValueError("No trades and no spot price provided")
@@ -103,6 +105,7 @@ def analyze_trades(
         spot=idx_spot,
         trade_count=len(trades),
         window_label=window_label,
+        window_hours=window_hours,
         contracts=contracts,
         effective_usd=effective,
         call_buy_by_strike=dict(call_buy),
@@ -123,3 +126,43 @@ def weighted_strike_center(strikes: dict[float, float]) -> float | None:
 
 def top_strikes(strikes: dict[float, float], n: int = 3) -> list[tuple[float, float]]:
     return sorted(strikes.items(), key=lambda x: -x[1])[:n]
+
+
+def top_strikes_near_spot(
+    strikes: dict[float, float],
+    spot: float,
+    n: int = 2,
+    *,
+    pct_lo: float,
+    pct_hi: float,
+) -> list[tuple[float, float]]:
+    if spot <= 0 or not strikes:
+        return []
+    lo, hi = spot * pct_lo, spot * pct_hi
+    band = {k: v for k, v in strikes.items() if lo <= k <= hi and v > 0}
+    if not band:
+        return []
+    return sorted(band.items(), key=lambda x: -x[1])[:n]
+
+
+def weighted_strike_center_near_spot(
+    strikes: dict[float, float],
+    spot: float,
+    *,
+    half_range_pct: float = 0.025,
+) -> float | None:
+    if not strikes or spot <= 0:
+        return None
+    half = max(half_range_pct, 0.005)
+    total_w = 0.0
+    weighted = 0.0
+    for strike, vol in strikes.items():
+        if vol <= 0:
+            continue
+        dist_pct = abs(strike - spot) / spot
+        w = vol / (1.0 + (dist_pct / half) ** 2)
+        weighted += strike * w
+        total_w += w
+    if total_w <= 0:
+        return None
+    return weighted / total_w

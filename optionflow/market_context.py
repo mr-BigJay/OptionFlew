@@ -1,11 +1,19 @@
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
+
+from optionflow.enriched_feeds import (
+    deribit_option_stats,
+    fetch_depth_imbalance,
+    fetch_fear_greed,
+    fetch_futures_bundle,
+    fetch_spot_ticker,
+    fetch_technical_4h,
+)
 
 DERIBIT = "https://www.deribit.com/api/v2/public"
 BINANCE_FAPI = "https://fapi.binance.com"
@@ -25,6 +33,24 @@ class MarketContext:
     max_pain: int | None = None
     max_pain_expiry: str | None = None
     news_hint: str | None = None
+    mark_price: float | None = None
+    index_price: float | None = None
+    basis_pct: float | None = None
+    spot_change_pct_24h: float | None = None
+    depth_imbalance_pct: float | None = None
+    taker_buy_sell_ratio: float | None = None
+    long_short_ratio: float | None = None
+    top_trader_long_short: float | None = None
+    oi_change_pct_1h: float | None = None
+    put_call_oi: float | None = None
+    deribit_opt_volume: float | None = None
+    avg_iv_pct: float | None = None
+    fear_greed: int | None = None
+    fear_greed_label: str | None = None
+    rsi_4h: float | None = None
+    ema20_4h: float | None = None
+    structure_notes: list[str] = field(default_factory=list)
+    summary_lines_fa: list[str] = field(default_factory=list)
     fetch_notes: list[str] = field(default_factory=list)
 
 
@@ -34,52 +60,6 @@ def _parse_instrument(name: str) -> tuple[str, float, str]:
     strike = float(parts[2])
     opt = "call" if parts[3].startswith("C") else "put"
     return expiry, strike, opt
-
-
-def _fetch_binance_context() -> dict[str, Any]:
-    out: dict[str, Any] = {}
-    with httpx.Client(timeout=20.0) as client:
-        spot = client.get(f"{BINANCE_SPOT}/api/v3/ticker/price", params={"symbol": "BTCUSDT"})
-        if spot.status_code == 200:
-            out["spot"] = float(spot.json()["price"])
-        else:
-            out["spot_error"] = spot.status_code
-
-        prem = client.get(f"{BINANCE_FAPI}/fapi/v1/premiumIndex", params={"symbol": "BTCUSDT"})
-        if prem.status_code == 200:
-            data = prem.json()
-            out["funding"] = float(data.get("lastFundingRate", 0))
-            out["mark"] = float(data.get("markPrice", 0))
-        else:
-            out["funding_error"] = prem.status_code
-
-        oi = client.get(f"{BINANCE_FAPI}/fapi/v1/openInterest", params={"symbol": "BTCUSDT"})
-        if oi.status_code == 200:
-            out["oi"] = float(oi.json().get("openInterest", 0))
-        else:
-            out["oi_error"] = oi.status_code
-
-        liq = client.get(
-            f"{BINANCE_FAPI}/fapi/v1/forceOrders",
-            params={"symbol": "BTCUSDT", "limit": 100},
-        )
-        if liq.status_code == 200:
-            long_usd = 0.0
-            short_usd = 0.0
-            for row in liq.json():
-                p = float(row.get("price", 0))
-                q = float(row.get("origQty", 0))
-                usd = p * q
-                side = row.get("side", "").upper()
-                if side == "SELL":
-                    long_usd += usd
-                elif side == "BUY":
-                    short_usd += usd
-            out["liq_long"] = long_usd
-            out["liq_short"] = short_usd
-        else:
-            out["liq_error"] = liq.status_code
-    return out
 
 
 def _fetch_deribit_book() -> list[dict[str, Any]]:
@@ -200,10 +180,56 @@ def _fetch_news_hint() -> str | None:
             if now <= dt <= horizon:
                 hits.append(f"{ev.get('title', 'رویداد')} ({dt.astimezone().strftime('%m/%d %H:%M')})")
         if not hits:
-            return "۴۸ ساعت آینده: رویداد مهم اقتصادی دلار در تقویم دیده نشد."
-        return "اخبار نزدیک: " + "؛ ".join(hits[:2])
+            return None
+        return "اخبار دلار ۴۸س: " + "؛ ".join(hits[:2])
     except Exception:
         return None
+
+
+def _summary_lines_fa(ctx: MarketContext, deribit_spot: float) -> list[str]:
+    lines: list[str] = []
+    if ctx.fear_greed is not None:
+        lines.append(
+            f"شاخص ترس/طمع {ctx.fear_greed} ({ctx.fear_greed_label or '—'})"
+        )
+    if ctx.funding_rate is not None:
+        fr = ctx.funding_rate * 100
+        tag = "تمایل خرید با اهرم" if fr > 0.01 else "فشار روی خرید اهرمی" if fr < -0.01 else "فاندینگ خنثی"
+        lines.append(f"فاندینگ آتی {fr:.3f}٪؛ {tag}.")
+    if ctx.open_interest is not None:
+        oi_bit = f"OI آتی {ctx.open_interest:,.0f} BTC"
+        if ctx.oi_change_pct_1h is not None:
+            oi_bit += f" (۱س: {ctx.oi_change_pct_1h:+.1f}٪)"
+        lines.append(oi_bit + ".")
+    if ctx.long_short_ratio is not None:
+        lines.append(f"نسبت long/short حساب‌ها {ctx.long_short_ratio:.2f}.")
+    if ctx.taker_buy_sell_ratio is not None:
+        lines.append(f"خرید/فروش taker آتی {ctx.taker_buy_sell_ratio:.2f}.")
+    if ctx.basis_pct is not None:
+        lines.append(f"Basis آتی {ctx.basis_pct:+.2f}٪ (mark نسبت index).")
+    if ctx.depth_imbalance_pct is not None:
+        side = "تقاضا در دفتر" if ctx.depth_imbalance_pct > 0 else "عرضه در دفتر"
+        lines.append(f"Order book: {side} ({ctx.depth_imbalance_pct:+.1f}٪).")
+    if ctx.put_call_oi is not None:
+        lines.append(f"Put/Call OI در Deribit {ctx.put_call_oi:.2f}.")
+    if ctx.max_pain and ctx.max_pain_expiry:
+        lines.append(f"Max pain سررسید {ctx.max_pain_expiry}: {ctx.max_pain:,}.")
+    if ctx.gamma_resistance or ctx.gamma_support:
+        lines.append(
+            f"گاما: مقاومت ~{ctx.gamma_resistance or '—'} · حمایت ~{ctx.gamma_support or '—'}."
+        )
+    if ctx.rsi_4h is not None and ctx.ema20_4h is not None:
+        pos = "بالای EMA20" if deribit_spot >= ctx.ema20_4h else "زیر EMA20"
+        lines.append(f"RSI 4h {ctx.rsi_4h:.0f}؛ قیمت {pos} (EMA20≈{ctx.ema20_4h:,.0f}).")
+    for sn in ctx.structure_notes[:2]:
+        lines.append(sn)
+    if ctx.news_hint:
+        lines.append(ctx.news_hint)
+    if ctx.liq_long_usd or ctx.liq_short_usd:
+        lines.append(
+            f"لیکوئید اخیر (نمونه): long {ctx.liq_long_usd or 0:,.0f}$ · short {ctx.liq_short_usd or 0:,.0f}$."
+        )
+    return lines[:6]
 
 
 def collect_market_context(deribit_spot: float) -> MarketContext:
@@ -215,6 +241,13 @@ def collect_market_context(deribit_spot: float) -> MarketContext:
     except Exception as e:
         notes.append(f"Deribit OI: {e}")
         books = []
+
+    if books:
+        stats = deribit_option_stats(books)
+        ctx.put_call_oi = stats.get("put_call_oi")
+        ctx.deribit_opt_volume = stats.get("volume")
+        if stats.get("avg_iv"):
+            ctx.avg_iv_pct = float(stats["avg_iv"])
 
     expiry = _nearest_expiry_with_oi(books) if books else None
     if expiry and books:
@@ -228,18 +261,65 @@ def collect_market_context(deribit_spot: float) -> MarketContext:
             notes.append(f"gamma: {e}")
 
     try:
-        b = _fetch_binance_context()
-        ctx.binance_spot = b.get("spot")
-        ctx.funding_rate = b.get("funding")
-        ctx.open_interest = b.get("oi")
-        ctx.liq_long_usd = b.get("liq_long")
-        ctx.liq_short_usd = b.get("liq_short")
-        for key in ("spot_error", "funding_error", "oi_error", "liq_error"):
-            if key in b:
-                notes.append(f"Binance {key}={b[key]} (VPS/IP may work)")
+        spot = fetch_spot_ticker()
+        if "error" not in spot:
+            ctx.binance_spot = spot.get("price")
+            ctx.spot_change_pct_24h = spot.get("change_pct")
+        else:
+            notes.append(f"Binance spot {spot.get('error')}")
     except Exception as e:
-        notes.append(f"Binance: {e}")
+        notes.append(f"spot: {e}")
+
+    try:
+        depth = fetch_depth_imbalance()
+        if depth and "error" not in depth:
+            ctx.depth_imbalance_pct = depth.get("imbalance_pct")
+    except Exception as e:
+        notes.append(f"depth: {e}")
+
+    try:
+        fut = fetch_futures_bundle()
+        ctx.funding_rate = fut.get("funding")
+        ctx.open_interest = fut.get("oi")
+        ctx.mark_price = fut.get("mark")
+        ctx.index_price = fut.get("index")
+        ctx.basis_pct = fut.get("basis_pct")
+        ctx.oi_change_pct_1h = fut.get("oi_change_pct")
+        ctx.taker_buy_sell_ratio = fut.get("taker_ratio")
+        ctx.long_short_ratio = fut.get("long_short")
+        ctx.top_trader_long_short = fut.get("top_trader")
+        ctx.liq_long_usd = fut.get("liq_long")
+        ctx.liq_short_usd = fut.get("liq_short")
+        for key in ("prem_error", "oi_error", "liq_error"):
+            if key in fut:
+                notes.append(f"Binance {key}")
+    except Exception as e:
+        notes.append(f"futures: {e}")
+
+    try:
+        fg = fetch_fear_greed()
+        ctx.fear_greed = fg.get("value")
+        ctx.fear_greed_label = fg.get("label")
+    except Exception as e:
+        notes.append(f"fng: {e}")
+
+    try:
+        tech = fetch_technical_4h()
+        if tech and "error" not in tech:
+            ctx.rsi_4h = tech.get("rsi_4h")
+            ctx.ema20_4h = tech.get("ema20_4h")
+    except Exception as e:
+        notes.append(f"tech: {e}")
+
+    try:
+        from optionflow.structure_context import collect_structure_context
+
+        struct = collect_structure_context(deribit_spot)
+        ctx.structure_notes = struct.notes_fa[:2]
+    except Exception as e:
+        notes.append(f"structure: {e}")
 
     ctx.news_hint = _fetch_news_hint()
     ctx.fetch_notes = notes
+    ctx.summary_lines_fa = _summary_lines_fa(ctx, deribit_spot)
     return ctx

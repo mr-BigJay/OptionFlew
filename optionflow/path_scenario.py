@@ -43,6 +43,38 @@ def _sum_strikes_in_band(strikes: dict[float, float], lo: float, hi: float) -> f
     return sum(v for k, v in strikes.items() if lo <= k <= hi)
 
 
+def _flow_bias_flags(main: FlowAnalysis) -> tuple[float, bool, bool, bool]:
+    """Same bull/bear/neutral thresholds as guide.build_guidance."""
+    c = main.contracts
+    bull_flow = c.buyer_call + c.seller_put
+    bear_flow = c.buyer_put + c.seller_call
+    ratio = bull_flow / max(bear_flow, 1e-9)
+    flow_bullish = ratio >= 1.25
+    flow_bearish = ratio <= 0.8
+    flow_neutral = not flow_bullish and not flow_bearish
+    return ratio, flow_bullish, flow_bearish, flow_neutral
+
+
+def _range_path(
+    spot_i: int,
+    support_zone: int,
+    target_zone: int,
+) -> MovementPath:
+    return MovementPath(
+        id="range",
+        title_fa="مسیر محتمل: نوسان بین دو سطح",
+        legs=(
+            PathLeg("up", spot_i, target_zone),
+            PathLeg("down", target_zone, support_zone),
+        ),
+        narrative_fa=(
+            f"معاملات متعادل است؛ امکان دارد قیمت بین {support_zone:,} و {target_zone:,} "
+            f"چند بار بالا و پایین شود تا یکی از سطوح شکسته شود."
+        ),
+        likelihood="primary",
+    )
+
+
 def infer_movement_paths(
     main: FlowAnalysis,
     *,
@@ -52,6 +84,7 @@ def infer_movement_paths(
 ) -> tuple[MovementPath, MovementPath | None]:
     c = main.contracts
     spot_i = int(round(spot))
+    _, flow_bullish, flow_bearish, flow_neutral = _flow_bias_flags(main)
 
     call_sell_at_target = _sum_strikes_in_band(
         main.call_sell_by_strike,
@@ -71,8 +104,12 @@ def infer_movement_paths(
 
     paths: list[MovementPath] = []
 
-    # 1) Up then down — call buyers push up, puts/sold calls cap and reverse
-    if bullish_calls and (capped_upside or hedged_rally):
+    pullback_credible = hedged_rally or put_buy_near_support >= max(
+        c.buyer_call * 0.12, 1.0
+    )
+
+    # 1) Up then down — needs upside cap AND evidence puts/support invite a pullback
+    if flow_bullish and bullish_calls and capped_upside and pullback_credible:
         legs = (
             PathLeg("up", spot_i, target_zone),
             PathLeg("down", target_zone, support_zone),
@@ -97,7 +134,10 @@ def infer_movement_paths(
         )
 
     # 2) Down then up — dip to put support, then call targets
-    if bearish_puts or (put_buy_near_support >= max(c.buyer_call * 0.3, 2.0)):
+    dip_credible = bearish_puts or (
+        put_buy_near_support >= max(c.buyer_call * 0.3, 2.0)
+    )
+    if dip_credible and not flow_neutral:
         if target_zone > support_zone and c.buyer_call >= c.seller_call * 0.8:
             legs = (
                 PathLeg("down", spot_i, support_zone),
@@ -117,7 +157,7 @@ def infer_movement_paths(
             )
 
     # 3) Straight up
-    if bullish_calls and not capped_upside and not paths:
+    if flow_bullish and bullish_calls and not capped_upside and not paths:
         paths.append(
             MovementPath(
                 id="up_continuation",
@@ -132,8 +172,11 @@ def infer_movement_paths(
         )
 
     # 4) Straight down
-    if bearish_puts and c.buyer_call < c.buyer_put * 0.9 and not any(
-        p.id == "down_then_up" for p in paths
+    if (
+        flow_bearish
+        and bearish_puts
+        and c.buyer_call < c.buyer_put * 0.9
+        and not any(p.id == "down_then_up" for p in paths)
     ):
         paths.append(
             MovementPath(
@@ -150,21 +193,7 @@ def infer_movement_paths(
 
     # 5) Range / chop
     if not paths:
-        paths.append(
-            MovementPath(
-                id="range",
-                title_fa="مسیر محتمل: نوسان بین دو سطح",
-                legs=(
-                    PathLeg("up", spot_i, target_zone),
-                    PathLeg("down", target_zone, support_zone),
-                ),
-                narrative_fa=(
-                    f"معاملات متعادل است؛ امکان دارد قیمت بین {support_zone:,} و {target_zone:,} "
-                    f"چند بار بالا و پایین شود تا یکی از سطوح شکسته شود."
-                ),
-                likelihood="primary",
-            )
-        )
+        paths.append(_range_path(spot_i, support_zone, target_zone))
 
     primary = next(p for p in paths if p.likelihood == "primary")
     alternate = next((p for p in paths if p.likelihood == "alternate"), None)
@@ -173,6 +202,11 @@ def infer_movement_paths(
             if p is not primary:
                 alternate = p
                 break
+
+    if flow_neutral and primary.id != "range":
+        alternate = primary
+        primary = _range_path(spot_i, support_zone, target_zone)
+
     return primary, alternate
 
 

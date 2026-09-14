@@ -4,7 +4,12 @@ import math
 from dataclasses import dataclass
 from typing import Any
 
-from optionflow.flow_analyzer import FlowAnalysis, top_strikes, weighted_strike_center
+from optionflow.flow_analyzer import (
+    FlowAnalysis,
+    top_strikes,
+    top_strikes_near_spot,
+    weighted_strike_center_near_spot,
+)
 from optionflow.path_scenario import MovementPath, infer_movement_paths, format_path_section
 
 
@@ -40,8 +45,7 @@ def _filter_strikes_near(
     high_pct: float,
 ) -> dict[float, float]:
     lo, hi = spot * low_pct, spot * high_pct
-    filtered = {k: v for k, v in strikes.items() if lo <= k <= hi}
-    return filtered if filtered else strikes
+    return {k: v for k, v in strikes.items() if lo <= k <= hi}
 
 
 def build_guidance(
@@ -64,20 +68,42 @@ def build_guidance(
         bias = "neutral"
 
     spot = main.spot
+    wh = main.window_hours
 
-    call_target_center = weighted_strike_center(
-        _filter_strikes_near(main.call_buy_by_strike, spot, 0.98, 1.12)
+    if wh >= 20:
+        call_hi, put_lo = 1.12, 0.88
+        target_cap, support_floor = 1.12, 0.88
+        decay = 0.04
+    elif wh >= 4:
+        call_hi, put_lo = 1.10, 0.90
+        target_cap, support_floor = 1.085, 0.915
+        decay = 0.035
+    else:
+        call_hi, put_lo = 1.08, 0.85
+        target_cap, support_floor = 1.065, 0.935
+        decay = 0.025
+
+    call_strikes = _filter_strikes_near(main.call_buy_by_strike, spot, 1.0, call_hi)
+    put_strikes = _filter_strikes_near(main.put_buy_by_strike, spot, put_lo, 1.0)
+
+    call_target_center = weighted_strike_center_near_spot(
+        call_strikes, spot, half_range_pct=decay
     )
-    put_support_center = weighted_strike_center(
-        _filter_strikes_near(main.put_buy_by_strike, spot, 0.88, 1.02)
+    put_support_center = weighted_strike_center_near_spot(
+        put_strikes, spot, half_range_pct=decay
     )
+
     if call_target_center is None:
-        call_target_center = spot * 1.02
+        call_target_center = spot * 1.015
     if put_support_center is None:
-        put_support_center = spot * 0.98
+        put_support_center = spot * 0.985
 
-    target_zone = _round_zone(call_target_center)
-    support_zone = _round_zone(put_support_center)
+    target_zone = _round_zone(min(call_target_center, spot * target_cap))
+    support_zone = _round_zone(max(put_support_center, spot * support_floor))
+    if target_zone <= int(round(spot)):
+        target_zone = int(round(spot * 1.01))
+    if support_zone >= int(round(spot)):
+        support_zone = int(round(spot * 0.99))
 
     path_primary, path_alternate = infer_movement_paths(
         main,
@@ -91,9 +117,11 @@ def build_guidance(
     score = round(min(20.0, max(-20.0, (math.log(ratio) * 8) + (bc_share - 0.25) * 20)), 1)
 
     confidence = 50
-    if main.trade_count >= 100:
+    t1 = int(80 * wh)
+    t2 = int(220 * wh)
+    if main.trade_count >= t1:
         confidence += 10
-    if main.trade_count >= 300:
+    if main.trade_count >= t2:
         confidence += 10
     if abs(score) >= 5:
         confidence += 10
@@ -227,78 +255,125 @@ def format_report(main: FlowAnalysis, guidance: Guidance) -> str:
     return "\n".join(lines)
 
 
-def format_simple_paragraph(main: FlowAnalysis, guidance: Guidance) -> str:
-    """یک پاراگراف روند و مسیر (تک سناریو، متن کامل، بدون لیست داده)."""
-    c = main.contracts
+def _window_phrase(main: FlowAnalysis) -> str:
+    if main.window_hours >= 20:
+        return "در بازهٔ گزارش روزانه"
+    if main.window_hours >= 4:
+        return "در چند ساعت اخیر"
+    return "در ساعات اخیر"
+
+
+def _near_spot_strike_hint(main: FlowAnalysis, spot: float) -> str:
+    """Only strikes close to spot — avoids 58k/170k style outliers in copy."""
+    wh = main.window_hours
+    put_hi = 1.02 if wh >= 20 else 1.01
+    put_lo = 0.88 if wh >= 20 else 0.90
+    call_lo = 0.98 if wh >= 20 else 0.99
+    call_hi = 1.15 if wh >= 20 else 1.12
+    top_p = top_strikes_near_spot(
+        main.put_buy_by_strike, spot, 2, pct_lo=put_lo, pct_hi=put_hi
+    )
+    top_c = top_strikes_near_spot(
+        main.call_buy_by_strike, spot, 2, pct_lo=call_lo, pct_hi=call_hi
+    )
+    bits: list[str] = []
+    if top_p:
+        bits.append("پوشش ریزش پرحجم نزدیک " + " و ".join(f"{int(k):,}" for k, _ in top_p))
+    if top_c:
+        bits.append("شرط رشد پرحجم نزدیک " + " و ".join(f"{int(k):,}" for k, _ in top_c))
+    if not bits:
+        return ""
+    return " (" + "؛ ".join(bits) + ")"
+
+
+def _single_scenario(
+    main: FlowAnalysis,
+    guidance: Guidance,
+    *,
+    spot: float,
+    support: int,
+    target: int,
+    in_range: bool,
+) -> str:
     p = guidance.path_primary
-    spot = round(main.spot, 2)
-    target = guidance.target_zone
-    support = guidance.support_zone
-
-    if c.buyer_call > c.buyer_put * 1.1:
-        tone = (
-            "فشار معاملات بیشتر سمت خرید کال است و تمایل کوتاه‌مدت صعودی دیده می‌شود"
-        )
-    elif c.buyer_put > c.buyer_call * 1.1:
-        tone = (
-            "فشار معاملات بیشتر سمت خرید پوت است و تمایل کوتاه‌مدت به سمت افت یا تست حمایت دیده می‌شود"
-        )
-    else:
-        tone = (
-            "خرید کال و پوت نزدیک به هم است؛ جهت حرکت بیشتر از روی سطوحی که معاملات روی آن‌ها متمرکز شده مشخص می‌شود"
-        )
-
+    lo, hi = min(support, target), max(support, target)
     pause_up = int(round(spot + (target - spot) * 0.42))
     pause_down = int(round(support + (spot - support) * 0.35))
+    spot_s = f"{spot:,.0f}"
+
+    if guidance.bias == "bullish":
+        mood = "تمایل کوتاه‌مدت به بالا"
+    elif guidance.bias == "bearish":
+        mood = "تمایل کوتاه‌مدت به پایین"
+    else:
+        mood = "بازار متعادل"
+
+    if in_range or (p and p.id == "range") or guidance.bias == "neutral":
+        return (
+            f"تک سناریو ({mood}): قیمت حدود {spot_s} دلار احتمالاً بین "
+            f"{lo:,} (حمایت) و {hi:,} (هدف) نوسان می‌کند؛ "
+            f"عجله برای خرید/فروش سنگین پرریسک است. "
+            f"مسیر: {spot_s} → رفت‌وبرگشت در همین بازه → "
+            f"روند واضح بعد از بستن بالای {hi:,} (صعود) یا پایین {lo:,} (ریزش)."
+        )
+
+    if p and len(p.legs) == 1:
+        leg = p.legs[0]
+        if leg.direction == "up":
+            return (
+                f"تک سناریو ({mood}): فشار به سمت بالا؛ "
+                f"مسیر {spot_s} → مکث احتمالی {pause_up:,} → هدف {leg.to_level:,}. "
+                f"ورود با حد ضرر زیر {support:,} یا بعد از عبور {target:,} منطقی‌تر است."
+            )
+        return (
+            f"تک سناریو ({mood}): فشار به سمت پایین؛ "
+            f"مسیر {spot_s} → حمایت {leg.to_level:,}. "
+            f"منتظر واکنش در {support:,} بمانید."
+        )
 
     if p and len(p.legs) >= 2:
         a, b = p.legs[0], p.legs[1]
-        target = a.to_level
-        support = b.to_level
-        pause_up = int(round(spot + (target - spot) * 0.42))
         if a.direction == "up" and b.direction == "down":
-            path_text = (
-                f"تک سناریوی محتمل: قیمت از محدودهٔ فعلی حدود {spot:,.2f} وارد فاز صعودی می‌شود؛ "
-                f"در مسیر، نزدیک {pause_up:,} ممکن است شتاب صعود کم شود یا یک‌بار مکث کند، "
-                f"سپس حرکت به سمت {target:,} ادامه پیدا کند. "
-                f"از آنجا برگشت و اصلاح به محدوده {support:,} محتمل است؛ "
-                f"در صورت نگه‌داشتن این ناحیه، احتمال تثبیت و آرام‌تر شدن نوسان در همان محدوده وجود دارد."
+            return (
+                f"تک سناریو ({mood}): "
+                f"مسیر {spot_s} → صعود تا {a.to_level:,} (مکث ~{pause_up:,}) "
+                f"→ اصلاح به {b.to_level:,}."
             )
-        elif a.direction == "down" and b.direction == "up":
-            path_text = (
-                f"تک سناریوی محتمل: ابتدا قیمت به سمت {a.to_level:,} پایین می‌آید "
-                f"(همان ناحیه‌ای که در معاملات پوت به‌عنوان حمایت دیده می‌شود)؛ "
-                f"اگر آنجا بایستد، برگشت تدریجی به {b.to_level:,} محتمل است و "
-                f"نزدیک {pause_down:,} می‌تواند محل چرخش کوتاه‌مدت باشد."
+        if a.direction == "down" and b.direction == "up":
+            return (
+                f"تک سناریو ({mood}): "
+                f"مسیر {spot_s} → افت تا {a.to_level:,} → "
+                f"برگشت به {b.to_level:,} (چرخش ~{pause_down:,})."
             )
-        else:
-            path_text = (
-                f"تک سناریوی محتمل: نوسان بین {support:,} و {target:,} "
-                f"با شروع از {spot:,.2f} تا شکست واضح‌تر یکی از سطوح."
-            )
-    elif p and len(p.legs) == 1:
-        leg = p.legs[0]
-        if leg.direction == "up":
-            path_text = (
-                f"تک سناریوی محتمل: حرکت یک‌طرفه به سمت {leg.to_level:,} "
-                f"از {spot:,.2f}، با توقف احتمالی نزدیک {pause_up:,}."
-            )
-        else:
-            path_text = (
-                f"تک سناریوی محتمل: فشار به سمت {leg.to_level:,} "
-                f"از {spot:,.2f}."
-            )
-    else:
-        path_text = (
-            f"تک سناریوی محتمل: نوسان در محدوده {support:,} تا {target:,} "
-            f"با محور حدود {spot:,.2f}."
-        )
 
     return (
-        f"بر اساس معاملات آپشن بیت‌کوین در {main.window_label}، {tone}. "
-        f"{path_text} "
-        f"این جمع‌بندی یک سناریو است، نه سیگنال قطعی."
+        f"تک سناریو ({mood}): نوسان بین {lo:,} و {hi:,} حول {spot_s}."
     )
+
+
+def format_simple_paragraph(main: FlowAnalysis, guidance: Guidance) -> str:
+    """پاراگراف کوتاه: قیمت، سطوح، یک تک‌سناریo با مسیر."""
+    spot = round(main.spot, 2)
+    support = guidance.support_zone
+    target = guidance.target_zone
+    p = guidance.path_primary
+    in_range = guidance.bias == "neutral" or (p is not None and p.id == "range")
+
+    head = (
+        f"{_window_phrase(main)}، {main.trade_count:,} معاملهٔ آپشن بیت‌کوین بررسی شد؛ "
+        f"قیمت حدود {spot:,.2f} دلار. "
+        f"حمایت احتمالی {support:,} · هدف {target:,}"
+        f"{_near_spot_strike_hint(main, spot)}. "
+    )
+    body = _single_scenario(
+        main,
+        guidance,
+        spot=spot,
+        support=support,
+        target=target,
+        in_range=in_range,
+    )
+    return head + body
 
 
 def format_enriched_simple_paragraph(
@@ -306,61 +381,15 @@ def format_enriched_simple_paragraph(
     guidance: Guidance,
     ctx: Any,
 ) -> str:
-    """پاراگراف ساده + زمینه futures/gamma/max pain/اخبار (بدون لیست خام)."""
+    """همان تک‌سناریوی flow + حداکثر ۵ جملهٔ زمینهٔ بازار (enriched)."""
     from optionflow.market_context import MarketContext
 
-    if not isinstance(ctx, MarketContext):
-        return format_simple_paragraph(main, guidance)
-
-    spot = round(main.spot, 2)
     base = format_simple_paragraph(main, guidance)
-    hints: list[str] = []
-    if ctx.binance_spot:
-        diff = ctx.binance_spot - spot
-        if abs(diff) > 5:
-            hints.append(
-                f"قیمت نقدی در صرافی دیگر حدود {ctx.binance_spot:,.2f} است (اختلاف جزئی با شاخص فعلی)."
-            )
-    if ctx.funding_rate is not None:
-        fr_pct = ctx.funding_rate * 100
-        tone = (
-            "خریداران با اهرم برای نگه‌داشتن خرید، هزینهٔ بیشتری می‌پردازند"
-            if fr_pct > 0.005
-            else (
-                "فشار هزینه روی خریداران اهرم‌دار کم است"
-                if fr_pct <= 0
-                else "تمایل خرید با اهرم ملایم است"
-            )
-        )
-        hints.append(f"نرخ تأمین وجه تضمین آتی حدود {fr_pct:.4f}٪؛ {tone}.")
-    if ctx.open_interest is not None:
-        hints.append(
-            f"حجم باز قراردادهای آتی بیت‌کوین حدود {ctx.open_interest:,.0f} BTC گزارش شده است."
-        )
-    if ctx.liq_long_usd or ctx.liq_short_usd:
-        hints.append(
-            "در بستن اجباری پوزیشن‌های اخیر، "
-            f"حدود {ctx.liq_long_usd or 0:,.0f} دلار از پوزیشن خرید و "
-            f"{ctx.liq_short_usd or 0:,.0f} دلار از پوزیشن فروش دیده شده (نمونهٔ کوتاه‌مدت)."
-        )
-    if ctx.gamma_resistance or ctx.gamma_support:
-        hints.append(
-            "از روی ماندهٔ قراردادهای باز، "
-            f"مقاومت سنگین‌تر نزدیک {ctx.gamma_resistance or guidance.target_zone:,} "
-            f"و حمایت نزدیک {ctx.gamma_support or guidance.support_zone:,} برآورد می‌شود."
-        )
-    if ctx.max_pain and ctx.max_pain_expiry:
-        hints.append(
-            f"برای سررسید {ctx.max_pain_expiry}، سطح «کم‌دردسر» برای نگه‌دارندگان قرارداد "
-            f"حدود {ctx.max_pain:,} است و ممکن است قیمت را موقتاً به آن ناحیه نزدیک کند."
-        )
-    if ctx.news_hint:
-        hints.append(ctx.news_hint)
-
-    if not hints:
-        note = " (بخشی از دادهٔ بازار آتی از این سرور در دسترس نبود.)"
+    if not isinstance(ctx, MarketContext):
+        return base
+    lines = ctx.summary_lines_fa
+    if not lines:
         if ctx.fetch_notes:
-            note = f" ({'; '.join(ctx.fetch_notes[:2])})"
-        return base + note
-
-    return base + " " + " ".join(hints)
+            return base + " (بخشی از دادهٔ تکمیلی از این سرور در دسترس نبود.)"
+        return base
+    return base + " زمینهٔ بازار: " + " ".join(lines)

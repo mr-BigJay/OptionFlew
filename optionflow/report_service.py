@@ -40,9 +40,11 @@ def produce_report(
         start_dt, end_dt, window_label = candle_window()
         start_ms = to_utc_ms(start_dt)
         end_ms = to_utc_ms(end_dt)
+        wh = max((end_ms - start_ms) / 3_600_000, 2.0)
     else:
         start_ms, end_ms = DeribitClient.window_ms(window_hours)
         window_label = f"{window_hours:g} ساعت اخیر"
+        wh = window_hours
 
     with DeribitClient() as client:
         trades = client.fetch_option_trades(start_ms=start_ms, end_ms=end_ms)
@@ -55,6 +57,7 @@ def produce_report(
         trades,
         spot=spot,
         window_label=window_label,
+        window_hours=wh,
     )
     guidance = build_guidance(analysis)
     if enriched:
@@ -66,7 +69,7 @@ def produce_report(
 
     return ReportSnapshot(
         created_at=now,
-        window_hours=window_hours,
+        window_hours=wh,
         paragraph=paragraph,
         headline=guidance.headline_fa,
         bias=guidance.bias,
