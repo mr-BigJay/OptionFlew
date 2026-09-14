@@ -253,78 +253,151 @@ def format_report(main: FlowAnalysis, guidance: Guidance) -> str:
     return "\n".join(lines)
 
 
+def _strike_flow_hint(main: FlowAnalysis, target: int, support: int) -> str:
+    top_c = top_strikes(main.call_buy_by_strike, 2)
+    top_p = top_strikes(main.put_buy_by_strike, 2)
+    parts: list[str] = []
+    parts.append(f"حمایت flow پوت حدود {support:,} و هدف flow کال حدود {target:,}")
+    if top_c:
+        parts.append(
+            "بیشترین خرید کال روی "
+            + " و ".join(f"{int(k):,}" for k, _ in top_c)
+        )
+    if top_p:
+        parts.append(
+            "بیشترین خرید پوت روی "
+            + " و ".join(f"{int(k):,}" for k, _ in top_p)
+        )
+    return "؛ ".join(parts) + "."
+
+
+def _path_forecast_line(
+    p: MovementPath | None,
+    *,
+    spot: float,
+    support: int,
+    target: int,
+    pause_up: int,
+    pause_down: int,
+    neutral: bool,
+) -> str:
+    spot_s = f"{spot:,.0f}"
+    if neutral or (p and p.id == "range"):
+        lo, hi = min(support, target), max(support, target)
+        return (
+            f"مسیر پیش‌بینی: {spot_s} در محدودهٔ نوسان {lo:,} تا {hi:,} "
+            f"(کف flow {support:,} · سقف flow {target:,}) تا شکست یکی از سطوح."
+        )
+    if not p or not p.legs:
+        return (
+            f"مسیر پیش‌بینی: {spot_s} بین حمایت {support:,} و هدف {target:,}."
+        )
+    if len(p.legs) == 1:
+        leg = p.legs[0]
+        if leg.direction == "up":
+            return (
+                f"مسیر پیش‌بینی: {spot_s} → مکث احتمالی {pause_up:,} "
+                f"→ هدف {leg.to_level:,}."
+            )
+        return f"مسیر پیش‌بینی: {spot_s} → حمایت {leg.to_level:,}."
+    a, b = p.legs[0], p.legs[1]
+    if a.direction == "up" and b.direction == "down":
+        return (
+            f"مسیر پیش‌بینی: {spot_s} → مکث {pause_up:,} → هدف {a.to_level:,} "
+            f"→ اصلاح {b.to_level:,}."
+        )
+    if a.direction == "down" and b.direction == "up":
+        return (
+            f"مسیر پیش‌بینی: {spot_s} → حمایت {a.to_level:,} "
+            f"→ برگشت {b.to_level:,} (چرخش احتمالی نزدیک {pause_down:,})."
+        )
+    lo, hi = min(support, target), max(support, target)
+    return f"مسیر پیش‌بینی: {spot_s} ↔ {lo:,} تا {hi:,}."
+
+
 def format_simple_paragraph(main: FlowAnalysis, guidance: Guidance) -> str:
-    """یک پاراگراف روند و مسیر (تک سناریو، متن کامل، بدون لیست داده)."""
+    """یک پاراگراف روند، جزئیات کلیدی flow، و مسیر با نقاط پیش‌بینی."""
     p = guidance.path_primary
     spot = round(main.spot, 2)
     target = guidance.target_zone
     support = guidance.support_zone
     neutral = guidance.bias == "neutral"
 
+    intro = (
+        f"در {main.window_label}، {main.trade_count:,} معاملهٔ آپشن BTC در Deribit "
+        f"تحلیل شد؛ قیمت شاخص حدود {spot:,.2f}. "
+        f"{_strike_flow_hint(main, target, support)}"
+    )
+
     if guidance.bias == "bullish":
         tone = (
-            "فشار معاملات بیشتر سمت خرید کال است و تمایل کوتاه‌مدت صعودی دیده می‌شود"
+            "جمع‌بندی flow: فشار بیشتر روی خرید کال است و bias کوتاه‌مدت صعودی دیده می‌شود"
         )
     elif guidance.bias == "bearish":
         tone = (
-            "فشار معاملات بیشتر سمت خرید پوت است و تمایل کوتاه‌مدت به سمت افت یا تست حمایت دیده می‌شود"
+            "جمع‌بندی flow: فشار بیشتر روی خرید پوت است و bias به سمت تست حمایت یا اصلاح دیده می‌شود"
         )
     else:
         tone = (
-            "خرید کال و پوت نزدیک به هم است؛ جهت حرکت بیشتر از روی سطوحی که معاملات روی آن‌ها متمرکز شده مشخص می‌شود"
+            "جمع‌بندی flow: خرید کال و پوت نزدیک به هم است؛ "
+            "جهت بعدی بیشتر به strikeهای پرحجم و شکست سطوح وابسته است"
         )
 
-    def range_path_text() -> str:
+    def range_scenario_text() -> str:
         lo, hi = min(support, target), max(support, target)
         return (
-            f"تک سناریوی محتمل: نوسان بین {lo:,} و {hi:,} با محور حدود {spot:,.2f}؛ "
-            f"تا شکست واضح‌تر یکی از این سطوح (بر اساس strikeهای پرحجم)، "
-            f"جهت یک‌طرفه از خود فلو استخراج نمی‌شود."
+            f"سناریوی محتمل: نوسان در بازهٔ {lo:,} تا {hi:,} حول {spot:,.2f} "
+            f"و احتمال چند بار تست حمایت {support:,} و هدف {target:,} "
+            f"بدون تمایل یک‌طرفهٔ قوی در خود flow."
         )
 
     pause_up = int(round(spot + (target - spot) * 0.42))
     pause_down = int(round(support + (spot - support) * 0.35))
 
     if neutral or (p and p.id == "range"):
-        path_text = range_path_text()
+        scenario = range_scenario_text()
     elif p and len(p.legs) >= 2:
         a, b = p.legs[0], p.legs[1]
         target = a.to_level
         support = b.to_level
         pause_up = int(round(spot + (target - spot) * 0.42))
         if a.direction == "up" and b.direction == "down" and p.id == "up_then_down":
-            path_text = (
-                f"تک سناریوی محتمل: قیمت از محدودهٔ فعلی حدود {spot:,.2f} وارد فاز صعودی می‌شود؛ "
-                f"در مسیر، نزدیک {pause_up:,} ممکن است شتاب صعود کم شود یا یک‌بار مکث کند، "
-                f"سپس حرکت به سمت {target:,} ادامه پیدا کند. "
-                f"از آنجا برگشت و اصلاح به محدوده {support:,} محتمل است؛ "
-                f"در صورت نگه‌داشتن این ناحیه، احتمال تثبیت و آرام‌تر شدن نوسان در همان محدوده وجود دارد."
+            scenario = (
+                f"سناریوی محتمل: حرکت از {spot:,.2f} به سمت هدف {target:,} "
+                f"با مکث احتمالی نزدیک {pause_up:,}، سپس برگشت یا اصلاح به حمایت {support:,} "
+                f"اگر فروش کال/خرید پوت نزدیک سقف فعال بماند."
             )
         elif a.direction == "down" and b.direction == "up":
-            path_text = (
-                f"تک سناریوی محتمل: ابتدا قیمت به سمت {a.to_level:,} پایین می‌آید "
-                f"(همان ناحیه‌ای که در معاملات پوت به‌عنوان حمایت دیده می‌شود)؛ "
-                f"اگر آنجا بایستد، برگشت تدریجی به {b.to_level:,} محتمل است و "
-                f"نزدیک {pause_down:,} می‌تواند محل چرخش کوتاه‌مدت باشد."
+            scenario = (
+                f"سناریوی محتمل: ابتدا فشار به حمایت {a.to_level:,} "
+                f"(تمرکز خرید پوت)، سپس در صورت نگه‌داشتن سطح، "
+                f"برگشت تدریجی به {b.to_level:,}."
             )
         else:
-            path_text = range_path_text()
+            scenario = range_scenario_text()
     elif p and len(p.legs) == 1:
         leg = p.legs[0]
         if leg.direction == "up":
-            path_text = (
-                f"تک سناریوی محتمل: حرکت یک‌طرفه به سمت {leg.to_level:,} "
-                f"از {spot:,.2f}، با توقف احتمالی نزدیک {pause_up:,}."
+            scenario = (
+                f"سناریوی محتمل: ادامهٔ صعود یک‌طرفه از {spot:,.2f} "
+                f"به سمت {leg.to_level:,} با توقف احتمالی نزدیک {pause_up:,}."
             )
         else:
-            path_text = (
-                f"تک سناریوی محتمل: فشار به سمت {leg.to_level:,} "
-                f"از {spot:,.2f}."
+            scenario = (
+                f"سناریوی محتمل: فشار نزولی از {spot:,.2f} "
+                f"به سمت حمایت {leg.to_level:,}."
             )
     else:
-        path_text = range_path_text()
+        scenario = range_scenario_text()
 
-    return (
-        f"بر اساس {main.trade_count} معاملهٔ آپشن BTC در Deribit، {tone}. "
-        f"{path_text}"
+    forecast = _path_forecast_line(
+        p,
+        spot=spot,
+        support=guidance.support_zone,
+        target=guidance.target_zone,
+        pause_up=pause_up,
+        pause_down=pause_down,
+        neutral=neutral,
     )
+
+    return f"{intro} {tone}. {scenario} {forecast}"
