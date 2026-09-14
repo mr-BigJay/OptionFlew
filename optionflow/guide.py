@@ -254,16 +254,32 @@ def format_report(main: FlowAnalysis, guidance: Guidance) -> str:
     return "\n".join(lines)
 
 
-def _window_phrase(main: FlowAnalysis) -> str:
-    if main.window_hours >= 20:
-        return "در بازهٔ گزارش روزانه"
-    if main.window_hours >= 4:
-        return "در چند ساعت اخیر"
-    return "در ساعات اخیر"
+def _sl_buffer(spot: float) -> int:
+    return max(int(round(spot * 0.004)), 150)
 
 
-def _single_scenario(
-    main: FlowAnalysis,
+def _scenario_tilt_title(
+    guidance: Guidance,
+    p: MovementPath | None,
+    *,
+    in_range: bool,
+) -> str:
+    if in_range or (p and p.id == "range"):
+        return "سناریوی اصلی BTC: بازار متعادل / نوسان بین دو سطح"
+    if p and p.legs:
+        first = p.legs[0].direction
+        if first == "down":
+            return "سناریوی اصلی BTC: تمایل کوتاه‌مدت نزولی"
+        if first == "up":
+            return "سناریوی اصلی BTC: تمایل کوتاه‌مدت صعودی"
+    if guidance.bias == "bullish":
+        return "سناریوی اصلی BTC: تمایل کوتاه‌مدت صعودی"
+    if guidance.bias == "bearish":
+        return "سناریوی اصلی BTC: تمایل کوتاه‌مدت نزولی"
+    return "سناریوی اصلی BTC: بازار متعادل"
+
+
+def _format_structured_scenario(
     guidance: Guidance,
     *,
     spot: float,
@@ -271,104 +287,244 @@ def _single_scenario(
     target: int,
     in_range: bool,
 ) -> str:
+    """گزارش کوتاه با عنوان، مسیر، شرایط ورود، SL/TP و جمع‌بندی."""
     p = guidance.path_primary
+    spot_i = int(round(spot))
+    spot_disp = f"{spot:,.0f}"
     lo, hi = min(support, target), max(support, target)
-    pause_up = int(round(spot + (target - spot) * 0.42))
-    pause_down = int(round(support + (spot - support) * 0.35))
-    spot_s = f"{spot:,.0f}"
-    sl_buffer = max(int(round(spot * 0.004)), 150)
+    buf = _sl_buffer(spot)
+    mid = int(round((lo + hi) / 2))
+    title = _scenario_tilt_title(guidance, p, in_range=in_range)
 
-    if guidance.bias == "bullish":
-        mood = "تمایل کوتاه‌مدت به بالا"
-    elif guidance.bias == "bearish":
-        mood = "تمایل کوتاه‌مدت به پایین"
-    else:
-        mood = "بازار متعادل"
-
-    def _plan(path: str, entry: str, take: str, stop: str) -> str:
+    def _block(
+        intro1: str,
+        intro2: str,
+        path_line: str,
+        entry: str,
+        stop: int,
+        goal: int,
+        invalid: str,
+        summary: str,
+    ) -> str:
         return (
-            f"تک سناریو ({mood}): {path} "
-            f"ورود پیشنهادی: {entry} "
-            f"بستن پوزیشن: {take} "
-            f"حد ضرر: {stop}."
+            f"{title}\n\n"
+            f"{intro1}\n\n"
+            f"{intro2}\n\n"
+            f"{path_line}\n\n"
+            f"شرایط ورود:\n"
+            f"{entry}\n\n"
+            f"حد ضرر: {stop:,} دلار\n"
+            f"هدف: {goal:,} دلار\n\n"
+            f"{invalid}\n\n"
+            f"جمع‌بندی:\n"
+            f"{summary}"
         )
 
-    if in_range or (p and p.id == "range") or guidance.bias == "neutral":
-        path = (
-            f"احتمالاً از {spot_s} چند بار بین {lo:,} (A) و {hi:,} (B) رفت‌وبرگشت شود؛ "
-            f"مسیر: {spot_s} → A–B → شکست A یا B."
+    if in_range or (p and p.id == "range") or (
+        guidance.bias == "neutral" and (not p or p.id == "range")
+    ):
+        intro1 = (
+            f"قیمت فعلی بیت‌کوین حدود {spot_disp} دلار است. "
+            f"با توجه به داده‌های فعلی (flow آپشن)، احتمال بیشتری وجود دارد "
+            f"که قیمت بین {lo:,} و {hi:,} دلار نوسان کند."
         )
+        intro2 = (
+            f"تا زمانی که یکی از این سطوح با قدرت شکسته نشود، "
+            f"مسیر محتمل رفت‌وبرگشت در همین بازه است. مسیر احتمالی فعلی:"
+        )
+        path_line = f"{spot_disp} → {lo:,} ↔ {hi:,}"
         entry = (
-            f"خرید نزدیک {support:,} (A) یا فروش نزدیک {target:,} (B) برای اسکالپ؛ "
+            f"خرید فقط نزدیک {lo:,} با واکنش صعودی (بستن کندل ۱۵ دقیقه‌ای بالای این محدوده)؛ "
+            f"فروش/کوتاه فقط نزدیک {hi:,} با واکنش نزولی. "
             f"سوار روند: خرید بعد از بستن بالای {hi:,}، فروش بعد از بستن زیر {lo:,}."
         )
-        take = f"سود جزئی نزدیک {target:,} (از کف) یا {support:,} (از سقف)."
-        stop = f"زیر {lo - sl_buffer:,} در خرید از کف؛ بالای {hi + sl_buffer:,} در فروش از سقف."
-        return _plan(path, entry, take, stop)
+        invalid = (
+            f"ورود در میانهٔ بازه (حدود {mid:,}) بدون تأیید سطح، ریسک بالاتری دارد. "
+            f"شکست تثبیتی زیر {lo:,} سناریوی خرید از کف را باطل می‌کند؛ "
+            f"شکست بالای {hi:,} سناریوی فروش از سقف را باطل می‌کند."
+        )
+        summary = (
+            f"فعلاً بازار خنثی است و احتمال نوسان بین {lo:,} و {hi:,} "
+            f"بیشتر از حرکت یک‌طرفه دیده می‌شود. "
+            f"واکنش در هر یک از این دو سطح مهم‌ترین نقطهٔ تصمیم خواهد بود."
+        )
+        return _block(
+            intro1,
+            intro2,
+            path_line,
+            entry,
+            lo - buf,
+            hi,
+            invalid,
+            summary,
+        )
+
+    if p and len(p.legs) >= 2:
+        a, b = p.legs[0], p.legs[1]
+        if a.direction == "down" and b.direction == "up":
+            intro1 = (
+                f"قیمت فعلی بیت‌کوین حدود {spot_disp} دلار است. "
+                f"با توجه به داده‌های فعلی، احتمال بیشتری وجود دارد که قیمت "
+                f"از همین محدوده ابتدا به سمت {a.to_level:,} دلار حرکت کند."
+            )
+            intro2 = (
+                f"در صورت رسیدن به {a.to_level:,} و مشاهده واکنش صعودی، "
+                f"احتمال برگشت قیمت به سمت {b.to_level:,} افزایش پیدا می‌کند. "
+                f"بنابراین مسیر احتمالی فعلی:"
+            )
+            path_line = f"{spot_disp} → {a.to_level:,} → {b.to_level:,}"
+            entry = (
+                f"ورود خرید فقط پس از واکنش صعودی معتبر در محدوده {a.to_level:,} انجام شود. "
+                f"بسته‌شدن کندل ۱۵ دقیقه‌ای بالای این محدوده و افزایش فشار خرید، "
+                f"تأیید ورود محسوب می‌شود."
+            )
+            invalid = (
+                f"اگر قیمت بدون واکنش معتبر زیر {a.to_level:,} تثبیت شود، سناریوی خرید باطل می‌شود. "
+                f"همچنین تا زمانی که قیمت در میانه محدوده قرار دارد، ورود جدید ریسک بیشتری دارد."
+            )
+            summary = (
+                f"فعلاً جهت کوتاه‌مدت کمی نزولی است و احتمال آزمایش {a.to_level:,} "
+                f"بیشتر از حرکت مستقیم به سمت {b.to_level:,} است. "
+                f"واکنش قیمت در {a.to_level:,} مهم‌ترین نقطه تصمیم برای ادامه حرکت خواهد بود."
+            )
+            return _block(
+                intro1,
+                intro2,
+                path_line,
+                entry,
+                a.to_level - buf,
+                b.to_level,
+                invalid,
+                summary,
+            )
+
+        if a.direction == "up" and b.direction == "down":
+            intro1 = (
+                f"قیمت فعلی بیت‌کوین حدود {spot_disp} دلار است. "
+                f"با توجه به داده‌های فعلی، احتمال بیشتری وجود دارد که قیمت "
+                f"ابتدا به سمت {a.to_level:,} دلار حرکت کند."
+            )
+            intro2 = (
+                f"پس از نزدیک شدن به {a.to_level:,}، اگر فشار فروش یا برگشت دیده شود، "
+                f"احتمال اصلاح به {b.to_level:,} افزایش می‌یابد. مسیر احتمالی فعلی:"
+            )
+            path_line = f"{spot_disp} → {a.to_level:,} → {b.to_level:,}"
+            entry = (
+                f"خرید از همین محدوده یا اصلاح کوتاه به {support:,} با هدف {a.to_level:,}؛ "
+                f"خروج یا فروش محافظه‌کارانه نزدیک {a.to_level:,} در صورت علائم برگشت. "
+                f"تأیید: بستن کندل ۱۵ دقیقه‌ای در جهت معامله."
+            )
+            invalid = (
+                f"شکست تثبیتی زیر {support - buf:,} سناریوی صعود کوتاه‌مدت را ضعیف می‌کند. "
+                f"ورود جدید در میانهٔ مسیر ({mid:,}) بدون تأیید، ریسک بیشتری دارد."
+            )
+            summary = (
+                f"فعلاً تمایل کوتاه‌مدت به بالا دیده می‌شود، اما flow نشان می‌دهد "
+                f"پس از {a.to_level:,} احتمال اصلاح به {b.to_level:,} وجود دارد. "
+                f"مدیریت ریسک نزدیک هدف اول اهمیت دارد."
+            )
+            return _block(
+                intro1,
+                intro2,
+                path_line,
+                entry,
+                support - buf,
+                a.to_level,
+                invalid,
+                summary,
+            )
 
     if p and len(p.legs) == 1:
         leg = p.legs[0]
         if leg.direction == "up":
-            path = f"{spot_s} → {pause_up:,} (مکث) → {leg.to_level:,} (هدف)."
-            entry = f"خرید روی اصلاح {support:,}–{pause_up:,} یا بعد از عبور {target:,}."
-            take = f"بستن نزدیک {leg.to_level:,}."
-            stop = f"زیر {support - sl_buffer:,}."
-            return _plan(path, entry, take, stop)
-        path = f"{spot_s} → {leg.to_level:,} (A، حمایت)."
-        entry = f"فروش پس از شکست {support:,}؛ خرید فقط بعد از برگشت در {leg.to_level:,}."
-        take = f"فروش: بستن در {leg.to_level:,}؛ خرید از کف: هدف {pause_up:,}."
-        stop = f"بالای {spot + sl_buffer:,} در فروش؛ زیر {leg.to_level - sl_buffer:,} در خرید."
-        return _plan(path, entry, take, stop)
-
-    if p and len(p.legs) >= 2:
-        a, b = p.legs[0], p.legs[1]
-        if a.direction == "up" and b.direction == "down":
-            path = f"{spot_s} → {a.to_level:,} (B) → {b.to_level:,} (C)."
-            entry = (
-                f"خرید از {spot_s}/{support:,} تا B؛ سپس بستن در B "
-                f"و در صورت تمایل فروش برای اصلاح تا C."
+            intro1 = (
+                f"قیمت فعلی بیت‌کوین حدود {spot_disp} دلار است. "
+                f"با توجه به داده‌های فعلی، احتمال بیشتری وجود دارد که قیمت "
+                f"به سمت {leg.to_level:,} دلار حرکت کند."
             )
-            take = f"خروج خرید {a.to_level:,}؛ خروج فروش {b.to_level:,}."
-            stop = f"زیر {support - sl_buffer:,} در خرید؛ بالای {a.to_level + sl_buffer:,} در فروش."
-            return _plan(path, entry, take, stop)
-        if a.direction == "down" and b.direction == "up":
-            path = f"{spot_s} → {a.to_level:,} (A) → {b.to_level:,} (B)."
-            entry = f"خرید در A ({a.to_level:,}) یا بعد از عبور {pause_down:,}."
-            take = f"بستن نزدیک {b.to_level:,}."
-            stop = f"زیر {a.to_level - sl_buffer:,}."
-            return _plan(path, entry, take, stop)
+            intro2 = "مسیر احتمالی فعلی:"
+            path_line = f"{spot_disp} → {leg.to_level:,}"
+            entry = (
+                f"ورود خرید روی اصلاح به ناحیه {support:,}–{mid:,} "
+                f"یا پس از بستن کندل ۱۵ دقیقه‌ای بالای {target:,}. "
+                f"افزایش فشار خرید در flow، تأیید ورود محسوب می‌شود."
+            )
+            invalid = (
+                f"تثبیت زیر {support:,} بدون برگشت سریع، سناریوی صعود را باطل می‌کند. "
+                f"ورود در میانهٔ مسیر بدون اصلاح، ریسک بالاتری دارد."
+            )
+            summary = (
+                f"فعلاً جهت کوتاه‌مدت صعودی است و هدف {leg.to_level:,} "
+                f"از روی خرید کال در آپشن‌ها برآورد شده است."
+            )
+            return _block(
+                intro1,
+                intro2,
+                path_line,
+                entry,
+                support - buf,
+                leg.to_level,
+                invalid,
+                summary,
+            )
 
-    path = f"نوسان {lo:,}–{hi:,} حول {spot_s}."
-    entry = f"فقط نزدیک {support:,} یا {target:,} با حجم کم."
-    take = "طرف مقابل همان بازه."
-    stop = f"خارج از {lo - sl_buffer:,} / {hi + sl_buffer:,}."
-    return _plan(path, entry, take, stop)
+        intro1 = (
+            f"قیمت فعلی بیت‌کوین حدود {spot_disp} دلار است. "
+            f"با توجه به داده‌های فعلی، احتمال بیشتری وجود دارد که قیمت "
+            f"به سمت {leg.to_level:,} دلار (حمایت flow) حرکت کند."
+        )
+        intro2 = "مسیر احتمالی فعلی:"
+        path_line = f"{spot_disp} → {leg.to_level:,}"
+        entry = (
+            f"فروش/کوتاه فقط پس از شکست {support:,} با بستن کندل ۱۵ دقیقه‌ای زیر آن؛ "
+            f"خرید فقط پس از واکنش صعودی معتبر در {leg.to_level:,} "
+            f"(بستن ۱۵ دقیقه بالای سطح)."
+        )
+        invalid = (
+            f"اگر قیمت بدون رسیدن به {leg.to_level:,} بالای {spot_i + buf:,} تثبیت شود، "
+            f"سناریوی فشار نزولی ضعیف می‌شود."
+        )
+        summary = (
+            f"فعلاً جهت کوتاه‌مدت نزولی است و آزمایش {leg.to_level:,} "
+            f"محتمل‌تر از حرکت مستقیم به {target:,} دیده می‌شود."
+        )
+        return _block(
+            intro1,
+            intro2,
+            path_line,
+            entry,
+            leg.to_level - buf,
+            target,
+            invalid,
+            summary,
+        )
+
+    intro1 = (
+        f"قیمت فعلی بیت‌کوین حدود {spot_disp} دلار است. "
+        f"حمایت {lo:,} و هدف {hi:,} از flow آپشن برآورد شده است."
+    )
+    intro2 = "مسیر احتمالی فعلی:"
+    path_line = f"{spot_disp} → {lo:,} / {hi:,}"
+    entry = f"فقط نزدیک {lo:,} یا {hi:,} با تأیید کندل ۱۵ دقیقه‌ای و حجم کم."
+    invalid = f"ورود در میانهٔ بازه ({mid:,}) بدون تأیید سطح توصیه نمی‌شود."
+    summary = "منتظر واکنش در یکی از سطوح flow بمانید."
+    return _block(intro1, intro2, path_line, entry, lo - buf, hi, invalid, summary)
 
 
 def format_simple_paragraph(main: FlowAnalysis, guidance: Guidance) -> str:
-    """پاراگراف کوتاه: قیمت، سطوح، یک تک‌سناریo با مسیر."""
+    """گزارش کوتاه ساختاریافته: مسیر از قیمت فعلی، ورود، SL و هدف."""
     spot = round(main.spot, 2)
     support = guidance.support_zone
     target = guidance.target_zone
     p = guidance.path_primary
     in_range = guidance.bias == "neutral" or (p is not None and p.id == "range")
-
-    head = (
-        f"{_window_phrase(main)}، {main.trade_count:,} معاملهٔ آپشن بیت‌کوین بررسی شد؛ "
-        f"قیمت حدود {spot:,.2f} دلار. "
-        f"از روی همین معاملات، حمایت احتمالی {support:,} و هدف {target:,} دلار برآورد شده "
-        f"(میانگین وزنی strikeهای نزدیک قیمت، نه عدد دلخواه). "
-    )
-    body = _single_scenario(
-        main,
+    return _format_structured_scenario(
         guidance,
         spot=spot,
         support=support,
         target=target,
         in_range=in_range,
     )
-    return head + body
-
 
 def format_enriched_simple_paragraph(
     main: FlowAnalysis,
@@ -386,4 +542,4 @@ def format_enriched_simple_paragraph(
         if ctx.fetch_notes:
             return base + " (بخشی از دادهٔ تکمیلی از این سرور در دسترس نبود.)"
         return base
-    return base + " زمینهٔ بازار: " + " ".join(lines)
+    return base + "\n\nزمینهٔ بازار:\n" + "\n".join(lines)
