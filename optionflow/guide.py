@@ -259,6 +259,7 @@ def format_simple_paragraph(main: FlowAnalysis, guidance: Guidance) -> str:
     spot = round(main.spot, 2)
     target = guidance.target_zone
     support = guidance.support_zone
+    neutral = guidance.bias == "neutral"
 
     if guidance.bias == "bullish":
         tone = (
@@ -273,15 +274,25 @@ def format_simple_paragraph(main: FlowAnalysis, guidance: Guidance) -> str:
             "خرید کال و پوت نزدیک به هم است؛ جهت حرکت بیشتر از روی سطوحی که معاملات روی آن‌ها متمرکز شده مشخص می‌شود"
         )
 
+    def range_path_text() -> str:
+        lo, hi = min(support, target), max(support, target)
+        return (
+            f"تک سناریوی محتمل: نوسان بین {lo:,} و {hi:,} با محور حدود {spot:,.2f}؛ "
+            f"تا شکست واضح‌تر یکی از این سطوح (بر اساس strikeهای پرحجم)، "
+            f"جهت یک‌طرفه از خود فلو استخراج نمی‌شود."
+        )
+
     pause_up = int(round(spot + (target - spot) * 0.42))
     pause_down = int(round(support + (spot - support) * 0.35))
 
-    if p and len(p.legs) >= 2:
+    if neutral or (p and p.id == "range"):
+        path_text = range_path_text()
+    elif p and len(p.legs) >= 2:
         a, b = p.legs[0], p.legs[1]
         target = a.to_level
         support = b.to_level
         pause_up = int(round(spot + (target - spot) * 0.42))
-        if a.direction == "up" and b.direction == "down":
+        if a.direction == "up" and b.direction == "down" and p.id == "up_then_down":
             path_text = (
                 f"تک سناریوی محتمل: قیمت از محدودهٔ فعلی حدود {spot:,.2f} وارد فاز صعودی می‌شود؛ "
                 f"در مسیر، نزدیک {pause_up:,} ممکن است شتاب صعود کم شود یا یک‌بار مکث کند، "
@@ -297,10 +308,7 @@ def format_simple_paragraph(main: FlowAnalysis, guidance: Guidance) -> str:
                 f"نزدیک {pause_down:,} می‌تواند محل چرخش کوتاه‌مدت باشد."
             )
         else:
-            path_text = (
-                f"تک سناریوی محتمل: نوسان بین {support:,} و {target:,} "
-                f"با شروع از {spot:,.2f} تا شکست واضح‌تر یکی از سطوح."
-            )
+            path_text = range_path_text()
     elif p and len(p.legs) == 1:
         leg = p.legs[0]
         if leg.direction == "up":
@@ -314,10 +322,7 @@ def format_simple_paragraph(main: FlowAnalysis, guidance: Guidance) -> str:
                 f"از {spot:,.2f}."
             )
     else:
-        path_text = (
-            f"تک سناریوی محتمل: نوسان در محدوده {support:,} تا {target:,} "
-            f"با محور حدود {spot:,.2f}."
-        )
+        path_text = range_path_text()
 
     return (
         f"بر اساس {main.trade_count} معاملهٔ آپشن BTC در Deribit، {tone}. "
