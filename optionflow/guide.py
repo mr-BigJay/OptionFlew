@@ -276,6 +276,7 @@ def _single_scenario(
     pause_up = int(round(spot + (target - spot) * 0.42))
     pause_down = int(round(support + (spot - support) * 0.35))
     spot_s = f"{spot:,.0f}"
+    sl_buffer = max(int(round(spot * 0.004)), 150)
 
     if guidance.bias == "bullish":
         mood = "تمایل کوتاه‌مدت به بالا"
@@ -284,47 +285,64 @@ def _single_scenario(
     else:
         mood = "بازار متعادل"
 
-    if in_range or (p and p.id == "range") or guidance.bias == "neutral":
+    def _plan(path: str, entry: str, take: str, stop: str) -> str:
         return (
-            f"تک سناریو ({mood}): قیمت حدود {spot_s} دلار احتمالاً بین "
-            f"{lo:,} (حمایت) و {hi:,} (هدف) نوسان می‌کند؛ "
-            f"عجله برای خرید/فروش سنگین پرریسک است. "
-            f"مسیر: {spot_s} → رفت‌وبرگشت در همین بازه → "
-            f"روند واضح بعد از بستن بالای {hi:,} (صعود) یا پایین {lo:,} (ریزش)."
+            f"تک سناریو ({mood}): {path} "
+            f"ورود پیشنهادی: {entry} "
+            f"بستن پوزیشن: {take} "
+            f"حد ضرر: {stop}."
         )
+
+    if in_range or (p and p.id == "range") or guidance.bias == "neutral":
+        path = (
+            f"احتمالاً از {spot_s} چند بار بین {lo:,} (A) و {hi:,} (B) رفت‌وبرگشت شود؛ "
+            f"مسیر: {spot_s} → A–B → شکست A یا B."
+        )
+        entry = (
+            f"خرید نزدیک {support:,} (A) یا فروش نزدیک {target:,} (B) برای اسکالپ؛ "
+            f"سوار روند: خرید بعد از بستن بالای {hi:,}، فروش بعد از بستن زیر {lo:,}."
+        )
+        take = f"سود جزئی نزدیک {target:,} (از کف) یا {support:,} (از سقf)."
+        stop = f"زیر {lo - sl_buffer:,} در خرید از کف؛ بالای {hi + sl_buffer:,} در فروش از سقf."
+        return _plan(path, entry, take, stop)
 
     if p and len(p.legs) == 1:
         leg = p.legs[0]
         if leg.direction == "up":
-            return (
-                f"تک سناریو ({mood}): فشار به سمت بالا؛ "
-                f"مسیر {spot_s} → مکث احتمالی {pause_up:,} → هدف {leg.to_level:,}. "
-                f"ورود با حد ضرر زیر {support:,} یا بعد از عبور {target:,} منطقی‌تر است."
-            )
-        return (
-            f"تک سناریو ({mood}): فشار به سمت پایین؛ "
-            f"مسیر {spot_s} → حمایت {leg.to_level:,}. "
-            f"منتظر واکنش در {support:,} بمانید."
-        )
+            path = f"{spot_s} → {pause_up:,} (مکث) → {leg.to_level:,} (هدف)."
+            entry = f"خرید روی اصلاح {support:,}–{pause_up:,} یا بعد از عبور {target:,}."
+            take = f"بستن نزدیک {leg.to_level:,}."
+            stop = f"زیر {support - sl_buffer:,}."
+            return _plan(path, entry, take, stop)
+        path = f"{spot_s} → {leg.to_level:,} (A، حمایت)."
+        entry = f"فروش پس از شکست {support:,}؛ خرید فقط بعد از برگشت در {leg.to_level:,}."
+        take = f"فروش: بستن در {leg.to_level:,}؛ خرید از کف: هدف {pause_up:,}."
+        stop = f"بالای {spot + sl_buffer:,} در فروش؛ زیر {leg.to_level - sl_buffer:,} در خرید."
+        return _plan(path, entry, take, stop)
 
     if p and len(p.legs) >= 2:
         a, b = p.legs[0], p.legs[1]
         if a.direction == "up" and b.direction == "down":
-            return (
-                f"تک سناریو ({mood}): "
-                f"مسیر {spot_s} → صعود تا {a.to_level:,} (مکث ~{pause_up:,}) "
-                f"→ اصلاح به {b.to_level:,}."
+            path = f"{spot_s} → {a.to_level:,} (B) → {b.to_level:,} (C)."
+            entry = (
+                f"خرید از {spot_s}/{support:,} تا B؛ سپس بستن در B "
+                f"و در صورت تمایل فروش برای اصلاح تا C."
             )
+            take = f"خروج خرید {a.to_level:,}؛ خروج فروش {b.to_level:,}."
+            stop = f"زیر {support - sl_buffer:,} در خرید؛ بالای {a.to_level + sl_buffer:,} در فروش."
+            return _plan(path, entry, take, stop)
         if a.direction == "down" and b.direction == "up":
-            return (
-                f"تک سناریو ({mood}): "
-                f"مسیر {spot_s} → افت تا {a.to_level:,} → "
-                f"برگشت به {b.to_level:,} (چرخش ~{pause_down:,})."
-            )
+            path = f"{spot_s} → {a.to_level:,} (A) → {b.to_level:,} (B)."
+            entry = f"خرید در A ({a.to_level:,}) یا بعد از عبور {pause_down:,}."
+            take = f"بستن نزدیک {b.to_level:,}."
+            stop = f"زیر {a.to_level - sl_buffer:,}."
+            return _plan(path, entry, take, stop)
 
-    return (
-        f"تک سناریو ({mood}): نوسان بین {lo:,} و {hi:,} حول {spot_s}."
-    )
+    path = f"نوسان {lo:,}–{hi:,} حول {spot_s}."
+    entry = f"فقط نزدیک {support:,} یا {target:,} با حجم کم."
+    take = "طرف مقابل همان بازه."
+    stop = f"خارج از {lo - sl_buffer:,} / {hi + sl_buffer:,}."
+    return _plan(path, entry, take, stop)
 
 
 def format_simple_paragraph(main: FlowAnalysis, guidance: Guidance) -> str:
