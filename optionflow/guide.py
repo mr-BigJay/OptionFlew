@@ -9,12 +9,7 @@ from optionflow.flow_analyzer import (
     top_strikes,
     weighted_strike_center_near_spot,
 )
-from optionflow.path_scenario import (
-    MovementPath,
-    effective_movement_path,
-    infer_movement_paths,
-    format_path_section,
-)
+from optionflow.path_scenario import MovementPath, infer_movement_paths, format_path_section
 
 
 @dataclass
@@ -259,169 +254,46 @@ def format_report(main: FlowAnalysis, guidance: Guidance) -> str:
     return "\n".join(lines)
 
 
-def _sl_buffer(spot: float) -> int:
-    return max(int(round(spot * 0.004)), 150)
-
-
-
-def _scenario_tilt_title(p: MovementPath | None) -> str:
-    if not p or not p.legs:
-        return "سناریوی اصلی BTC"
-    first = p.legs[0].direction
-    if first == "down":
-        return "سناریوی اصلی BTC: تمایل کوتاه‌مدت نزولی"
-    if first == "up":
-        return "سناریوی اصلی BTC: تمایل کوتاه‌مدت صعودی"
-    return "سناریوی اصلی BTC"
-
-
-def _direction_verdict(first_leg) -> str:
-    lvl = first_leg.to_level
-    if first_leg.direction == "up":
-        return f"**از قیمت فعلی، احتمال حرکت صعودی به سمت {lvl:,} بیشتر است.**"
-    return f"**از قیمت فعلی، احتمال حرکت نزولی به سمت {lvl:,} بیشتر است.**"
-
-
-def _path_arrow(spot_disp: str, legs: tuple) -> str:
-    parts = [spot_disp]
-    for leg in legs:
-        parts.append(f"{leg.to_level:,}")
-    return " → ".join(parts)
-
-
-def _format_structured_scenario(
-    main: FlowAnalysis,
-    guidance: Guidance,
-    *,
-    spot: float,
-    support: int,
-    target: int,
-) -> str:
-    """گزارش کوتاه: ابتدا جهت اول از spot، سپس مسیر، ورود، SL/TP."""
-    p = effective_movement_path(
-        main,
-        support_zone=support,
-        target_zone=target,
-        spot=spot,
-        primary=guidance.path_primary,
-        alternate=guidance.path_alternate,
-    )
-    legs = p.legs
-    if not legs:
-        return "دادهٔ کافی برای تعیین جهت اول از قیمت فعلی در دسترس نیست."
-
-    first = legs[0]
-    second = legs[1] if len(legs) > 1 else None
-    spot_disp = f"{spot:,.0f}"
-    buf = _sl_buffer(spot)
-    mid = int(round((min(support, target) + max(support, target)) / 2))
-    title = _scenario_tilt_title(p)
-    verdict = _direction_verdict(first)
-    path_line = _path_arrow(spot_disp, legs)
-
-    intro1 = f"قیمت فعلی بیت‌کوین حدود {spot_disp} دلار است."
-    if second:
-        intro2 = (
-            f"پس از رسیدن به {first.to_level:,}، مسیر بعدی با احتمال بیشتر به سمت "
-            f"{second.to_level:,} ({'صعود' if second.direction == 'up' else 'نزول'}) دیده می‌شود. "
-            f"مسیر احتمالی:"
-        )
-    else:
-        intro2 = "مسیر احتمالی کوتاه‌مدت از همین نقطه:"
-
-    if first.direction == "down" and second and second.direction == "up":
-        entry = (
-            f"ورود خرید فقط پس از واکنش صعودی معتبر در {first.to_level:,}. "
-            f"بستن کندل ۱۵ دقیقه‌ای بالای این محدوده تأیید ورود است."
-        )
-        stop = first.to_level - buf
-        goal = second.to_level
-        invalid = (
-            f"تثبیت زیر {first.to_level:,} بدون واکنش، سناریوی برگشت را باطل می‌کند. "
-            f"ورود در میانهٔ مسیر ({mid:,}) بدون تأیید سطح ریسک بالاتری دارد."
-        )
-        summary = (
-            f"جهت اول از {spot_disp} نزولی به {first.to_level:,} است؛ "
-            f"واکنش در آنجا تعیین‌کنندهٔ حرکت به {second.to_level:,} خواهد بود."
-        )
-    elif first.direction == "up" and second and second.direction == "down":
-        entry = (
-            f"خرید به سمت {first.to_level:,}؛ خروج یا فروش محافظه‌کارانه نزدیک "
-            f"{first.to_level:,} در صورت علائم برگشت به {second.to_level:,}."
-        )
-        stop = support - buf
-        goal = first.to_level
-        invalid = (
-            f"شکست زیر {support - buf:,} تمایل صعودی اول را ضعیف می‌کند. "
-            f"ورود در {mid:,} بدون تأیید توصیه نمی‌شود."
-        )
-        summary = (
-            f"جهت اول صعودی به {first.to_level:,} است؛ "
-            f"پس از آن flow اصلاح به {second.to_level:,} را ممکن می‌داند."
-        )
-    elif first.direction == "up":
-        entry = (
-            f"ورود خرید روی اصلاح یا پس از بستن ۱۵ دقیقه بالای {support:,} "
-            f"با هدف {first.to_level:,}."
-        )
-        stop = support - buf
-        goal = first.to_level
-        invalid = f"تثبیت زیر {support:,} سناریوی صعود اول را باطل می‌کند."
-        summary = f"از همین لحظه، حرکت اول به سمت {first.to_level:,} محتمل‌تر برآورد شده است."
-    else:
-        entry = (
-            f"فروش/کوتاه فقط پس از تأیید نزول (۱۵ دقیقه زیر {support:,})؛ "
-            f"خرید فقط بعد از واکنش در {first.to_level:,}."
-        )
-        stop = first.to_level - buf
-        goal = second.to_level if second else target
-        invalid = (
-            f"تثبیت بالای {int(round(spot)) + buf:,} قبل از رسیدن به {first.to_level:,} "
-            f"فشار نزولی اول را ضعیف می‌کند."
-        )
-        summary = f"از همین لحظه، حرکت اول به سمت {first.to_level:,} محتمل‌تر برآورد شده است."
-
-    return (
-        f"{title}\n\n"
-        f"{verdict}\n\n"
-        f"{intro1}\n\n"
-        f"{intro2}\n\n"
-        f"{path_line}\n\n"
-        f"شرایط ورود:\n"
-        f"{entry}\n\n"
-        f"حد ضرر: {stop:,} دلار\n"
-        f"هدف: {goal:,} دلار\n\n"
-        f"{invalid}\n\n"
-        f"جمع‌بندی:\n"
-        f"{summary}"
-    )
-
-
 def format_simple_paragraph(main: FlowAnalysis, guidance: Guidance) -> str:
-    """گزارش کوتاه: جهت اول از spot، مسیر، ورود، SL و هدف."""
+    """سناریوی اصلی منسجم: spot → B → C با استدلال علّی (flow)."""
+    from optionflow.scenario_narrative import format_narrative_scenario
+
     spot = round(main.spot, 2)
-    return _format_structured_scenario(
+    return format_narrative_scenario(
         main,
-        guidance,
+        bias=guidance.bias,
         spot=spot,
         support=guidance.support_zone,
         target=guidance.target_zone,
+        path_primary=guidance.path_primary,
+        path_alternate=guidance.path_alternate,
+        ctx=None,
     )
+
 
 def format_enriched_simple_paragraph(
     main: FlowAnalysis,
     guidance: Guidance,
     ctx: Any,
 ) -> str:
-    """همان تک‌سناریوی flow + حداکثر ۵ جملهٔ زمینهٔ بازار (enriched)."""
+    """سناریوی اصلی + دادهٔ futures/ساختار در استدلال (بدون لیست جدا)."""
     from optionflow.market_context import MarketContext
+    from optionflow.scenario_narrative import format_narrative_scenario
 
-    base = format_simple_paragraph(main, guidance)
-    if not isinstance(ctx, MarketContext):
-        return base
-    lines = ctx.summary_lines_fa
-    if not lines:
-        if ctx.fetch_notes:
-            return base + " (بخشی از دادهٔ تکمیلی از این سرور در دسترس نبود.)"
-        return base
-    return base + "\n\nزمینهٔ بازار:\n" + "\n".join(lines)
+    spot = round(main.spot, 2)
+    market_ctx = ctx if isinstance(ctx, MarketContext) else None
+    text = format_narrative_scenario(
+        main,
+        bias=guidance.bias,
+        spot=spot,
+        support=guidance.support_zone,
+        target=guidance.target_zone,
+        path_primary=guidance.path_primary,
+        path_alternate=guidance.path_alternate,
+        ctx=market_ctx,
+    )
+    if market_ctx is None and ctx is not None:
+        return text
+    if market_ctx and market_ctx.fetch_notes and not market_ctx.summary_lines_fa:
+        return text + "\n\n(بخشی از دادهٔ تکمیلی در این اجرا در دسترس نبود.)"
+    return text
