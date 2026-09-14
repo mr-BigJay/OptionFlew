@@ -142,6 +142,44 @@ def _resolve_path_for_narrative(
     return base
 
 
+def _plain(text: str) -> str:
+    """متن ساده بدون مارک‌داون."""
+    import re
+
+    t = text.replace("**", "").strip()
+    t = re.sub(r"\s+", " ", t)
+    return t
+
+
+def _assemble_prose_report(
+    *,
+    spot_disp: str,
+    b: int,
+    c: int,
+    stop: int,
+    goal: int,
+    opening: str,
+    leg1: str,
+    react: str,
+    leg2: str,
+    entry: str,
+    invalid: str,
+    conclusion: str,
+) -> str:
+    """گزارش توضیحی پیوسته؛ بدون تیتر و بخش‌بندی."""
+    intro = (
+        f"قیمت بیت‌کوین در لحظهٔ گزارش حدود {spot_disp} دلار است. "
+        f"{_plain(opening)}"
+    )
+    body = (
+        f"{_plain(leg1)} {_plain(react)} {_plain(leg2)} "
+        f"{_plain(entry)} حد ضرر حدود {stop:,} دلار و هدف کوتاه‌مدت {goal:,} دلار "
+        f"در این سناریو در نظر گرفته شده است."
+    )
+    ending = f"نتیجه‌گیری: {_plain(conclusion)} {_plain(invalid)}"
+    return "\n\n".join((intro, body, ending))
+
+
 def _assemble_report(
     *,
     title: str,
@@ -200,7 +238,7 @@ def _opening_paragraph(
     main: FlowAnalysis,
 ) -> str:
     lead = (
-        f"از قیمت فعلی، احتمال حرکت اولیه به سمت **{b:,} دلار** بیشتر است."
+        f"به نظر می‌رسد حرکت اول کوتاه‌مدت به سمت {b:,} دلار محتمل‌تر باشد."
     )
     if ctx is None:
         return f"{lead} {phrases['why']}"
@@ -212,7 +250,7 @@ def _opening_paragraph(
     if plan.first_dir == "down" and taker is not None and taker < 1.0:
         tail = (
             f" دلیل اصلی این دید، ضعف نسبی فشار خرید در بازار فیوچرز است؛ "
-            f"نسبت Taker Buy/Sell روی **{taker:.2f}** قرار دارد"
+            f"نسبت Taker Buy/Sell روی {taker:.2f} قرار دارد"
         )
         if oi_ch is not None and oi_ch < 0:
             tail += " و OI نیز کمی کاهش داشته است"
@@ -252,7 +290,7 @@ def _opening_paragraph(
     if plan.first_dir == "up" and taker is not None and taker > 1.0:
         tail = (
             f" دلیل اصلی این دید، قوت نسبی فشار خرید در بازار فیوچرز است؛ "
-            f"نسبت Taker Buy/Sell روی **{taker:.2f}** قرار دارد"
+            f"نسبت Taker Buy/Sell روی {taker:.2f} قرار دارد"
         )
         if oi_ch is not None and oi_ch < 0:
             tail += "؛ OI در یک ساعت اخیر کمی کاهش داشته که پس از رسیدن به هدف flow احتمال اصلاح را بالا می‌برد"
@@ -295,14 +333,15 @@ def _opening_paragraph(
 def _leg1_paragraph(plan: _LegPlan, spot_disp: str, b: int, phrases: dict[str, str]) -> str:
     if plan.first_dir == "down":
         base = (
-            f"احتمال می‌دهیم قیمت ابتدا به سمت **{b:,} دلار** حرکت کند، "
-            f"چون در شرایط فعلی قدرت خرید کافی برای شکستن مستقیم سقف محدوده دیده نمی‌شود. "
-            f"این حرکت می‌تواند با هدف جمع‌کردن نقدینگی در محدوده پایین‌تر و آزمایش حمایت اصلی انجام شود."
+            f"به همین دلیل انتظار داریم قیمت ابتدا به سمت {b:,} دلار برود، "
+            f"چون فعلاً قدرت خرید برای عبور مستقیم از سقف محدوده کافی دیده نمی‌شود "
+            f"و این حرکت می‌تواند برای جمع نقدینگی پایین‌تر و آزمایش حمایت اصلی باشد."
         )
     else:
         base = (
-            f"احتمال می‌دهیم قیمت ابتدا به سمت **{b:,} دلار** حرکت کند، "
-            f"چون flow آپشن و خرید کال در strikeهای بالاتر مسیر کوتاه‌مدت را به سمت هدف flow هدایت می‌کند."
+            f"به همین دلیل انتظار داریم قیمت ابتدا به سمت {b:,} دلار برود، "
+            f"چون خرید کال در flow آپشن و strikeهای بالاتر مسیر کوتاه‌مدت را "
+            f"به سمت هدف flow هدایت می‌کند."
         )
     extra = phrases["leg1"]
     if extra and extra not in base:
@@ -320,7 +359,7 @@ def _react_paragraph(plan: _LegPlan, b: int, phrases: dict[str, str]) -> str:
         )
     elif plan.first_dir == "up" and plan.second_dir == "down":
         base = (
-            f"در **{b:,}** انتظار واکنش یا اصلاح داریم، چون flow همین سطح را "
+            f"در {b:,} دلار انتظار واکنش یا اصلاح داریم، چون flow همین سطح را "
             f"به‌عنوان هدف/مقاومت کوتاه‌مدت نشان داده است. "
             f"فروش کال یا سودگیری می‌تواند حرکت را موقتاً متوقف کند."
         )
@@ -343,7 +382,7 @@ def _react_paragraph(plan: _LegPlan, b: int, phrases: dict[str, str]) -> str:
 def _leg2_paragraph(plan: _LegPlan, b: int, c: int, phrases: dict[str, str]) -> str:
     if plan.first_dir == "down" and plan.second_dir == "up":
         base = (
-            f"در صورت تأیید واکنش صعودی در {b:,}، حرکت بعدی می‌تواند به سمت **{c:,} دلار** باشد. "
+            f"در صورت تأیید واکنش صعودی در {b:,}، حرکت بعدی می‌تواند به سمت {c:,} دلار باشد. "
             f"در این حالت، برگشت از حمایت می‌تواند قیمت را به سمت محدوده بالایی بازار "
             f"و سطح مهم بعدی آپشن‌ها (هدف flow) هدایت کند."
         )
@@ -353,15 +392,43 @@ def _leg2_paragraph(plan: _LegPlan, b: int, c: int, phrases: dict[str, str]) -> 
         return base
     if plan.first_dir == "up" and plan.second_dir == "down":
         base = (
-            f"پس از واکنش در **{b:,}**، اصلاح به **{c:,} دلار** محتمل است، "
+            f"پس از واکنش در {b:,}، اصلاح به {c:,} دلار محتمل است، "
             f"چون {b:,} هدف flow کال و مقاومت کوتاه‌مدت است و پس از سودگیری، "
             f"قیمت معمولاً برای آزمایش حمایت flow (حدود {c:,}) برمی‌گردد."
         )
         extra = phrases["leg2"]
-        if extra and extra not in base:
+        if extra and extra not in base and not extra.startswith("پس از واکنش"):
             return base + " " + extra
         return base
     return phrases["leg2"]
+
+
+def _conclusion_paragraph(
+    spot_disp: str,
+    b: int,
+    c: int,
+    plan: _LegPlan,
+) -> str:
+    if plan.first_dir == "down" and plan.second_dir == "up":
+        return (
+            f"سناریوی پیش‌رو برای کوتاه‌مدت این است که قیمت از {spot_disp} دلار "
+            f"ابتدا به سمت {b:,} (حمایت flow) حرکت کند، در آن ناحیه واکنش بگیرد "
+            f"و در صورت تأیید خریداران به {c:,} (هدف flow) برگردد؛ "
+            f"مسیر برآوردشده: {spot_disp} → {b:,} → {c:,}."
+        )
+    if plan.first_dir == "up" and plan.second_dir == "down":
+        return (
+            f"سناریوی پیش‌رو برای کوتاه‌مدت این است که قیمت از {spot_disp} دلار "
+            f"ابتدا به {b:,} (هدف flow) صعود کند، در آنجا واکنش یا اصلاح ببیند "
+            f"و در صورت تأیید به {c:,} (حمایت flow) برگردد؛ "
+            f"مسیر برآوردشده: {spot_disp} → {b:,} → {c:,}."
+        )
+    direction = "بالا" if plan.first_dir == "up" else "پایین"
+    return (
+        f"سناریوی پیش‌رو حرکت اول به سمت {direction} تا {b:,} دلار است و "
+        f"ادامه تا {c:,} فقط در صورت واکنش معتبر در {b:,}؛ "
+        f"مسیر: {spot_disp} → {b:,} → {c:,}."
+    )
 
 
 def _summary_paragraph(
@@ -632,7 +699,6 @@ def format_narrative_scenario(
     b, c = plan.b, plan.c
     spot_disp = f"{spot:,.0f}"
     buf = _sl_buffer(spot)
-    label = _title_label(plan.first_dir)
     phrases = _pick_phrases(
         main, bias=bias, support=support, target=target, plan=plan, ctx=ctx
     )
@@ -649,8 +715,8 @@ def format_narrative_scenario(
         stop = b - buf
         goal = c
         invalid = (
-            f"اگر قیمت زیر **{b:,} دلار** تثبیت شود و حمایت از دست برود، "
-            f"سناریوی برگشت صعودی دیگر معتبر نیست و ورود خرید انجام نمی‌شود."
+            f"اگر قیمت زیر {b:,} دلار تثبیت شود و حمایت از دست برود، "
+            f"سناریوی برگشت صعودی دیگر معتبر نیست."
         )
     elif plan.first_dir == "up" and plan.second_dir == "down":
         entry = (
@@ -677,20 +743,21 @@ def format_narrative_scenario(
         )
         stop = b - buf
         goal = c
-        invalid = f"تثبیت زیر **{b:,} دلار** بدون واکنش، سناریو را باطل می‌کند."
+        invalid = f"تثبیت زیر {b:,} دلار بدون واکنش، سناریو را باطل می‌کند."
 
-    return _assemble_report(
-        title=label,
+    conclusion = _conclusion_paragraph(spot_disp, b, c, plan)
+
+    return _assemble_prose_report(
         spot_disp=spot_disp,
-        opening=opening,
         b=b,
         c=c,
+        stop=stop,
+        goal=goal,
+        opening=opening,
         leg1=leg1,
         react=react,
         leg2=leg2,
         entry=entry,
-        stop=stop,
-        goal=goal,
         invalid=invalid,
-        summary=_summary_paragraph(spot_disp, b, c, plan),
+        conclusion=conclusion,
     )
