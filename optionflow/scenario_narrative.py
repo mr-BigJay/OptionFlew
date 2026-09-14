@@ -39,14 +39,161 @@ def _normalize_bc(
     return _LegPlan(b=leg.to_level, c=support, first_dir="up", second_dir="down")
 
 
-def _title_label(bias: str, first_dir: str) -> str:
-    if bias == "bullish":
-        return "صعودی" if first_dir == "up" else "خنثی متمایل به نزول"
-    if bias == "bearish":
-        return "نزولی" if first_dir == "down" else "خنثی متمایل به صعود"
+def _title_label(first_dir: str) -> str:
     if first_dir == "down":
-        return "خنثی متمایل به نزول"
-    return "خنثی متمایل به صعود"
+        return "تمایل کوتاه‌مدت نزولی"
+    return "تمایل کوتاه‌مدت صعودی"
+
+
+def _join_bits(parts: list[str], fallback: str) -> str:
+    cleaned = [p.strip().rstrip(".") for p in parts if p][:3]
+    if not cleaned:
+        return fallback
+    return ". ".join(cleaned) + "."
+
+
+def _opening_paragraph(
+    plan: _LegPlan,
+    b: int,
+    phrases: dict[str, str],
+    ctx: Any | None,
+) -> str:
+    lead = (
+        f"از قیمت فعلی، احتمال حرکت اولیه به سمت **{b:,} دلار** بیشتر است."
+    )
+    if ctx is None:
+        return f"{lead} {phrases['why']}"
+
+    taker = getattr(ctx, "taker_buy_sell_ratio", None)
+    oi_ch = getattr(ctx, "oi_change_pct_1h", None)
+    funding = getattr(ctx, "funding_rate", None)
+
+    if plan.first_dir == "down" and taker is not None and taker < 1.0:
+        tail = (
+            f" دلیل اصلی این دید، ضعف نسبی فشار خرید در بازار فیوچرز است؛ "
+            f"نسبت Taker Buy/Sell روی **{taker:.2f}** قرار دارد"
+        )
+        if oi_ch is not None and oi_ch < 0:
+            tail += " و OI نیز کمی کاهش داشته است"
+        elif oi_ch is not None:
+            tail += f" و تغییر OI در ۱س حدود {oi_ch:+.1f}٪ است"
+        if funding is not None:
+            fr = funding * 100
+            if abs(fr) < 0.008:
+                tail += (
+                    ". در کنار آن، Funding تقریباً خنثی است و فعلاً نشانه‌ای از "
+                    "قدرت بالای خریداران اهرمی دیده نمی‌شود."
+                )
+            elif funding > 0:
+                tail += (
+                    f". Funding مثبت ({fr:.3f}٪) نشان می‌دهد longهای اهرمی شلوغ‌اند؛ "
+                    "اصلاح کوتاه‌مدت به پایین محتمل‌تر است."
+                )
+            else:
+                tail += f". Funding ({fr:.3f}٪) فعلاً از فشار فروش اهرمی حکایت ندارد."
+        else:
+            tail += "."
+        extra = phrases["why"]
+        if "flow آپشن" not in extra and "پوت" not in extra:
+            return lead + tail
+        return lead + tail + " " + extra
+
+    if plan.first_dir == "up" and taker is not None and taker > 1.0:
+        tail = (
+            f" فشار خرید taker (نسبت **{taker:.2f}**) در futures "
+            f"حرکت اول به سمت بالا را تقویت می‌کند."
+        )
+        if oi_ch is not None and oi_ch > 0:
+            tail += f" افزایش OI ({oi_ch:+.1f}٪ در ۱س) نیز همراهی می‌کند."
+        return lead + tail + " " + phrases["why"]
+
+    return f"{lead} {phrases['why']}"
+
+
+def _leg1_paragraph(plan: _LegPlan, spot_disp: str, b: int, phrases: dict[str, str]) -> str:
+    if plan.first_dir == "down":
+        base = (
+            f"احتمال می‌دهیم قیمت ابتدا به سمت **{b:,} دلار** حرکت کند، "
+            f"چون در شرایط فعلی قدرت خرید کافی برای شکستن مستقیم سقف محدوده دیده نمی‌شود. "
+            f"این حرکت می‌تواند با هدف جمع‌کردن نقدینگی در محدوده پایین‌تر و آزمایش حمایت اصلی انجام شود."
+        )
+    else:
+        base = (
+            f"احتمال می‌دهیم قیمت ابتدا به سمت **{b:,} دلار** حرکت کند، "
+            f"چون flow آپشن و خرید کال در strikeهای بالاتر مسیر کوتاه‌مدت را به سمت هدف flow هدایت می‌کند."
+        )
+    extra = phrases["leg1"]
+    if extra and extra not in base:
+        return base + " " + extra
+    return base
+
+
+def _react_paragraph(plan: _LegPlan, b: int, phrases: dict[str, str]) -> str:
+    if plan.first_dir == "down" and plan.second_dir == "up":
+        base = (
+            f"در این محدوده انتظار واکنش قیمت را داریم، چون این سطح بر اساس معاملات آپشن "
+            f"به‌عنوان حمایت مهم شناسایی شده است. "
+            f"اگر در برخورد با این سطح فشار فروش کاهش پیدا کند و خریداران وارد شوند، "
+            f"احتمال برگشت قیمت افزایش می‌یابد."
+        )
+    elif plan.first_dir == "up" and plan.second_dir == "down":
+        base = (
+            f"در **{b:,}** انتظار واکنش یا اصلاح داریم، چون flow همین سطح را "
+            f"به‌عنوان هدف/مقاومت کوتاه‌مدت نشان داده است. "
+            f"فروش کال یا سودگیری می‌تواند حرکت را موقتاً متوقف کند."
+        )
+    else:
+        base = phrases["react"]
+    extra = phrases["react"]
+    if plan.first_dir == "down" and plan.second_dir == "up":
+        if extra and ("gamma" in extra.lower() or "Put/Call" in extra):
+            return base + " " + extra
+        return base
+    if plan.first_dir == "up" and plan.second_dir == "down":
+        if extra and extra not in base and "premium" in extra:
+            return base + " " + extra
+        return base
+
+
+def _leg2_paragraph(plan: _LegPlan, b: int, c: int, phrases: dict[str, str]) -> str:
+    if plan.first_dir == "down" and plan.second_dir == "up":
+        return (
+            f"در صورت تأیید واکنش صعودی در {b:,}، حرکت بعدی می‌تواند به سمت **{c:,} دلار** باشد. "
+            f"در این حالت، برگشت از حمایت می‌تواند قیمت را به سمت محدوده بالایی بازار "
+            f"و سطح مهم بعدی آپشن‌ها (هدف flow) هدایت کند."
+        )
+    if plan.first_dir == "up" and plan.second_dir == "down":
+        return (
+            f"پس از واکنش در {b:,}، اصلاح به **{c:,} دلار** (حمایت flow) "
+            f"در سناریوی کوتاه‌مدت محتمل است."
+        )
+    return phrases["leg2"]
+
+
+def _summary_paragraph(
+    spot_disp: str,
+    b: int,
+    c: int,
+    plan: _LegPlan,
+) -> str:
+    if plan.first_dir == "down" and plan.second_dir == "up":
+        return (
+            f"سناریوی اصلی این است که BTC از **{spot_disp} دلار ابتدا به سمت {b:,} دلار** "
+            f"حرکت کند، در آن محدوده واکنش بگیرد و در صورت تأیید ورود خریداران، "
+            f"به سمت **{c:,} دلار** برگردد. بنابراین در قیمت فعلی، تمرکز اصلی روی "
+            f"حرکت نزولی اولیه و سپس بررسی واکنش قیمت در {b:,} دلار است."
+        )
+    if plan.first_dir == "up" and plan.second_dir == "down":
+        return (
+            f"سناریوی اصلی: از **{spot_disp} دلار** ابتدا صعود به **{b:,} دلار**، "
+            f"سپس در صورت واکنش، اصلاح به **{c:,} دلار**. "
+            f"تمرکز فعلی روی حرکت اول به بالا و مدیریت ریسک نزدیک {b:,} است."
+        )
+    direction = "صعودی" if plan.first_dir == "up" else "نزولی"
+    return (
+        f"سناریوی اصلی حرکت {direction} اولیه از **{spot_disp} دلار** به **{b:,} دلار** است؛ "
+        f"ادامه به **{c:,} دلار** فقط در صورت تأیید واکنش در B."
+    )
 
 
 def _flow_ratio(main: FlowAnalysis) -> float:
@@ -220,28 +367,20 @@ def _pick_phrases(
             ):
                 react_bits.append(clean)
 
-        return " ".join(parts)
-
-    def _join(parts: list[str], fallback: str) -> str:
-        parts = [p.strip().rstrip(".") for p in parts if p][:3]
-        if not parts:
-            return fallback
-        return ". ".join(parts) + "."
-
     return {
-        "why": _join(
+        "why": _join_bits(
             why_bits,
             "ترکیب flow آپشن در این پنجره جهت اول را به سمت B سوق می‌دهد.",
         ),
-        "leg1": _join(
+        "leg1": _join_bits(
             leg1_bits,
             f"از قیمت فعلی، جذب نقدینگی و strikeهای فعال flow مسیر را به {b:,} می‌کشد.",
         ),
-        "react": _join(
+        "react": _join_bits(
             react_bits,
             f"در {b:,} تمرکز strike و نقدینگی flow احتمال واکنش قیمت را بالا می‌برد.",
         ),
-        "leg2": _join(
+        "leg2": _join_bits(
             leg2_bits,
             f"پس از تأیید واکنش در B، حرکت به {c_level:,} با هدف/حمایت flow هم‌خوان است.",
         ),
@@ -274,79 +413,73 @@ def format_narrative_scenario(
     b, c = plan.b, plan.c
     spot_disp = f"{spot:,.0f}"
     buf = _sl_buffer(spot)
-    label = _title_label(bias, plan.first_dir)
+    label = _title_label(plan.first_dir)
     phrases = _pick_phrases(
         main, bias=bias, support=support, target=target, plan=plan, ctx=ctx
     )
+    opening = _opening_paragraph(plan, b, phrases, ctx)
+    leg1 = _leg1_paragraph(plan, spot_disp, b, phrases)
+    react = _react_paragraph(plan, b, phrases)
+    leg2 = _leg2_paragraph(plan, b, c, phrases)
 
     if plan.first_dir == "down" and plan.second_dir == "up":
         entry = (
-            f"ورود long فقط **بعد از B** و با تأیید: بستن کندل ۱۵ دقیقه‌ای بالای {b:,} "
-            f"همراه با کاهش فشار taker فروش یا برگشت flow کال؛ رسیدن به B به‌تنهایی ورود نیست."
+            f"ورود خرید فقط بعد از واکنش معتبر در {b:,} انجام شود؛ "
+            f"ترجیحاً با بسته‌شدن کندل ۱۵ دقیقه‌ای بالای محدوده و تأیید افزایش فشار خرید."
         )
         stop = b - buf
         goal = c
         invalid = (
-            f"تثبیت روزانه/۴س زیر {b:,} بدون برگشت سریع، سناریوی B→C را باطل می‌کند. "
-            f"عبور قوی بدون واکنش و ادامهٔ فشار پوت نیز سناریوی برگشت را ضعیف می‌کند."
+            f"اگر قیمت زیر **{b:,} دلار** تثبیت شود و حمایت از دست برود، "
+            f"سناریوی برگشت صعودی دیگر معتبر نیست و ورود خرید انجام نمی‌شود."
         )
     elif plan.first_dir == "up" and plan.second_dir == "down":
         entry = (
-            f"ورود long از spot یا اصلاح کوتاه فقط با تأیید صعود (۱۵دقیقه بالای {support:,})؛ "
-            f"خروج یا hedge نزدیک {b:,} در صورت علائم برگشت. short بعد از B فقط با تأیید نزول."
+            f"ورود long از spot فقط با تأیید صعود (کندل ۱۵ دقیقه بالای {support:,})؛ "
+            f"خروج یا hedge نزدیک {b:,}. short بعد از B فقط با تأیید نزول."
         )
         stop = support - buf
         goal = b
         invalid = (
-            f"شکست {support - buf:,} قبل از رسیدن به B سناریوی صعود اول را لغو می‌کند. "
-            f"اگر B با حجم شکسته شود و C دور شود، سناریوی اصلاح به C فعال می‌ماند."
+            f"شکست {support - buf:,} قبل از رسیدن به {b:,} سناریوی صعود اول را لغو می‌کند."
         )
     elif plan.first_dir == "up":
         entry = (
-            f"ورود خرید روی اصلاح به {support:,} یا پس از بستن ۱۵دقیقه بالای {support:,}؛ "
-            f"تأیید: افزایش نسبی خرید taker یا flow کال."
+            f"ورود خرید روی اصلاح به {support:,} یا پس از بستن ۱۵ دقیقه بالای {support:,} "
+            f"با تأیید فشار خرید."
         )
         stop = support - buf
         goal = b
-        invalid = f"تثبیت زیر {support:,} بدون برگشت، مسیر به B را باطل می‌کند."
+        invalid = f"تثبیت زیر {support:,} بدون برگشت، مسیر به {b:,} باطل می‌شود."
     else:
         entry = (
-            f"ورود long فقط بعد از B با واکنش صعودی (۱۵دقیقه بالای {b:,}). "
-            f"short قبل از B فقط با شکست تأیید‌شده زیر {support:,}."
+            f"ورود خرید فقط بعد از واکنش در {b:,} (۱۵ دقیقه بالای سطح). "
+            f"رسیدن به B به‌تنهایی ورود نیست."
         )
         stop = b - buf
         goal = c
         invalid = (
-            f"تثبیت زیر {b - buf:,} یا عدم هرگونه واکنش در B سناریو را باطل می‌کند."
+            f"تثبیت زیر **{b:,} دلار** بدون واکنش، سناریو را باطل می‌کند."
         )
 
-    summary = (
-        f"از {spot_disp} مسیر اصلی {spot_disp} → {b:,} → {c:,} است: "
-        f"اول {b:,} ({'نزول' if plan.first_dir == 'down' else 'صعود'} اولیه)، "
-        f"سپس در صورت تأیید واکنش در B، {'صعود' if plan.second_dir == 'up' else 'اصلاح'} به {c:,}. "
-        f"سناریو با {invalid.split('،')[0]} باطل می‌شود."
-    )
+    summary = _summary_paragraph(spot_disp, b, c, plan)
 
     return (
         f"**سناریوی اصلی BTC: {label}**\n\n"
-        f"**قیمت فعلی:** {spot_disp}\n\n"
-        f"**حرکت اولیه:**\n"
-        f"از قیمت فعلی، احتمال حرکت به سمت **{b:,}** بیشتر است.\n\n"
-        f"**چرا؟**\n"
-        f"{phrases['why']}\n\n"
-        f"**مرحله اول: قیمت فعلی → {b:,}**\n"
-        f"{phrases['leg1']}\n\n"
-        f"**واکنش در {b:,}:**\n"
-        f"{phrases['react']}\n\n"
-        f"**مرحله دوم: {b:,} → {c:,}**\n"
-        f"{phrases['leg2']}\n\n"
-        f"**مسیر:** {spot_disp} → {b:,} → {c:,}\n\n"
-        f"**شرایط ورود:**\n"
+        f"**قیمت فعلی: {spot_disp} دلار**\n\n"
+        f"{opening}\n\n"
+        f"**مرحله اول: {spot_disp} → {b:,}**\n\n"
+        f"{leg1}\n\n"
+        f"**واکنش در {b:,}**\n\n"
+        f"{react}\n\n"
+        f"**مرحله دوم: {b:,} → {c:,}**\n\n"
+        f"{leg2}\n\n"
+        f"**شرایط ورود**\n\n"
         f"{entry}\n\n"
-        f"**حد ضرر / نقطه توقف:** {stop:,}\n"
-        f"**هدف:** {goal:,}\n\n"
-        f"**ابطال سناریو:**\n"
+        f"**حد ضرر:** {stop:,} دلار\n"
+        f"**هدف:** {goal:,} دلار\n\n"
+        f"**ابطال سناریو**\n\n"
         f"{invalid}\n\n"
-        f"**جمع‌بندی سناریو:**\n"
+        f"**جمع‌بندی**\n\n"
         f"{summary}"
     )
