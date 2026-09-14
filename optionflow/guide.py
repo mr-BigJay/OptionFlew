@@ -301,8 +301,8 @@ def _single_scenario(
             f"خرید نزدیک {support:,} (A) یا فروش نزدیک {target:,} (B) برای اسکالپ؛ "
             f"سوار روند: خرید بعد از بستن بالای {hi:,}، فروش بعد از بستن زیر {lo:,}."
         )
-        take = f"سود جزئی نزدیک {target:,} (از کف) یا {support:,} (از سقf)."
-        stop = f"زیر {lo - sl_buffer:,} در خرید از کف؛ بالای {hi + sl_buffer:,} در فروش از سقf."
+        take = f"سود جزئی نزدیک {target:,} (از کف) یا {support:,} (از سقف)."
+        stop = f"زیر {lo - sl_buffer:,} در خرید از کف؛ بالای {hi + sl_buffer:,} در فروش از سقف."
         return _plan(path, entry, take, stop)
 
     if p and len(p.legs) == 1:
