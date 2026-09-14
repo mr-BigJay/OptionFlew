@@ -150,3 +150,21 @@ def weighted_strike_center_near_spot(
 
 def top_strikes(strikes: dict[float, float], n: int = 3) -> list[tuple[float, float]]:
     return sorted(strikes.items(), key=lambda x: -x[1])[:n]
+
+
+def top_strikes_near_spot(
+    strikes: dict[float, float],
+    spot: float,
+    n: int = 2,
+    *,
+    pct_lo: float,
+    pct_hi: float,
+) -> list[tuple[float, float]]:
+    """Highest-volume strikes within a spot-relative band (drops far OTM noise)."""
+    if spot <= 0 or not strikes:
+        return []
+    lo, hi = spot * pct_lo, spot * pct_hi
+    band = {k: v for k, v in strikes.items() if lo <= k <= hi and v > 0}
+    if not band:
+        return []
+    return sorted(band.items(), key=lambda x: -x[1])[:n]
