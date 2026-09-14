@@ -125,6 +125,20 @@ def _resolve_path_for_narrative(
         )
     if base.id in ("down_then_up", "down_continuation"):
         return _down_then_up_path(spot, support, target)
+    if len(base.legs) == 1 and support < spot_i < target:
+        leg = base.legs[0]
+        if leg.direction == "up" or bull_pts >= bear_pts:
+            return MovementPath(
+                id="up_then_down",
+                title_fa="مسیر محتمل: اول بالا، بعد اصلاح",
+                legs=(
+                    PathLeg("up", spot_i, target),
+                    PathLeg("down", target, support),
+                ),
+                narrative_fa="",
+                likelihood="primary",
+            )
+        return _down_then_up_path(spot, support, target)
     return base
 
 
@@ -183,6 +197,7 @@ def _opening_paragraph(
     b: int,
     phrases: dict[str, str],
     ctx: Any | None,
+    main: FlowAnalysis,
 ) -> str:
     lead = (
         f"از قیمت فعلی، احتمال حرکت اولیه به سمت **{b:,} دلار** بیشتر است."
@@ -236,12 +251,43 @@ def _opening_paragraph(
 
     if plan.first_dir == "up" and taker is not None and taker > 1.0:
         tail = (
-            f" فشار خرید taker (نسبت **{taker:.2f}**) در futures "
-            f"حرکت اول به سمت بالا را تقویت می‌کند."
+            f" دلیل اصلی این دید، قوت نسبی فشار خرید در بازار فیوچرز است؛ "
+            f"نسبت Taker Buy/Sell روی **{taker:.2f}** قرار دارد"
         )
-        if oi_ch is not None and oi_ch > 0:
-            tail += f" افزایش OI ({oi_ch:+.1f}٪ در ۱س) نیز همراهی می‌کند."
-        return lead + tail + " " + phrases["why"]
+        if oi_ch is not None and oi_ch < 0:
+            tail += "؛ OI در یک ساعت اخیر کمی کاهش داشته که پس از رسیدن به هدف flow احتمال اصلاح را بالا می‌برد"
+        elif oi_ch is not None and oi_ch > 0:
+            tail += f" و افزایش OI ({oi_ch:+.1f}٪ در ۱س) حرکت اول به بالا را همراهی می‌کند"
+        if funding is not None:
+            fr = funding * 100
+            if abs(fr) < 0.015:
+                tail += (
+                    ". Funding تقریباً خنثی است؛ بنابراین جهت اول بیشتر از taker و flow آپشن "
+                    "تعیین می‌شود تا از فشار funding."
+                )
+            elif funding > 0:
+                tail += (
+                    f". Funding مثبت ({fr:.3f}٪) نشان می‌دهد longهای اهرمی فعال‌اند؛ "
+                    f"پس از رسیدن به {b:,} احتمال سودگیری و اصلاح بیشتر است."
+                )
+            else:
+                tail += "."
+        else:
+            tail += "."
+        c_flow = main.contracts
+        if c_flow.buyer_call >= c_flow.buyer_put * 1.05:
+            return (
+                lead
+                + tail
+                + f" خرید کال غالب در آپشن Deribit نیز هدف کوتاه‌مدت را نزدیک {b:,} "
+                f"قرار داده است."
+            )
+        extra = phrases["why"]
+        if "کال" in extra and "taker" not in extra.lower():
+            first = extra.split(". ")[0].strip()
+            if first and first not in tail:
+                return lead + tail + " " + first + "."
+        return lead + tail
 
     return f"{lead} {phrases['why']}"
 
@@ -306,10 +352,15 @@ def _leg2_paragraph(plan: _LegPlan, b: int, c: int, phrases: dict[str, str]) -> 
             return base + " " + extra
         return base
     if plan.first_dir == "up" and plan.second_dir == "down":
-        return (
-            f"پس از واکنش در {b:,}، اصلاح به **{c:,} دلار** (حمایت flow) "
-            f"در سناریوی کوتاه‌مدت محتمل است."
+        base = (
+            f"پس از واکنش در **{b:,}**، اصلاح به **{c:,} دلار** محتمل است، "
+            f"چون {b:,} هدف flow کال و مقاومت کوتاه‌مدت است و پس از سودگیری، "
+            f"قیمت معمولاً برای آزمایش حمایت flow (حدود {c:,}) برمی‌گردد."
         )
+        extra = phrases["leg2"]
+        if extra and extra not in base:
+            return base + " " + extra
+        return base
     return phrases["leg2"]
 
 
@@ -321,16 +372,19 @@ def _summary_paragraph(
 ) -> str:
     if plan.first_dir == "down" and plan.second_dir == "up":
         return (
-            f"سناریوی اصلی این است که BTC از **{spot_disp} دلار ابتدا به سمت {b:,} دلار** "
-            f"حرکت کند، در آن محدوده واکنش بگیرد و در صورت تأیید ورود خریداران، "
-            f"به سمت **{c:,} دلار** برگردد. بنابراین در قیمت فعلی، تمرکز اصلی روی "
-            f"حرکت نزولی اولیه و سپس بررسی واکنش قیمت در {b:,} دلار است."
+            f"**تک سناریوی کوتاه‌مدت:** مسیر **{spot_disp} → {b:,} → {c:,}**. "
+            f"ابتدا افت به **{b:,}** (flow پوت / جمع نقدینگی)، "
+            f"**واکنش در {b:,}** (حمایت آپشن)، "
+            f"سپس در صورت تأیید برگشت به **{c:,}** (هدف flow کال). "
+            f"تمرکز فعلی: حرکت نزولی اولیه و پایش واکنش در {b:,}."
         )
     if plan.first_dir == "up" and plan.second_dir == "down":
         return (
-            f"سناریوی اصلی: از **{spot_disp} دلار** ابتدا صعود به **{b:,} دلار**، "
-            f"سپس در صورت واکنش، اصلاح به **{c:,} دلار**. "
-            f"تمرکز فعلی روی حرکت اول به بالا و مدیریت ریسک نزدیک {b:,} است."
+            f"**تک سناریوی کوتاه‌مدت:** مسیر **{spot_disp} → {b:,} → {c:,}**. "
+            f"ابتدا صعود به **{b:,}** (taker/خرید کال در flow)، "
+            f"**واکنش در {b:,}** (مقاومت flow و سودگیری)، "
+            f"سپس در صورت تأیید اصلاح به **{c:,}** (حمایت flow پوت). "
+            f"تمرکز فعلی: رسیدن به {b:,} و مدیریت ریسک قبل از برگشت به {c:,}."
         )
     direction = "صعودی" if plan.first_dir == "up" else "نزولی"
     return (
@@ -521,6 +575,16 @@ def _pick_phrases(
                 and "OI آتی" not in w
             ]
 
+    if ctx is not None and plan.first_dir == "up":
+        taker_open = getattr(ctx, "taker_buy_sell_ratio", None)
+        if taker_open is not None and taker_open > 1.0:
+            why_bits = [
+                w
+                for w in why_bits
+                if "taker" not in w.lower()
+                and "futures" not in w
+            ]
+
     return {
         "why": _join_bits(
             why_bits,
@@ -572,7 +636,7 @@ def format_narrative_scenario(
     phrases = _pick_phrases(
         main, bias=bias, support=support, target=target, plan=plan, ctx=ctx
     )
-    opening = _opening_paragraph(plan, b, phrases, ctx)
+    opening = _opening_paragraph(plan, b, phrases, ctx, main)
     leg1 = _leg1_paragraph(plan, spot_disp, b, phrases)
     react = _react_paragraph(plan, b, phrases)
     leg2 = _leg2_paragraph(plan, b, c, phrases)
