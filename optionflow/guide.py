@@ -253,25 +253,90 @@ def format_report(main: FlowAnalysis, guidance: Guidance) -> str:
     return "\n".join(lines)
 
 
-def _strike_flow_hint(main: FlowAnalysis, target: int, support: int) -> str:
+def _window_phrase(main: FlowAnalysis) -> str:
+    if main.window_hours >= 20:
+        return "در بازهٔ گزارش روزانه"
+    if main.window_hours >= 4:
+        return "در چند ساعت اخیر"
+    return "در ساعات اخیر"
+
+
+def _levels_plain(main: FlowAnalysis, support: int, target: int) -> str:
     top_c = top_strikes(main.call_buy_by_strike, 2)
     top_p = top_strikes(main.put_buy_by_strike, 2)
-    parts: list[str] = []
-    parts.append(f"حمایت flow پوت حدود {support:,} و هدف flow کال حدود {target:,}")
-    if top_c:
-        parts.append(
-            "بیشترین خرید کال روی "
-            + " و ".join(f"{int(k):,}" for k, _ in top_c)
-        )
+    base = (
+        f"از روی همین معاملات، اگر قیمت پایین بیاید ناحیهٔ حدود {support:,} دلار "
+        f"جایی است که بیشتر برای پوشش ریزش شرط بسته شده (حمایت احتمالی)، "
+        f"و اگر بالا برود ناحیهٔ حدود {target:,} دلار "
+        f"جایی است که بیشتر برای شرط رشد فعال بوده (هدف و مقاومت احتمالی)."
+    )
+    extras: list[str] = []
     if top_p:
-        parts.append(
-            "بیشترین خرید پوت روی "
+        extras.append(
+            "بیشترین تمرکز پوشش ریزش نزدیک "
             + " و ".join(f"{int(k):,}" for k, _ in top_p)
         )
-    return "؛ ".join(parts) + "."
+    if top_c:
+        extras.append(
+            "بیشترین شرط رشد نزدیک "
+            + " و ".join(f"{int(k):,}" for k, _ in top_c)
+        )
+    if extras:
+        return base + " " + "؛ ".join(extras) + "."
+    return base
 
 
-def _path_forecast_line(
+def _mood_plain(bias: str) -> str:
+    if bias == "bullish":
+        return (
+            "حال‌وهوای بازار از این داده‌ها کمی صعودی است؛ "
+            "یعنی شرط‌بندها بیشتر روی بالا رفتن پول گذاشته‌اند تا ریزش شدید."
+        )
+    if bias == "bearish":
+        return (
+            "حال‌وهوای بازار محافظه‌کار و کمی منفی است؛ "
+            "یعنی بیشتر برای پوشش ریزش و افت قیمت شرط بسته شده."
+        )
+    return (
+        "حال‌وهوای بازار متعادل است؛ "
+        "نه طرفدار قوی رشد، نه سقوط — مثل بازی که هنوز برنده مشخص نشده."
+    )
+
+
+def _action_advice(
+    bias: str,
+    *,
+    spot: float,
+    support: int,
+    target: int,
+    in_range: bool,
+) -> str:
+    lo, hi = min(support, target), max(support, target)
+    if in_range or bias == "neutral":
+        return (
+            f"چه کار کنید؟ فعلاً قیمت حدود {spot:,.0f} دلار بین دو سطح {lo:,} و {hi:,} "
+            f"گیر کرده؛ عجله برای خرید یا فروش سنگین معمولاً پرریسک است. "
+            f"اگر معامله می‌کنید، خرید در نزدیکی {support:,} با حد ضرر زیر همان ناحیه "
+            f"و برداشت سود در نزدیکی {target:,} منطقی‌تر است. "
+            f"سوار روند راحت‌تر وقتی است که قیمت با قوت بالای {hi:,} (ادامه رشد) "
+            f"یا پایین {lo:,} (ادامه ریزش) ببندد."
+        )
+    if bias == "bullish":
+        return (
+            f"چه کار کنید؟ تمایل کوتاه‌مدت به بالا است. "
+            f"ورود بی‌برنامه در {spot:,.0f} ریسک دارد؛ "
+            f"صبر برای اصلاح کوچک به {support:,} با حد ضرر زیر آن، "
+            f"یا ورود بعد از عبور مطمئن از {target:,} برای دنبال کردن روند، "
+            f"منطقی‌تر است."
+        )
+    return (
+        f"چه کار کنید؟ فشار به سمت پایین بیشتر است؛ خرید شتاب‌زده خطرناک است. "
+        f"منتظر واکنش در {support:,} بمانید؛ "
+        f"اگر این سطح از دست برود، احتمال ادامهٔ ریزش بیشتر می‌شود."
+    )
+
+
+def _path_story(
     p: MovementPath | None,
     *,
     spot: float,
@@ -279,125 +344,89 @@ def _path_forecast_line(
     target: int,
     pause_up: int,
     pause_down: int,
-    neutral: bool,
+    in_range: bool,
 ) -> str:
     spot_s = f"{spot:,.0f}"
-    if neutral or (p and p.id == "range"):
-        lo, hi = min(support, target), max(support, target)
+    lo, hi = min(support, target), max(support, target)
+
+    if in_range or (p and p.id == "range"):
         return (
-            f"مسیر پیش‌بینی: {spot_s} در محدودهٔ نوسان {lo:,} تا {hi:,} "
-            f"(کف flow {support:,} · سقف flow {target:,}) تا شکست یکی از سطوح."
+            f"مسیر محتمل قیمت: الان {spot_s} دلار → "
+            f"احتمال چند بار رفت‌وبرگشت بین {lo:,} (کف) و {hi:,} (سقف) → "
+            f"جهت اصلی بعد از شکست یکی از این دو سطح مشخص می‌شود "
+            f"(بالای {hi:,} یعنی تمایل به رشد، پایین {lo:,} یعنی تمایل به ریزش)."
         )
+
     if not p or not p.legs:
         return (
-            f"مسیر پیش‌بینی: {spot_s} بین حمایت {support:,} و هدف {target:,}."
+            f"مسیر محتمل قیمت: {spot_s} بین {support:,} و {target:,} نوسان می‌کند "
+            f"تا یکی از سطوح قوی‌تر شود."
         )
+
     if len(p.legs) == 1:
         leg = p.legs[0]
         if leg.direction == "up":
             return (
-                f"مسیر پیش‌بینی: {spot_s} → مکث احتمالی {pause_up:,} "
-                f"→ هدف {leg.to_level:,}."
+                f"مسیر محتمل قیمت: {spot_s} → "
+                f"توقف کوتاه احتمالی نزدیک {pause_up:,} → "
+                f"سپس حرکت به سمت {leg.to_level:,} دلار."
             )
-        return f"مسیر پیش‌بینی: {spot_s} → حمایت {leg.to_level:,}."
+        return (
+            f"مسیر محتمل قیمت: {spot_s} → "
+            f"فشار به سمت {leg.to_level:,} دلار (حمایت)."
+        )
+
     a, b = p.legs[0], p.legs[1]
     if a.direction == "up" and b.direction == "down":
         return (
-            f"مسیر پیش‌بینی: {spot_s} → مکث {pause_up:,} → هدف {a.to_level:,} "
-            f"→ اصلاح {b.to_level:,}."
+            f"مسیر محتمل قیمت: {spot_s} → "
+            f"صعود تا {a.to_level:,} (شاید مکث در {pause_up:,}) → "
+            f"بعد اصلاح به {b.to_level:,}."
         )
     if a.direction == "down" and b.direction == "up":
         return (
-            f"مسیر پیش‌بینی: {spot_s} → حمایت {a.to_level:,} "
-            f"→ برگشت {b.to_level:,} (چرخش احتمالی نزدیک {pause_down:,})."
+            f"مسیر محتمل قیمت: {spot_s} → "
+            f"افت تا {a.to_level:,} (حمایت) → "
+            f"در صورت نگه‌داشتن، برگشت به {b.to_level:,} "
+            f"(احتمال چرخش نزدیک {pause_down:,})."
         )
-    lo, hi = min(support, target), max(support, target)
-    return f"مسیر پیش‌بینی: {spot_s} ↔ {lo:,} تا {hi:,}."
+    return f"مسیر محتمل قیمت: {spot_s}؛ نوسان بین {lo:,} تا {hi:,}."
 
 
 def format_simple_paragraph(main: FlowAnalysis, guidance: Guidance) -> str:
-    """یک پاراگراف روند، جزئیات کلیدی flow، و مسیر با نقاط پیش‌بینی."""
+    """پاراگراف ساده برای مخاطب غیرحرفه‌ای: حال بازار، کار عملی، مسیر قیمت."""
     p = guidance.path_primary
     spot = round(main.spot, 2)
-    target = guidance.target_zone
     support = guidance.support_zone
-    neutral = guidance.bias == "neutral"
+    target = guidance.target_zone
+    in_range = guidance.bias == "neutral" or (p is not None and p.id == "range")
 
     intro = (
-        f"در {main.window_label}، {main.trade_count:,} معاملهٔ آپشن BTC در Deribit "
-        f"تحلیل شد؛ قیمت شاخص حدود {spot:,.2f}. "
-        f"{_strike_flow_hint(main, target, support)}"
+        f"{_window_phrase(main)}، روی {main.trade_count:,} معاملهٔ آپشن بیت‌کوین "
+        f"(شرط‌های حرفه‌ای در صرافی Deribit) جمع‌بندی شد. "
+        f"قیمت بیت‌کوین الان حدود {spot:,.2f} دلار است. "
+        f"{_levels_plain(main, support, target)}"
     )
 
-    if guidance.bias == "bullish":
-        tone = (
-            "جمع‌بندی flow: فشار بیشتر روی خرید کال است و bias کوتاه‌مدت صعودی دیده می‌شود"
-        )
-    elif guidance.bias == "bearish":
-        tone = (
-            "جمع‌بندی flow: فشار بیشتر روی خرید پوت است و bias به سمت تست حمایت یا اصلاح دیده می‌شود"
-        )
-    else:
-        tone = (
-            "جمع‌بندی flow: خرید کال و پوت نزدیک به هم است؛ "
-            "جهت بعدی بیشتر به strikeهای پرحجم و شکست سطوح وابسته است"
-        )
-
-    def range_scenario_text() -> str:
-        lo, hi = min(support, target), max(support, target)
-        return (
-            f"سناریوی محتمل: نوسان در بازهٔ {lo:,} تا {hi:,} حول {spot:,.2f} "
-            f"و احتمال چند بار تست حمایت {support:,} و هدف {target:,} "
-            f"بدون تمایل یک‌طرفهٔ قوی در خود flow."
-        )
-
+    mood = _mood_plain(guidance.bias)
     pause_up = int(round(spot + (target - spot) * 0.42))
     pause_down = int(round(support + (spot - support) * 0.35))
 
-    if neutral or (p and p.id == "range"):
-        scenario = range_scenario_text()
-    elif p and len(p.legs) >= 2:
-        a, b = p.legs[0], p.legs[1]
-        target = a.to_level
-        support = b.to_level
-        pause_up = int(round(spot + (target - spot) * 0.42))
-        if a.direction == "up" and b.direction == "down" and p.id == "up_then_down":
-            scenario = (
-                f"سناریوی محتمل: حرکت از {spot:,.2f} به سمت هدف {target:,} "
-                f"با مکث احتمالی نزدیک {pause_up:,}، سپس برگشت یا اصلاح به حمایت {support:,} "
-                f"اگر فروش کال/خرید پوت نزدیک سقف فعال بماند."
-            )
-        elif a.direction == "down" and b.direction == "up":
-            scenario = (
-                f"سناریوی محتمل: ابتدا فشار به حمایت {a.to_level:,} "
-                f"(تمرکز خرید پوت)، سپس در صورت نگه‌داشتن سطح، "
-                f"برگشت تدریجی به {b.to_level:,}."
-            )
-        else:
-            scenario = range_scenario_text()
-    elif p and len(p.legs) == 1:
-        leg = p.legs[0]
-        if leg.direction == "up":
-            scenario = (
-                f"سناریوی محتمل: ادامهٔ صعود یک‌طرفه از {spot:,.2f} "
-                f"به سمت {leg.to_level:,} با توقف احتمالی نزدیک {pause_up:,}."
-            )
-        else:
-            scenario = (
-                f"سناریوی محتمل: فشار نزولی از {spot:,.2f} "
-                f"به سمت حمایت {leg.to_level:,}."
-            )
-    else:
-        scenario = range_scenario_text()
-
-    forecast = _path_forecast_line(
+    action = _action_advice(
+        guidance.bias,
+        spot=spot,
+        support=support,
+        target=target,
+        in_range=in_range,
+    )
+    path = _path_story(
         p,
         spot=spot,
-        support=guidance.support_zone,
-        target=guidance.target_zone,
+        support=support,
+        target=target,
         pause_up=pause_up,
         pause_down=pause_down,
-        neutral=neutral,
+        in_range=in_range,
     )
 
-    return f"{intro} {tone}. {scenario} {forecast}"
+    return f"{intro} {mood} {action} {path}"
