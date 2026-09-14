@@ -210,16 +210,23 @@ def _pick_phrases(
                 f"تمرکز gamma مقاومتی نزدیک {gamma_r:,} توضیح‌دهندهٔ واکنش احتمالی در B است"
             )
         for note in struct[:1]:
-            if plan.first_dir == "down" and ("PDL" in note or "sweep" in note or "کف" in note):
-                leg1_bits.append(note.rstrip(".") + "؛ این با حرکت اول به B هم‌جهت است")
-            elif plan.first_dir == "up" and ("PDH" in note or "premium" in note):
-                react_bits.append(note.rstrip(".") + "؛ در B احتمال اصلاح بیشتر دیده می‌شود")
+            clean = note.rstrip(".")
+            if plan.first_dir == "down" and (
+                "PDL" in note or "sweep" in note or "کف" in note
+            ):
+                leg1_bits.append(clean + "؛ با حرکت اول به B هم‌جهت است")
+            elif plan.first_dir == "up" and (
+                "premium" in note or "PDH" in note or "اصلاح" in note
+            ):
+                react_bits.append(clean)
+
+        return " ".join(parts)
 
     def _join(parts: list[str], fallback: str) -> str:
-        parts = [p for p in parts if p][:3]
+        parts = [p.strip().rstrip(".") for p in parts if p][:3]
         if not parts:
             return fallback
-        return " ".join(parts)
+        return ". ".join(parts) + "."
 
     return {
         "why": _join(
@@ -314,10 +321,10 @@ def format_narrative_scenario(
         )
 
     summary = (
-        f"قیمت از {spot_disp} در سناریوی اصلی ابتدا به {b:,} می‌رود؛ "
-        f"{phrases['why']} "
-        f"در {b:,} {phrases['react']} "
-        f"سپس در صورت تأیید، {phrases['leg2']}"
+        f"از {spot_disp} مسیر اصلی {spot_disp} → {b:,} → {c:,} است: "
+        f"اول {b:,} ({'نزول' if plan.first_dir == 'down' else 'صعود'} اولیه)، "
+        f"سپس در صورت تأیید واکنش در B، {'صعود' if plan.second_dir == 'up' else 'اصلاح'} به {c:,}. "
+        f"سناریو با {invalid.split('،')[0]} باطل می‌شود."
     )
 
     return (
