@@ -18,5 +18,6 @@ def run_scheduled_report() -> None:
     )
     snapshot = produce_report(use_candle_window=True, enriched=enriched)
     insert_report(snapshot)
+    preview = snapshot.paragraph.replace("\n", " ")[:100]
+    logger.info("Report saved at %s; preview=%s…", snapshot.created_at, preview)
     maybe_send_report(snapshot.paragraph)
-    logger.info("Report saved at %s", snapshot.created_at)

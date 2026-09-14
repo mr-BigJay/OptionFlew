@@ -41,6 +41,27 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("optionflow.web")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.dirname(BASE_DIR)
+
+
+def _load_env_file() -> None:
+    """Ensure .env is applied (matches systemd EnvironmentFile)."""
+    env_path = os.path.join(ROOT_DIR, ".env")
+    if not os.path.isfile(env_path):
+        return
+    with open(env_path, encoding="utf-8") as f:
+        for raw in f:
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, val = line.partition("=")
+            key = key.strip()
+            val = val.strip().strip('"').strip("'")
+            if key:
+                os.environ.setdefault(key, val)
+
+
+_load_env_file()
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 scheduler = BackgroundScheduler()
 
@@ -102,6 +123,26 @@ def _range_custom_tehran(from_date: str, to_date: str) -> tuple[str, str]:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    import optionflow.guide as guide_mod
+
+    try:
+        import subprocess
+
+        git_head = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=ROOT_DIR,
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+    except Exception:
+        git_head = "unknown"
+    logger.info(
+        "OptionFlow web boot: git=%s guide=%s enriched=%s data=%s",
+        git_head,
+        guide_mod.__file__,
+        os.environ.get("OPTIONFLOW_ENRICHED", "0"),
+        os.environ.get("OPTIONFLOW_DATA", "data"),
+    )
     init_db()
     scheduler.add_job(
         run_scheduled_report,
