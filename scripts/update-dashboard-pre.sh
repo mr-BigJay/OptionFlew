@@ -52,4 +52,7 @@ say "Tolid gozaresh jadid ..."
 .venv/bin/python -c "from app.jobs import run_scheduled_report; run_scheduled_report()"
 
 say "Preview (--simple --enriched):"
-.venv/bin/python -m optionflow --simple --enriched | head -25
+OUT=$(.venv/bin/python -m optionflow --simple --enriched)
+echo "$OUT" | head -25
+echo "$OUT" | grep -q "مرحله اول" || die "Gozaresh hanuz format ghadimi ast — git log -1 ro check kon."
+echo "$OUT" | grep -q "زمینهٔ بازار" && die "Block zamane bazar hanuz append mishavad — code ghadimi."

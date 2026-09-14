@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 
@@ -9,6 +10,8 @@ from optionflow.guide import build_guidance, format_enriched_simple_paragraph, f
 from optionflow.market_context import collect_market_context
 
 from optionflow.tehran_time import candle_window, to_utc_ms
+
+logger = logging.getLogger("optionflow.report")
 
 
 @dataclass
@@ -65,6 +68,12 @@ def produce_report(
         paragraph = format_enriched_simple_paragraph(analysis, guidance, ctx)
     else:
         paragraph = format_simple_paragraph(analysis, guidance)
+
+    if "مرحله اول" not in paragraph or "واکنش در" not in paragraph:
+        logger.error(
+            "Report paragraph is missing narrative sections (spot→B→C). "
+            "VPS likely on old commit (e.g. ad60e39). Run scripts/update-dashboard-pre.sh"
+        )
     now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
     return ReportSnapshot(
