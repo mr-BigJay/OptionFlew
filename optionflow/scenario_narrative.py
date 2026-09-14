@@ -4,7 +4,11 @@ from dataclasses import dataclass
 from typing import Any
 
 from optionflow.flow_analyzer import FlowAnalysis, top_strikes_near_spot
-from optionflow.path_scenario import MovementPath, effective_movement_path
+from optionflow.path_scenario import (
+    MovementPath,
+    PathLeg,
+    effective_movement_path,
+)
 
 
 def _sl_buffer(spot: float) -> int:
@@ -37,6 +41,128 @@ def _normalize_bc(
     if leg.direction == "down":
         return _LegPlan(b=leg.to_level, c=target, first_dir="down", second_dir="up")
     return _LegPlan(b=leg.to_level, c=support, first_dir="up", second_dir="down")
+
+
+def _down_then_up_path(spot: float, support: int, target: int) -> MovementPath:
+    spot_i = int(round(spot))
+    return MovementPath(
+        id="down_then_up",
+        title_fa="مسیر محتمل: اول پایین، بعد برگشت",
+        legs=(
+            PathLeg("down", spot_i, support),
+            PathLeg("up", support, target),
+        ),
+        narrative_fa="",
+        likelihood="primary",
+    )
+
+
+def _resolve_path_for_narrative(
+    main: FlowAnalysis,
+    *,
+    support: int,
+    target: int,
+    spot: float,
+    path_primary: MovementPath | None,
+    path_alternate: MovementPath | None,
+    ctx: Any | None,
+) -> MovementPath:
+    """مسیر گزارش: enriched (taker/OI) + flow؛ هم‌راستا با سناریوی down→up نمونه."""
+    base = effective_movement_path(
+        main,
+        support_zone=support,
+        target_zone=target,
+        spot=spot,
+        primary=path_primary,
+        alternate=path_alternate,
+    )
+    spot_i = int(round(spot))
+    if support >= spot_i or target <= support:
+        return base
+
+    c = main.contracts
+    bear_pts = 0
+    bull_pts = 0
+
+    if ctx is not None:
+        taker = getattr(ctx, "taker_buy_sell_ratio", None)
+        oi_ch = getattr(ctx, "oi_change_pct_1h", None)
+        if taker is not None:
+            if taker < 0.98:
+                bear_pts += 3
+            elif taker > 1.02:
+                bull_pts += 3
+        if oi_ch is not None:
+            if oi_ch < -0.05:
+                bear_pts += 1
+            elif oi_ch > 0.05:
+                bull_pts += 1
+
+    ratio = _flow_ratio(main)
+    if c.buyer_put >= c.buyer_call * 1.08:
+        bear_pts += 2
+    if c.buyer_call >= c.buyer_put * 1.08:
+        bull_pts += 2
+    if ratio < 0.95:
+        bear_pts += 1
+    elif ratio > 1.05:
+        bull_pts += 1
+
+    if bear_pts > bull_pts and bear_pts >= 2:
+        return _down_then_up_path(spot, support, target)
+    if bull_pts > bear_pts and bull_pts >= 3 and ratio >= 1.08:
+        if base.id == "up_then_down":
+            return base
+        return MovementPath(
+            id="up_then_down",
+            title_fa="مسیر محتمل: اول بالا، بعد اصلاح",
+            legs=(
+                PathLeg("up", spot_i, target),
+                PathLeg("down", target, support),
+            ),
+            narrative_fa="",
+            likelihood="primary",
+        )
+    if base.id in ("down_then_up", "down_continuation"):
+        return _down_then_up_path(spot, support, target)
+    return base
+
+
+def _assemble_report(
+    *,
+    title: str,
+    spot_disp: str,
+    opening: str,
+    b: int,
+    c: int,
+    leg1: str,
+    react: str,
+    leg2: str,
+    entry: str,
+    stop: int,
+    goal: int,
+    invalid: str,
+    summary: str,
+) -> str:
+    return (
+        f"**سناریوی اصلی BTC: {title}**\n\n"
+        f"**قیمت فعلی: {spot_disp} دلار**\n\n"
+        f"{opening}\n\n"
+        f"**مرحله اول: {spot_disp} → {b:,}**\n\n"
+        f"{leg1}\n\n"
+        f"**واکنش در {b:,}**\n\n"
+        f"{react}\n\n"
+        f"**مرحله دوم: {b:,} → {c:,}**\n\n"
+        f"{leg2}\n\n"
+        f"**شرایط ورود**\n\n"
+        f"{entry}\n\n"
+        f"**حد ضرر:** {stop:,} دلار\n"
+        f"**هدف:** {goal:,} دلار\n\n"
+        f"**ابطال سناریو**\n\n"
+        f"{invalid}\n\n"
+        f"**جمع‌بندی**\n\n"
+        f"{summary}"
+    )
 
 
 def _title_label(first_dir: str) -> str:
@@ -93,10 +219,20 @@ def _opening_paragraph(
                 tail += f". Funding ({fr:.3f}٪) فعلاً از فشار فروش اهرمی حکایت ندارد."
         else:
             tail += "."
+        c_flow = main.contracts
+        if c_flow.buyer_put >= c_flow.buyer_call * 1.05:
+            return (
+                lead
+                + tail
+                + f" در معاملات آپشن Deribit نیز خرید پوت غالب است و "
+                f"سطح {b:,} به‌عنوان حمایت flow برجسته شده است."
+            )
         extra = phrases["why"]
-        if "flow آپشن" not in extra and "پوت" not in extra:
-            return lead + tail
-        return lead + tail + " " + extra
+        if "پوت" in extra and "taker" not in extra.lower():
+            first = extra.split(". ")[0].strip()
+            if first and first not in tail:
+                return lead + tail + " " + first + "."
+        return lead + tail
 
     if plan.first_dir == "up" and taker is not None and taker > 1.0:
         tail = (
@@ -146,22 +282,29 @@ def _react_paragraph(plan: _LegPlan, b: int, phrases: dict[str, str]) -> str:
         base = phrases["react"]
     extra = phrases["react"]
     if plan.first_dir == "down" and plan.second_dir == "up":
-        if extra and ("gamma" in extra.lower() or "Put/Call" in extra):
+        if extra and extra not in base:
             return base + " " + extra
         return base
     if plan.first_dir == "up" and plan.second_dir == "down":
-        if extra and extra not in base and "premium" in extra:
+        if extra and extra not in base:
             return base + " " + extra
         return base
+    if extra and extra not in base:
+        return base + " " + extra
+    return base
 
 
 def _leg2_paragraph(plan: _LegPlan, b: int, c: int, phrases: dict[str, str]) -> str:
     if plan.first_dir == "down" and plan.second_dir == "up":
-        return (
+        base = (
             f"در صورت تأیید واکنش صعودی در {b:,}، حرکت بعدی می‌تواند به سمت **{c:,} دلار** باشد. "
             f"در این حالت، برگشت از حمایت می‌تواند قیمت را به سمت محدوده بالایی بازار "
             f"و سطح مهم بعدی آپشن‌ها (هدف flow) هدایت کند."
         )
+        extra = phrases["leg2"]
+        if extra and extra not in base:
+            return base + " " + extra
+        return base
     if plan.first_dir == "up" and plan.second_dir == "down":
         return (
             f"پس از واکنش در {b:,}، اصلاح به **{c:,} دلار** (حمایت flow) "
@@ -367,6 +510,17 @@ def _pick_phrases(
             ):
                 react_bits.append(clean)
 
+    if ctx is not None and plan.first_dir == "down":
+        taker_open = getattr(ctx, "taker_buy_sell_ratio", None)
+        if taker_open is not None and taker_open < 1.0:
+            why_bits = [
+                w
+                for w in why_bits
+                if "taker" not in w.lower()
+                and "futures" not in w
+                and "OI آتی" not in w
+            ]
+
     return {
         "why": _join_bits(
             why_bits,
@@ -398,13 +552,14 @@ def format_narrative_scenario(
     path_alternate: MovementPath | None,
     ctx: Any | None = None,
 ) -> str:
-    path = effective_movement_path(
+    path = _resolve_path_for_narrative(
         main,
-        support_zone=support,
-        target_zone=target,
+        support=support,
+        target=target,
         spot=spot,
-        primary=path_primary,
-        alternate=path_alternate,
+        path_primary=path_primary,
+        path_alternate=path_alternate,
+        ctx=ctx,
     )
     if not path.legs:
         return "دادهٔ کافی برای سناریوی اصلی از قیمت فعلی در دسترس نیست."
@@ -435,7 +590,7 @@ def format_narrative_scenario(
         )
     elif plan.first_dir == "up" and plan.second_dir == "down":
         entry = (
-            f"ورود long از spot فقط با تأیید صعود (کندل ۱۵ دقیقه بالای {support:,})؛ "
+            f"ورود long فقط با تأیید صعود (کندل ۱۵ دقیقه بالای {support:,})؛ "
             f"خروج یا hedge نزدیک {b:,}. short بعد از B فقط با تأیید نزول."
         )
         stop = support - buf
@@ -458,28 +613,20 @@ def format_narrative_scenario(
         )
         stop = b - buf
         goal = c
-        invalid = (
-            f"تثبیت زیر **{b:,} دلار** بدون واکنش، سناریو را باطل می‌کند."
-        )
+        invalid = f"تثبیت زیر **{b:,} دلار** بدون واکنش، سناریو را باطل می‌کند."
 
-    summary = _summary_paragraph(spot_disp, b, c, plan)
-
-    return (
-        f"**سناریوی اصلی BTC: {label}**\n\n"
-        f"**قیمت فعلی: {spot_disp} دلار**\n\n"
-        f"{opening}\n\n"
-        f"**مرحله اول: {spot_disp} → {b:,}**\n\n"
-        f"{leg1}\n\n"
-        f"**واکنش در {b:,}**\n\n"
-        f"{react}\n\n"
-        f"**مرحله دوم: {b:,} → {c:,}**\n\n"
-        f"{leg2}\n\n"
-        f"**شرایط ورود**\n\n"
-        f"{entry}\n\n"
-        f"**حد ضرر:** {stop:,} دلار\n"
-        f"**هدف:** {goal:,} دلار\n\n"
-        f"**ابطال سناریو**\n\n"
-        f"{invalid}\n\n"
-        f"**جمع‌بندی**\n\n"
-        f"{summary}"
+    return _assemble_report(
+        title=label,
+        spot_disp=spot_disp,
+        opening=opening,
+        b=b,
+        c=c,
+        leg1=leg1,
+        react=react,
+        leg2=leg2,
+        entry=entry,
+        stop=stop,
+        goal=goal,
+        invalid=invalid,
+        summary=_summary_paragraph(spot_disp, b, c, plan),
     )

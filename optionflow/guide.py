@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import Any
 
 from optionflow.flow_analyzer import (
     FlowAnalysis,
@@ -268,8 +269,6 @@ def format_simple_paragraph(main: FlowAnalysis, guidance: Guidance) -> str:
         path_alternate=guidance.path_alternate,
         ctx=None,
     )
-<<<<<<< HEAD
-=======
 
 
 def format_enriched_simple_paragraph(
@@ -298,4 +297,3 @@ def format_enriched_simple_paragraph(
     if market_ctx and market_ctx.fetch_notes and not market_ctx.summary_lines_fa:
         return text + "\n\n(بخشی از دادهٔ تکمیلی در این اجرا در دسترس نبود.)"
     return text
->>>>>>> 3557332 (feat(guide): narrative BTC scenario with causal reasoning (spot→B→C))
