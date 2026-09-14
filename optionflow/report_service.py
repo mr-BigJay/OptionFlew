@@ -69,10 +69,10 @@ def produce_report(
     else:
         paragraph = format_simple_paragraph(analysis, guidance)
 
-    if "مرحله اول" not in paragraph or "واکنش در" not in paragraph:
+    if "نتیجه‌گیری" not in paragraph or "→" not in paragraph:
         logger.error(
-            "Report paragraph is missing narrative sections (spot→B→C). "
-            "VPS likely on old commit (e.g. ad60e39). Run scripts/update-dashboard-pre.sh"
+            "Report paragraph is missing prose narrative (نتیجه‌گیری / path). "
+            "Redeploy pre-release or cursor/enriched-data-report-9890."
         )
     now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 

@@ -54,5 +54,6 @@ say "Tolid gozaresh jadid ..."
 say "Preview (--simple --enriched):"
 OUT=$(.venv/bin/python -m optionflow --simple --enriched)
 echo "$OUT" | head -25
-echo "$OUT" | grep -q "مرحله اول" || die "Gozaresh hanuz format ghadimi ast — git log -1 ro check kon."
-echo "$OUT" | grep -q "زمینهٔ بازار" && die "Block zamane bazar hanuz append mishavad — code ghadimi."
+echo "$OUT" | grep -q "نتیجه‌گیری" || die "Gozaresh format jadid nist — git log -1 ro check kon."
+echo "$OUT" | grep -q "زمینهٔ بازار" && die "Block zamane bazar (code ghadimi)."
+echo "$OUT" | grep -q "مرحله اول" && die "Format titr-dar — bayad prose monasem bashe."
