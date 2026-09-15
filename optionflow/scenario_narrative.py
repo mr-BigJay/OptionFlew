@@ -151,6 +151,11 @@ def _plain(text: str) -> str:
     return t
 
 
+def _path_summary_fa(spot_disp: str, b: int, c: int) -> str:
+    """مسیر بدون فلش (→) برای نمایش درست در متن RTL."""
+    return f"مسیر برآوردشده: از {spot_disp} به {b:,} و سپس به {c:,}."
+
+
 def _assemble_prose_report(
     *,
     spot_disp: str,
@@ -414,20 +419,20 @@ def _conclusion_paragraph(
             f"سناریوی پیش‌رو برای کوتاه‌مدت این است که قیمت از {spot_disp} دلار "
             f"ابتدا به سمت {b:,} (حمایت flow) حرکت کند، در آن ناحیه واکنش بگیرد "
             f"و در صورت تأیید خریداران به {c:,} (هدف flow) برگردد؛ "
-            f"مسیر برآوردشده: {spot_disp} → {b:,} → {c:,}."
+            f"{_path_summary_fa(spot_disp, b, c)}"
         )
     if plan.first_dir == "up" and plan.second_dir == "down":
         return (
             f"سناریوی پیش‌رو برای کوتاه‌مدت این است که قیمت از {spot_disp} دلار "
             f"ابتدا به {b:,} (هدف flow) صعود کند، در آنجا واکنش یا اصلاح ببیند "
             f"و در صورت تأیید به {c:,} (حمایت flow) برگردد؛ "
-            f"مسیر برآوردشده: {spot_disp} → {b:,} → {c:,}."
+            f"{_path_summary_fa(spot_disp, b, c)}"
         )
     direction = "بالا" if plan.first_dir == "up" else "پایین"
     return (
         f"سناریوی پیش‌رو حرکت اول به سمت {direction} تا {b:,} دلار است و "
         f"ادامه تا {c:,} فقط در صورت واکنش معتبر در {b:,}؛ "
-        f"مسیر: {spot_disp} → {b:,} → {c:,}."
+        f"{_path_summary_fa(spot_disp, b, c)}"
     )
 
 
