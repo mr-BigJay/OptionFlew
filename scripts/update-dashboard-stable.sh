@@ -47,7 +47,8 @@ say "Version check:"
 say "Report sample:"
 OUT=$(.venv/bin/python3 -m optionflow --simple 2>&1) || true
 echo "$OUT" | head -8
-echo "$OUT" | grep -q "نتیجه‌گیری" || die "Khrooji hanuz format ghadimi (A-B/scalp). Payin kamel:\n$OUT"
+echo "$OUT" | grep -qE "جمع‌بندی|نتیجه‌گیری" || die "Khrooji hanuz format ghadimi (A-B/scalp). Payin kamel:\n$OUT"
+echo "$OUT" | grep -q "حرکت اول" || die "Format prose-v3 (bakhsh-band) faal nist."
 echo "$OUT" | grep -qE "A–B|اسکالپ|بازار متعادل" && die "Matn ghadimi (A-B) hanuz hast."
 
 say "OK — format jadid faal ast."
