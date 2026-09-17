@@ -3,7 +3,7 @@
 set -euo pipefail
 
 INSTALL_DIR="${OPTIONFLOW_DIR:-/opt/optionflow-dashboard-pre}"
-BRANCH="${OPTIONFLOW_BRANCH:-cursor/enriched-data-report-9890}"
+BRANCH="${OPTIONFLOW_BRANCH:-pre-release}"
 SERVICE="${OPTIONFLOW_SERVICE:-optionflow-dashboard-pre.service}"
 REMOTE="${OPTIONFLOW_REMOTE:-origin}"
 
@@ -54,6 +54,7 @@ say "Tolid gozaresh jadid ..."
 say "Preview (--simple --enriched):"
 OUT=$(.venv/bin/python -m optionflow --simple --enriched)
 echo "$OUT" | head -25
-echo "$OUT" | grep -q "نتیجه‌گیری" || die "Gozaresh format jadid nist — git log -1 ro check kon."
+echo "$OUT" | grep -qE "جمع‌بندی|نتیجه‌گیری" || die "Gozaresh format jadid nist — git log -1 ro check kon."
+echo "$OUT" | grep -q "حرکت اول" || die "Format prose-v3 (bakhsh-band) nist."
 echo "$OUT" | grep -q "زمینهٔ بازار" && die "Block zamane bazar (code ghadimi)."
-echo "$OUT" | grep -q "مرحله اول" && die "Format titr-dar — bayad prose monasem bashe."
+echo "$OUT" | grep -qE "مرحله اول|→" && die "Format titr-dar ya flsh — bayad prose-v3 bashe."

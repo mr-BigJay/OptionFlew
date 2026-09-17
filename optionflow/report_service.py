@@ -94,7 +94,7 @@ def produce_report(
         paragraph = format_enriched_simple_paragraph(analysis, guidance, ctx)
     else:
         paragraph = format_simple_paragraph(analysis, guidance)
-    if enriched and ("نتیجه‌گیری" not in paragraph or "→" not in paragraph):
+    if enriched and ("جمع‌بندی" not in paragraph and "نتیجه‌گیری" not in paragraph):
         logger.error(
             "Enriched report missing prose narrative; check deployment."
         )
