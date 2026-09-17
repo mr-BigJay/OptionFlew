@@ -10,7 +10,7 @@ from optionflow.guide import build_guidance, format_report, format_simple_paragr
 from optionflow.report_service import produce_report
 from optionflow.tehran_time import to_utc_ms
 
-REPORT_FORMAT_ID = "prose-v2"
+REPORT_FORMAT_ID = "prose-v3"
 
 
 def _print_version() -> None:
