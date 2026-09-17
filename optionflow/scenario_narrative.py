@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from optionflow.flow_analyzer import FlowAnalysis, top_strikes_near_spot
 from optionflow.path_scenario import (
     MovementPath,
-    PathLeg,
     effective_movement_path,
 )
 
@@ -21,6 +20,18 @@ class _LegPlan:
     c: int
     first_dir: str
     second_dir: str
+    two_legs: bool
+
+
+@dataclass
+class _UsedSignals:
+    keys: set[str] = field(default_factory=set)
+
+    def take(self, key: str) -> bool:
+        if key in self.keys:
+            return False
+        self.keys.add(key)
+        return True
 
 
 def _normalize_bc(
@@ -36,24 +47,23 @@ def _normalize_bc(
             c=legs[1].to_level,
             first_dir=legs[0].direction,
             second_dir=legs[1].direction,
+            two_legs=True,
         )
     leg = legs[0]
     if leg.direction == "down":
-        return _LegPlan(b=leg.to_level, c=target, first_dir="down", second_dir="up")
-    return _LegPlan(b=leg.to_level, c=support, first_dir="up", second_dir="down")
-
-
-def _down_then_up_path(spot: float, support: int, target: int) -> MovementPath:
-    spot_i = int(round(spot))
-    return MovementPath(
-        id="down_then_up",
-        title_fa="مسیر محتمل: اول پایین، بعد برگشت",
-        legs=(
-            PathLeg("down", spot_i, support),
-            PathLeg("up", support, target),
-        ),
-        narrative_fa="",
-        likelihood="primary",
+        return _LegPlan(
+            b=leg.to_level,
+            c=target,
+            first_dir="down",
+            second_dir="up",
+            two_legs=False,
+        )
+    return _LegPlan(
+        b=leg.to_level,
+        c=support,
+        first_dir="up",
+        second_dir="down",
+        two_legs=False,
     )
 
 
@@ -67,8 +77,9 @@ def _resolve_path_for_narrative(
     path_alternate: MovementPath | None,
     ctx: Any | None,
 ) -> MovementPath:
-    """مسیر گزارش: enriched (taker/OI) + flow؛ هم‌راستا با سناریوی down→up نمونه."""
-    base = effective_movement_path(
+    """مسیر واحد Spot→B→C؛ فقط از guidance/flow — ctx مسیر را عوض نمی‌کند."""
+    _ = ctx
+    return effective_movement_path(
         main,
         support_zone=support,
         target_zone=target,
@@ -76,74 +87,9 @@ def _resolve_path_for_narrative(
         primary=path_primary,
         alternate=path_alternate,
     )
-    spot_i = int(round(spot))
-    if support >= spot_i or target <= support:
-        return base
-
-    c = main.contracts
-    bear_pts = 0
-    bull_pts = 0
-
-    if ctx is not None:
-        taker = getattr(ctx, "taker_buy_sell_ratio", None)
-        oi_ch = getattr(ctx, "oi_change_pct_1h", None)
-        if taker is not None:
-            if taker < 0.98:
-                bear_pts += 3
-            elif taker > 1.02:
-                bull_pts += 3
-        if oi_ch is not None:
-            if oi_ch < -0.05:
-                bear_pts += 1
-            elif oi_ch > 0.05:
-                bull_pts += 1
-
-    ratio = _flow_ratio(main)
-    if c.buyer_put >= c.buyer_call * 1.08:
-        bear_pts += 2
-    if c.buyer_call >= c.buyer_put * 1.08:
-        bull_pts += 2
-    if ratio < 0.95:
-        bear_pts += 1
-    elif ratio > 1.05:
-        bull_pts += 1
-
-    if bear_pts > bull_pts and bear_pts >= 2:
-        return _down_then_up_path(spot, support, target)
-    if bull_pts > bear_pts and bull_pts >= 3 and ratio >= 1.08:
-        if base.id == "up_then_down":
-            return base
-        return MovementPath(
-            id="up_then_down",
-            title_fa="مسیر محتمل: اول بالا، بعد اصلاح",
-            legs=(
-                PathLeg("up", spot_i, target),
-                PathLeg("down", target, support),
-            ),
-            narrative_fa="",
-            likelihood="primary",
-        )
-    if base.id in ("down_then_up", "down_continuation"):
-        return _down_then_up_path(spot, support, target)
-    if len(base.legs) == 1 and support < spot_i < target:
-        leg = base.legs[0]
-        if leg.direction == "up" or bull_pts >= bear_pts:
-            return MovementPath(
-                id="up_then_down",
-                title_fa="مسیر محتمل: اول بالا، بعد اصلاح",
-                legs=(
-                    PathLeg("up", spot_i, target),
-                    PathLeg("down", target, support),
-                ),
-                narrative_fa="",
-                likelihood="primary",
-            )
-        return _down_then_up_path(spot, support, target)
-    return base
 
 
 def _plain(text: str) -> str:
-    """متن ساده بدون مارک‌داون."""
     import re
 
     t = text.replace("**", "").strip()
@@ -152,317 +98,7 @@ def _plain(text: str) -> str:
 
 
 def _path_summary_fa(spot_disp: str, b: int, c: int) -> str:
-    """مسیر بدون فلش (→) برای نمایش درست در متن RTL."""
-    return f"مسیر برآوردشده: از {spot_disp} به {b:,} و سپس به {c:,}."
-
-
-def _assemble_prose_report(
-    *,
-    spot_disp: str,
-    b: int,
-    c: int,
-    stop: int,
-    goal: int,
-    opening: str,
-    leg1: str,
-    react: str,
-    leg2: str,
-    entry: str,
-    invalid: str,
-    conclusion: str,
-) -> str:
-    """گزارش توضیحی پیوسته؛ بدون تیتر و بخش‌بندی."""
-    intro = (
-        f"قیمت بیت‌کوین در لحظهٔ گزارش حدود {spot_disp} دلار است. "
-        f"{_plain(opening)}"
-    )
-    body = (
-        f"{_plain(leg1)} {_plain(react)} {_plain(leg2)} "
-        f"{_plain(entry)} حد ضرر حدود {stop:,} دلار و هدف کوتاه‌مدت {goal:,} دلار "
-        f"در این سناریو در نظر گرفته شده است."
-    )
-    ending = f"نتیجه‌گیری: {_plain(conclusion)} {_plain(invalid)}"
-    return "\n\n".join((intro, body, ending))
-
-
-def _assemble_report(
-    *,
-    title: str,
-    spot_disp: str,
-    opening: str,
-    b: int,
-    c: int,
-    leg1: str,
-    react: str,
-    leg2: str,
-    entry: str,
-    stop: int,
-    goal: int,
-    invalid: str,
-    summary: str,
-) -> str:
-    return (
-        f"**سناریوی اصلی BTC: {title}**\n\n"
-        f"**قیمت فعلی: {spot_disp} دلار**\n\n"
-        f"{opening}\n\n"
-        f"**مرحله اول: {spot_disp} → {b:,}**\n\n"
-        f"{leg1}\n\n"
-        f"**واکنش در {b:,}**\n\n"
-        f"{react}\n\n"
-        f"**مرحله دوم: {b:,} → {c:,}**\n\n"
-        f"{leg2}\n\n"
-        f"**شرایط ورود**\n\n"
-        f"{entry}\n\n"
-        f"**حد ضرر:** {stop:,} دلار\n"
-        f"**هدف:** {goal:,} دلار\n\n"
-        f"**ابطال سناریو**\n\n"
-        f"{invalid}\n\n"
-        f"**جمع‌بندی**\n\n"
-        f"{summary}"
-    )
-
-
-def _title_label(first_dir: str) -> str:
-    if first_dir == "down":
-        return "تمایل کوتاه‌مدت نزولی"
-    return "تمایل کوتاه‌مدت صعودی"
-
-
-def _join_bits(parts: list[str], fallback: str) -> str:
-    cleaned = [p.strip().rstrip(".") for p in parts if p][:3]
-    if not cleaned:
-        return fallback
-    return ". ".join(cleaned) + "."
-
-
-def _opening_paragraph(
-    plan: _LegPlan,
-    b: int,
-    phrases: dict[str, str],
-    ctx: Any | None,
-    main: FlowAnalysis,
-) -> str:
-    lead = (
-        f"به نظر می‌رسد حرکت اول کوتاه‌مدت به سمت {b:,} دلار محتمل‌تر باشد."
-    )
-    if ctx is None:
-        return f"{lead} {phrases['why']}"
-
-    taker = getattr(ctx, "taker_buy_sell_ratio", None)
-    oi_ch = getattr(ctx, "oi_change_pct_1h", None)
-    funding = getattr(ctx, "funding_rate", None)
-
-    if plan.first_dir == "down" and taker is not None and taker < 1.0:
-        tail = (
-            f" دلیل اصلی این دید، ضعف نسبی فشار خرید در بازار فیوچرز است؛ "
-            f"نسبت Taker Buy/Sell روی {taker:.2f} قرار دارد"
-        )
-        if oi_ch is not None and oi_ch < 0:
-            tail += " و OI نیز کمی کاهش داشته است"
-        elif oi_ch is not None:
-            tail += f" و تغییر OI در ۱س حدود {oi_ch:+.1f}٪ است"
-        if funding is not None:
-            fr = funding * 100
-            if abs(fr) < 0.008:
-                tail += (
-                    ". در کنار آن، Funding تقریباً خنثی است و فعلاً نشانه‌ای از "
-                    "قدرت بالای خریداران اهرمی دیده نمی‌شود."
-                )
-            elif funding > 0:
-                tail += (
-                    f". Funding مثبت ({fr:.3f}٪) نشان می‌دهد longهای اهرمی شلوغ‌اند؛ "
-                    "اصلاح کوتاه‌مدت به پایین محتمل‌تر است."
-                )
-            else:
-                tail += f". Funding ({fr:.3f}٪) فعلاً از فشار فروش اهرمی حکایت ندارد."
-        else:
-            tail += "."
-        c_flow = main.contracts
-        if c_flow.buyer_put >= c_flow.buyer_call * 1.05:
-            return (
-                lead
-                + tail
-                + f" در معاملات آپشن Deribit نیز خرید پوت غالب است و "
-                f"سطح {b:,} به‌عنوان حمایت flow برجسته شده است."
-            )
-        extra = phrases["why"]
-        if "پوت" in extra and "taker" not in extra.lower():
-            first = extra.split(". ")[0].strip()
-            if first and first not in tail:
-                return lead + tail + " " + first + "."
-        return lead + tail
-
-    if plan.first_dir == "up" and taker is not None and taker > 1.0:
-        tail = (
-            f" دلیل اصلی این دید، قوت نسبی فشار خرید در بازار فیوچرز است؛ "
-            f"نسبت Taker Buy/Sell روی {taker:.2f} قرار دارد"
-        )
-        if oi_ch is not None and oi_ch < 0:
-            tail += "؛ OI در یک ساعت اخیر کمی کاهش داشته که پس از رسیدن به هدف flow احتمال اصلاح را بالا می‌برد"
-        elif oi_ch is not None and oi_ch > 0:
-            tail += f" و افزایش OI ({oi_ch:+.1f}٪ در ۱س) حرکت اول به بالا را همراهی می‌کند"
-        if funding is not None:
-            fr = funding * 100
-            if abs(fr) < 0.015:
-                tail += (
-                    ". Funding تقریباً خنثی است؛ بنابراین جهت اول بیشتر از taker و flow آپشن "
-                    "تعیین می‌شود تا از فشار funding."
-                )
-            elif funding > 0:
-                tail += (
-                    f". Funding مثبت ({fr:.3f}٪) نشان می‌دهد longهای اهرمی فعال‌اند؛ "
-                    f"پس از رسیدن به {b:,} احتمال سودگیری و اصلاح بیشتر است."
-                )
-            else:
-                tail += "."
-        else:
-            tail += "."
-        c_flow = main.contracts
-        if c_flow.buyer_call >= c_flow.buyer_put * 1.05:
-            return (
-                lead
-                + tail
-                + f" خرید کال غالب در آپشن Deribit نیز هدف کوتاه‌مدت را نزدیک {b:,} "
-                f"قرار داده است."
-            )
-        extra = phrases["why"]
-        if "کال" in extra and "taker" not in extra.lower():
-            first = extra.split(". ")[0].strip()
-            if first and first not in tail:
-                return lead + tail + " " + first + "."
-        return lead + tail
-
-    return f"{lead} {phrases['why']}"
-
-
-def _leg1_paragraph(plan: _LegPlan, spot_disp: str, b: int, phrases: dict[str, str]) -> str:
-    if plan.first_dir == "down":
-        base = (
-            f"به همین دلیل انتظار داریم قیمت ابتدا به سمت {b:,} دلار برود، "
-            f"چون فعلاً قدرت خرید برای عبور مستقیم از سقف محدوده کافی دیده نمی‌شود "
-            f"و این حرکت می‌تواند برای جمع نقدینگی پایین‌تر و آزمایش حمایت اصلی باشد."
-        )
-    else:
-        base = (
-            f"به همین دلیل انتظار داریم قیمت ابتدا به سمت {b:,} دلار برود، "
-            f"چون خرید کال در flow آپشن و strikeهای بالاتر مسیر کوتاه‌مدت را "
-            f"به سمت هدف flow هدایت می‌کند."
-        )
-    extra = phrases["leg1"]
-    if extra and extra not in base:
-        return base + " " + extra
-    return base
-
-
-def _react_paragraph(plan: _LegPlan, b: int, phrases: dict[str, str]) -> str:
-    if plan.first_dir == "down" and plan.second_dir == "up":
-        base = (
-            f"در این محدوده انتظار واکنش قیمت را داریم، چون این سطح بر اساس معاملات آپشن "
-            f"به‌عنوان حمایت مهم شناسایی شده است. "
-            f"اگر در برخورد با این سطح فشار فروش کاهش پیدا کند و خریداران وارد شوند، "
-            f"احتمال برگشت قیمت افزایش می‌یابد."
-        )
-    elif plan.first_dir == "up" and plan.second_dir == "down":
-        base = (
-            f"در {b:,} دلار انتظار واکنش یا اصلاح داریم، چون flow همین سطح را "
-            f"به‌عنوان هدف/مقاومت کوتاه‌مدت نشان داده است. "
-            f"فروش کال یا سودگیری می‌تواند حرکت را موقتاً متوقف کند."
-        )
-    else:
-        base = phrases["react"]
-    extra = phrases["react"]
-    if plan.first_dir == "down" and plan.second_dir == "up":
-        if extra and extra not in base:
-            return base + " " + extra
-        return base
-    if plan.first_dir == "up" and plan.second_dir == "down":
-        if extra and extra not in base and not extra.startswith("در " + f"{b:,}"):
-            return base + " " + extra
-        return base
-    if extra and extra not in base:
-        return base + " " + extra
-    return base
-
-
-def _leg2_paragraph(plan: _LegPlan, b: int, c: int, phrases: dict[str, str]) -> str:
-    if plan.first_dir == "down" and plan.second_dir == "up":
-        base = (
-            f"در صورت تأیید واکنش صعودی در {b:,}، حرکت بعدی می‌تواند به سمت {c:,} دلار باشد. "
-            f"در این حالت، برگشت از حمایت می‌تواند قیمت را به سمت محدوده بالایی بازار "
-            f"و سطح مهم بعدی آپشن‌ها (هدف flow) هدایت کند."
-        )
-        extra = phrases["leg2"]
-        if extra and extra not in base:
-            return base + " " + extra
-        return base
-    if plan.first_dir == "up" and plan.second_dir == "down":
-        base = (
-            f"پس از واکنش در {b:,}، اصلاح به {c:,} دلار محتمل است، "
-            f"چون {b:,} هدف flow کال و مقاومت کوتاه‌مدت است و پس از سودگیری، "
-            f"قیمت معمولاً برای آزمایش حمایت flow (حدود {c:,}) برمی‌گردد."
-        )
-        extra = phrases["leg2"]
-        if extra and extra not in base and not extra.startswith("پس از واکنش"):
-            return base + " " + extra
-        return base
-    return phrases["leg2"]
-
-
-def _conclusion_paragraph(
-    spot_disp: str,
-    b: int,
-    c: int,
-    plan: _LegPlan,
-) -> str:
-    if plan.first_dir == "down" and plan.second_dir == "up":
-        return (
-            f"سناریوی پیش‌رو برای کوتاه‌مدت این است که قیمت از {spot_disp} دلار "
-            f"ابتدا به سمت {b:,} (حمایت flow) حرکت کند، در آن ناحیه واکنش بگیرد "
-            f"و در صورت تأیید خریداران به {c:,} (هدف flow) برگردد؛ "
-            f"{_path_summary_fa(spot_disp, b, c)}"
-        )
-    if plan.first_dir == "up" and plan.second_dir == "down":
-        return (
-            f"سناریوی پیش‌رو برای کوتاه‌مدت این است که قیمت از {spot_disp} دلار "
-            f"ابتدا به {b:,} (هدف flow) صعود کند، در آنجا واکنش یا اصلاح ببیند "
-            f"و در صورت تأیید به {c:,} (حمایت flow) برگردد؛ "
-            f"{_path_summary_fa(spot_disp, b, c)}"
-        )
-    direction = "بالا" if plan.first_dir == "up" else "پایین"
-    return (
-        f"سناریوی پیش‌رو حرکت اول به سمت {direction} تا {b:,} دلار است و "
-        f"ادامه تا {c:,} فقط در صورت واکنش معتبر در {b:,}؛ "
-        f"{_path_summary_fa(spot_disp, b, c)}"
-    )
-
-
-def _summary_paragraph(
-    spot_disp: str,
-    b: int,
-    c: int,
-    plan: _LegPlan,
-) -> str:
-    if plan.first_dir == "down" and plan.second_dir == "up":
-        return (
-            f"**تک سناریوی کوتاه‌مدت:** مسیر **{spot_disp} → {b:,} → {c:,}**. "
-            f"ابتدا افت به **{b:,}** (flow پوت / جمع نقدینگی)، "
-            f"**واکنش در {b:,}** (حمایت آپشن)، "
-            f"سپس در صورت تأیید برگشت به **{c:,}** (هدف flow کال). "
-            f"تمرکز فعلی: حرکت نزولی اولیه و پایش واکنش در {b:,}."
-        )
-    if plan.first_dir == "up" and plan.second_dir == "down":
-        return (
-            f"**تک سناریوی کوتاه‌مدت:** مسیر **{spot_disp} → {b:,} → {c:,}**. "
-            f"ابتدا صعود به **{b:,}** (taker/خرید کال در flow)، "
-            f"**واکنش در {b:,}** (مقاومت flow و سودگیری)، "
-            f"سپس در صورت تأیید اصلاح به **{c:,}** (حمایت flow پوت). "
-            f"تمرکز فعلی: رسیدن به {b:,} و مدیریت ریسک قبل از برگشت به {c:,}."
-        )
-    direction = "صعودی" if plan.first_dir == "up" else "نزولی"
-    return (
-        f"سناریوی اصلی حرکت {direction} اولیه از **{spot_disp} دلار** به **{b:,} دلار** است؛ "
-        f"ادامه به **{c:,} دلار** فقط در صورت تأیید واکنش در B."
-    )
+    return f"از {spot_disp} به {b:,} و سپس به {c:,}"
 
 
 def _flow_ratio(main: FlowAnalysis) -> float:
@@ -472,209 +108,320 @@ def _flow_ratio(main: FlowAnalysis) -> float:
     return bull / max(bear, 1e-9)
 
 
-def _pick_phrases(
+def _title_label(plan: _LegPlan) -> str:
+    if plan.first_dir == "down":
+        return "تمایل کوتاه‌مدت به افت اولیه"
+    return "تمایل کوتاه‌مدت به صعود اولیه"
+
+
+def _fallback_why_spot_b(plan: _LegPlan, b: int) -> str:
+    if plan.first_dir == "down":
+        return (
+            f"جریان معاملات آپشن و سطوح فعال، حرکت اول از قیمت فعلی به سمت "
+            f"{b:,} دلار را محتمل‌تر نشان می‌دهند."
+        )
+    return (
+        f"جریان معاملات آپشن و تمرکز خرید در محدودهٔ بالاتر، "
+        f"حرکت اول به {b:,} دلار را در کوتاه‌مدت محتمل‌تر می‌کند."
+    )
+
+
+def _why_spot_to_b(
     main: FlowAnalysis,
-    *,
-    bias: str,
-    support: int,
-    target: int,
     plan: _LegPlan,
+    b: int,
     ctx: Any | None,
-) -> dict[str, str]:
-    """استدلال علّی؛ فقط سیگنال‌های مؤثر."""
+    used: _UsedSignals,
+) -> str:
     c = main.contracts
     ratio = _flow_ratio(main)
     spot = main.spot
-    b, c_level = plan.b, plan.c
+    parts: list[str] = []
 
-    why_bits: list[str] = []
-    leg1_bits: list[str] = []
-    react_bits: list[str] = []
-    leg2_bits: list[str] = []
-
-    # --- Options flow (همیشه در دسترس) ---
-    if plan.first_dir == "down":
-        if c.buyer_put >= c.buyer_call * 1.05:
-            why_bits.append(
-                "غلبهٔ خرید پوت در آپشن Deribit نشان می‌دهد معامله‌گران برای افت کوتاه‌مدت hedge گرفته‌اند"
-            )
-        if ratio < 1.0:
-            why_bits.append(
-                "ترکیب flow (کال در برابر پوت) هنوز به نفع حرکت اول به پایین متمایل است"
-            )
-        top_puts = top_strikes_near_spot(main.put_buy_by_strike, spot, 2, pct_lo=0.85, pct_hi=1.02)
-        if top_puts:
-            strikes_s = " و ".join(f"{int(k):,}" for k, _ in top_puts)
-            leg1_bits.append(
-                f"تمرکز حجم خرید پوت نزدیک strikeهای {strikes_s} مسیر را به سمت جمع‌آوری نقدینگی "
-                f"در حدود {b:,} هدایت می‌کند"
-            )
-        else:
-            leg1_bits.append(
-                f"مرکز وزنی flow پوت حمایت flow را نزدیک {b:,} نشان می‌دهد؛ "
-                f"حرکت اول برای آزمایش همان محدوده منطقی است"
-            )
-        top_calls = top_strikes_near_spot(main.call_buy_by_strike, spot, 2, pct_lo=1.0, pct_hi=1.12)
-        if top_calls and c.buyer_call >= c.seller_call * 0.7:
-            react_bits.append(
-                "هم‌زمان خرید کال در strikeهای بالاتر هنوز برقرار است؛ "
-                f"اگر فروشندگان در {b:,} خسته شوند، پایان دفاع محتمل‌تر می‌شود"
-            )
-        react_bits.append(
-            f"ناحیهٔ {b:,} همان «حمایت flow» برآوردشده از پوت است؛ "
-            f"احتمال واکنش (برگشت یا مکث) در آنجا از روی همین تمرکز strike بالاست"
-        )
-        if c_level > b:
-            leg2_bits.append(
-                f"در صورت تأیید واکنش صعودی در {b:,}، هدف flow کال (حدود {c_level:,}) "
-                f"به‌عنوان مقصد بعدی هم‌راستا با خرید کال باقی می‌ماند"
-            )
-    else:
-        if c.buyer_call >= c.buyer_put * 1.05:
-            why_bits.append(
-                "خرید کال غالب در flow آپشن تمایل کوتاه‌مدت به بالا را تقویت می‌کند"
-            )
-        if ratio >= 1.0:
-            why_bits.append(
-                "نسبت flow صعودی/نزولی به نفع حرکت اول به سمت بالا متمایل است"
-            )
-        top_calls = top_strikes_near_spot(main.call_buy_by_strike, spot, 2, pct_lo=1.0, pct_hi=1.12)
-        if top_calls:
-            strikes_s = " و ".join(f"{int(k):,}" for k, _ in top_calls)
-            leg1_bits.append(
-                f"تمرکز خرید کال روی {strikes_s} مسیر را به سمت هدف flow "
-                f"نزدیک {b:,} می‌کشد"
-            )
-        else:
-            leg1_bits.append(
-                f"مرکز وزنی strikeهای کال خریداری‌شده حدود {b:,} است؛ "
-                f"حرکت اول برای نزدیک شدن به همان محدوده برآورد می‌شود"
-            )
-        react_bits.append(
-            f"در {b:,} ممکن است فروش کال یا سودگیری کوتاه‌مدت ظاهر شود؛ "
-            f"flow همین سطح را به‌عنوان هدف/مقاومت کوتاه‌مدت نشان داده است"
-        )
-        if c_level < b:
-            leg2_bits.append(
-                f"پس از واکنش در {b:,}، برگشت به ناحیهٔ {c_level:,} (حمایت flow پوت) "
-                f"در سناریوی اصلاح کوتاه‌مدت قابل انتظار است"
-            )
-        elif c_level > b:
-            leg2_bits.append(
-                f"اگر {b:,} با حجم عبور شود، مقصد بعدی {c_level:,} "
-                f"با هدف flow هم‌خوان است"
-            )
-
-    # --- Enriched (فقط اگر به استدلال اضافه کند) ---
     if ctx is not None:
         taker = getattr(ctx, "taker_buy_sell_ratio", None)
         oi_ch = getattr(ctx, "oi_change_pct_1h", None)
-        depth = getattr(ctx, "depth_imbalance_pct", None)
         funding = getattr(ctx, "funding_rate", None)
-        pcoi = getattr(ctx, "put_call_oi", None)
-        max_pain = getattr(ctx, "max_pain", None)
-        gamma_s = getattr(ctx, "gamma_support", None)
-        gamma_r = getattr(ctx, "gamma_resistance", None)
-        struct = getattr(ctx, "structure_notes", None) or []
+        depth = getattr(ctx, "depth_imbalance_pct", None)
 
-        if plan.first_dir == "down" and taker is not None and taker < 0.92:
-            why_bits.append(
-                f"در futures، فشار taker فروش (نسبت {taker:.2f}) نشان می‌دهد "
-                f"ورود aggressive خرید در spot/futures فعلاً محدود است"
+        if (
+            plan.first_dir == "down"
+            and taker is not None
+            and taker < 0.98
+            and used.take("taker")
+        ):
+            tail = (
+                "فروش تهاجمی در بازار آتی کمی غالب است و فشار خرید فعلاً ضعیف به نظر می‌رسد"
             )
-        if plan.first_dir == "up" and taker is not None and taker > 1.08:
-            why_bits.append(
-                f"خرید taker قوی‌تر (نسبت {taker:.2f}) حرکت اول به بالا را حمایت می‌کند"
+            if oi_ch is not None and oi_ch < -0.03 and used.take("oi"):
+                tail += "؛ کاهش جزئی موقعیت‌های باز نیز با ضعف موقت خریداران هم‌خوان است"
+            tail += f"؛ بنابراین حرکت اولیه به سمت {b:,} دلار محتمل‌تر شده است."
+            parts.append(tail)
+        elif (
+            plan.first_dir == "up"
+            and taker is not None
+            and taker > 1.02
+            and used.take("taker")
+        ):
+            tail = "خرید تهاجمی در بازار آتی نسبتاً قوی‌تر است"
+            if oi_ch is not None and oi_ch > 0.03 and used.take("oi"):
+                tail += " و افزایش موقعیت‌های باز حرکت اول به بالا را همراهی می‌کند"
+            tail += f"؛ در نتیجه رسیدن به {b:,} دلار در مرحلهٔ اول محتمل‌تر است."
+            parts.append(tail)
+
+        if (
+            not parts
+            and funding is not None
+            and funding > 0.0008
+            and plan.first_dir == "down"
+            and used.take("funding")
+        ):
+            parts.append(
+                "فاندینگ مثبت نشان می‌دهد خریداران اهرمی شلوغ‌اند؛ "
+                f"اصلاح کوتاه به سمت {b:,} دلار قبل از هر برگشت قوی‌تر دیده می‌شود."
             )
-        if oi_ch is not None and oi_ch < -0.15 and plan.first_dir == "down":
-            why_bits.append(
-                f"کاهش جزئی OI آتی ({oi_ch:+.1f}٪ در ۱س) با ضعف موقت longها "
-                f"هم‌خوان است با افت اولیه قبل از واکنش"
+
+        if (
+            not parts
+            and depth is not None
+            and plan.first_dir == "down"
+            and depth < -3
+            and used.take("depth")
+        ):
+            parts.append(
+                "عرضهٔ نسبی در دفتر سفارش می‌تواند سرعت رسیدن قیمت به مقصد اول را بیشتر کند."
             )
-        if depth is not None:
-            if plan.first_dir == "down" and depth < -3:
-                leg1_bits.append(
-                    "عرضهٔ غالب در دفتر سفارش spot می‌تواند سرعت رسیدن به B را بیشتر کند"
-                )
-            elif plan.first_dir == "up" and depth > 3:
-                leg1_bits.append(
-                    "تقاضای نسبی در order book کوتاه‌مدت حرکت به B را تقویت می‌کند"
-                )
-        if funding is not None and abs(funding) > 0.0001:
-            fr = funding * 100
-            if funding > 0.01 and plan.first_dir == "down":
-                why_bits.append(
-                    f"فاندینگ مثبت ({fr:.3f}٪) نشان می‌دهد longهای اهرمی شلوغ‌اند؛ "
-                    f"اصلاح کوتاه برای شکار نقدینگی پایین‌تر محتمل‌تر است"
-                )
-        if pcoi is not None and pcoi > 1.15 and plan.first_dir == "down":
-            react_bits.append(
-                f"Put/Call OI بالاتر ({pcoi:.2f}) یعنی زیرساخت hedging هنوز سنگین است؛ "
-                f"واکنش در B اگر باشد احتمالاً محافظه‌کارانه خواهد بود"
+        elif (
+            not parts
+            and depth is not None
+            and plan.first_dir == "up"
+            and depth > 3
+            and used.take("depth")
+        ):
+            parts.append(
+                "تقاضای نسبی در دفتر سفارش کوتاه‌مدت حرکت به مقصد اول را تقویت می‌کند."
             )
-        if max_pain and abs(max_pain - c_level) / max(spot, 1) < 0.04:
-            leg2_bits.append(
-                f"max pain آپشن نزدیک {max_pain:,} با مقصد C هم‌راستاست و "
-                f"می‌تواند magnet قیمت پس از واکنش در B باشد"
-            )
-        if plan.first_dir == "down" and gamma_s and abs(gamma_s - b) / max(spot, 1) < 0.02:
-            react_bits.append(
-                f"تمرکز gamma حمایتی نزدیک {gamma_s:,} احتمال مکث یا برگشت در B را بیشتر می‌کند"
-            )
-        if plan.first_dir == "up" and gamma_r and abs(gamma_r - b) / max(spot, 1) < 0.02:
-            react_bits.append(
-                f"تمرکز gamma مقاومتی نزدیک {gamma_r:,} توضیح‌دهندهٔ واکنش احتمالی در B است"
-            )
+
+        struct = getattr(ctx, "structure_notes", None) or []
         for note in struct[:1]:
             clean = note.rstrip(".")
             if plan.first_dir == "down" and (
                 "PDL" in note or "sweep" in note or "کف" in note
             ):
-                leg1_bits.append(clean + "؛ با حرکت اول به B هم‌جهت است")
-            elif plan.first_dir == "up" and (
+                if used.take("structure"):
+                    parts.append(f"{clean}؛ با حرکت اول به {b:,} هم‌جهت است.")
+                    break
+
+    if not parts:
+        if plan.first_dir == "down" and c.buyer_put >= c.buyer_call * 1.05 and used.take(
+            "flow_put"
+        ):
+            parts.append(
+                "غلبهٔ خرید قرارداد پوت در آپشن نشان می‌دهد معامله‌گران برای افت کوتاه‌مدت "
+                f"پوشش ریسک گرفته‌اند؛ حرکت اول به {b:,} دلار منطقی است."
+            )
+        elif plan.first_dir == "up" and c.buyer_call >= c.buyer_put * 1.05 and used.take(
+            "flow_call"
+        ):
+            parts.append(
+                "خرید قرارداد کال در آپشن تمایل کوتاه‌مدت به بالا را تقویت می‌کند؛ "
+                f"مقصد اول {b:,} دلار برآورد می‌شود."
+            )
+        elif (plan.first_dir == "down" and ratio < 1.0) or (
+            plan.first_dir == "up" and ratio >= 1.0
+        ):
+            if used.take("flow_ratio"):
+                dir_fa = "پایین" if plan.first_dir == "down" else "بالا"
+                parts.append(
+                    f"ترکیب جریان صعودی و نزولی در آپشن به نفع حرکت اول به سمت {dir_fa} است؛ "
+                    f"مقصد اول {b:,} دلار است."
+                )
+
+    if not parts and used.take("strikes_leg1"):
+        if plan.first_dir == "down":
+            top_puts = top_strikes_near_spot(
+                main.put_buy_by_strike, spot, 2, pct_lo=0.85, pct_hi=1.02
+            )
+            if top_puts:
+                strikes_s = " و ".join(f"{int(k):,}" for k, _ in top_puts)
+                parts.append(
+                    f"تمرکز حجم خرید پوت نزدیک سطوح {strikes_s} مسیر را به سمت "
+                    f"آزمایش حمایت در {b:,} دلار هدایت می‌کند."
+                )
+        else:
+            top_calls = top_strikes_near_spot(
+                main.call_buy_by_strike, spot, 2, pct_lo=1.0, pct_hi=1.12
+            )
+            if top_calls:
+                strikes_s = " و ".join(f"{int(k):,}" for k, _ in top_calls)
+                parts.append(
+                    f"تمرکز خرید کال روی {strikes_s} قیمت را به سمت {b:,} دلار "
+                    f"در مرحلهٔ اول می‌کشد."
+                )
+
+    return parts[0] if parts else _fallback_why_spot_b(plan, b)
+
+
+def _why_react_at_b(
+    main: FlowAnalysis,
+    plan: _LegPlan,
+    b: int,
+    ctx: Any | None,
+    used: _UsedSignals,
+) -> str:
+    spot = main.spot
+    c = main.contracts
+
+    if ctx is not None:
+        gamma_s = getattr(ctx, "gamma_support", None)
+        gamma_r = getattr(ctx, "gamma_resistance", None)
+        pcoi = getattr(ctx, "put_call_oi", None)
+        if plan.first_dir == "down" and gamma_s and abs(gamma_s - b) / max(spot, 1) < 0.02:
+            if used.take("gamma"):
+                return (
+                    f"تمرکز گاما حمایتی نزدیک {b:,} دلار احتمال مکث یا برگشت در همان ناحیه "
+                    f"را بیشتر می‌کند."
+                )
+        if plan.first_dir == "up" and gamma_r and abs(gamma_r - b) / max(spot, 1) < 0.02:
+            if used.take("gamma"):
+                return (
+                    f"تمرکز گاما مقاومتی نزدیک {b:,} دلار توضیح می‌دهد چرا در مقصد اول "
+                    f"واکنش یا اصلاح محتمل است."
+                )
+        if pcoi is not None and pcoi > 1.15 and plan.first_dir == "down" and used.take(
+            "pcoi"
+        ):
+            return (
+                f"نسبت بالای موقعیت باز پوت به کال نشان می‌دهد پوشش ریسک هنوز سنگین است؛ "
+                f"واکنش در {b:,} دلار اگر رخ دهد احتمالاً محافظه‌کارانه خواهد بود."
+            )
+        struct = getattr(ctx, "structure_notes", None) or []
+        for note in struct[:1]:
+            if plan.first_dir == "up" and (
                 "premium" in note or "PDH" in note or "اصلاح" in note
             ):
-                react_bits.append(clean)
+                if used.take("structure"):
+                    return f"{note.rstrip('.')}؛ بنابراین در {b:,} دلار انتظار واکنش داریم."
 
-    if ctx is not None and plan.first_dir == "down":
-        taker_open = getattr(ctx, "taker_buy_sell_ratio", None)
-        if taker_open is not None and taker_open < 1.0:
-            why_bits = [
-                w
-                for w in why_bits
-                if "taker" not in w.lower()
-                and "futures" not in w
-                and "OI آتی" not in w
-            ]
+        fg = getattr(ctx, "fear_greed", None)
+        if fg is not None and fg <= 25 and used.take("fear_greed"):
+            return (
+                f"شاخص ترس در بازار بالاست؛ برخورد با {b:,} دلار ممکن است با واکنش "
+                f"محافظه‌کارانه همراه شود."
+            )
 
-    if ctx is not None and plan.first_dir == "up":
-        taker_open = getattr(ctx, "taker_buy_sell_ratio", None)
-        if taker_open is not None and taker_open > 1.0:
-            why_bits = [
-                w
-                for w in why_bits
-                if "taker" not in w.lower()
-                and "futures" not in w
-            ]
+    if plan.first_dir == "down" and plan.second_dir == "up":
+        if used.take("flow_react"):
+            return (
+                f"سطح {b:,} دلار از روی جریان آپشن به‌عنوان حمایت مهم دیده می‌شود؛ "
+                f"اگر فشار فروش کم شود و خریداران وارد شوند، برگشت قیمت محتمل‌تر می‌شود."
+            )
+    if plan.first_dir == "up" and plan.second_dir == "down":
+        if used.take("flow_react"):
+            return (
+                f"جریان آپشن همین {b:,} دلار را مقصد/مقاومت کوتاه‌مدت نشان داده؛ "
+                f"سودگیری می‌تواند حرکت را موقتاً متوقف کند."
+            )
 
-    return {
-        "why": _join_bits(
-            why_bits,
-            "ترکیب flow آپشن در این پنجره جهت اول را به سمت B سوق می‌دهد.",
-        ),
-        "leg1": _join_bits(
-            leg1_bits,
-            f"از قیمت فعلی، جذب نقدینگی و strikeهای فعال flow مسیر را به {b:,} می‌کشد.",
-        ),
-        "react": _join_bits(
-            react_bits,
-            f"در {b:,} تمرکز strike و نقدینگی flow احتمال واکنش قیمت را بالا می‌برد.",
-        ),
-        "leg2": _join_bits(
-            leg2_bits,
-            f"پس از تأیید واکنش در B، حرکت به {c_level:,} با هدف/حمایت flow هم‌خوان است.",
-        ),
-    }
+    if c.buyer_call >= c.seller_call * 0.7 and plan.first_dir == "down" and used.take(
+        "calls_hedge"
+    ):
+        return (
+            "هم‌زمان خرید کال در سطوح بالاتر برقرار است؛ "
+            f"اگر در {b:,} دلار فروشندگان خسته شوند، واکنش صعودی محتمل‌تر می‌شود."
+        )
+
+    return (
+        f"تمرکز قراردادها و نقدینگی آپشن در {b:,} دلار احتمال واکنش قیمت "
+        f"(مکث یا برگشت) را بالا می‌برد."
+    )
+
+
+def _why_b_to_c(plan: _LegPlan, b: int, c: int, main: FlowAnalysis, ctx: Any | None, used: _UsedSignals) -> str:
+    spot = main.spot
+    if b == c:
+        return "در این سناریو مقصد بعدی با مقصد اول یکی است؛ ادامه مسیر منوط به تأیید در B است."
+
+    if ctx is not None:
+        max_pain = getattr(ctx, "max_pain", None)
+        if max_pain and abs(max_pain - c) / max(spot, 1) < 0.04 and used.take("max_pain"):
+            return (
+                f"پس از واکنش در {b:,} دلار، کشش قیمت به سمت {c:,} "
+                f"(نزدیک میانگین درد آپشن) محتمل است."
+            )
+
+    c_flow = main.contracts
+    if plan.first_dir == "down" and plan.second_dir == "up" and used.take("flow_leg2"):
+        return (
+            f"اگر واکنش صعودی در {b:,} دلار تأیید شود، هدف بعدی جریان خرید کال "
+            f"همچنان {c:,} دلار باقی می‌ماند."
+        )
+    if plan.first_dir == "up" and plan.second_dir == "down" and used.take("flow_leg2"):
+        return (
+            f"پس از واکنش در {b:,} دلار، اصلاح به {c:,} دلار (حمایت جریان پوت) "
+            f"در سناریوی کوتاه‌مدت قابل انتظار است."
+        )
+
+    return (
+        f"تأیید واکنش در {b:,} دلار شرط حرکت بعدی به {c:,} دلار است؛ "
+        f"بدون آن ادامهٔ مسیر معتبر نیست."
+    )
+
+
+def _goal_line(plan: _LegPlan, b: int, c: int) -> str:
+    if plan.two_legs or (plan.second_dir and b != c):
+        return (
+            f"مقصد اولیه {b:,} دلار است؛ در صورت واکنش و تأیید، مقصد بعدی {c:,} دلار خواهد بود."
+        )
+    return f"مقصد اولیه {b:,} دلار است."
+
+
+def _summary_paragraph(spot_disp: str, b: int, c: int, plan: _LegPlan) -> str:
+    path = _path_summary_fa(spot_disp, b, c)
+    if plan.first_dir == "down" and plan.second_dir == "up":
+        return (
+            f"در کوتاه‌مدت انتظار داریم قیمت {path} حرکت کند: "
+            f"ابتدا افت به {b:,}، واکنش در همان سطح، و در صورت تأیید برگشت به {c:,}."
+        )
+    if plan.first_dir == "up" and plan.second_dir == "down":
+        return (
+            f"در کوتاه‌مدت انتظار داریم قیمت {path} حرکت کند: "
+            f"ابتدا صعود به {b:,}، واکنش یا اصلاح آنجا، و در صورت تأیید بازگشت به {c:,}."
+        )
+    direction = "بالا" if plan.first_dir == "up" else "پایین"
+    return (
+        f"سناریوی اصلی حرکت اول به سمت {direction} تا {b:,} دلار است؛ "
+        f"ادامه تا {c:,} فقط پس از واکنش معتبر در مقصد اول."
+    )
+
+
+def _assemble_structured_report(
+    *,
+    title: str,
+    spot_disp: str,
+    b: int,
+    c: int,
+    why_spot_b: str,
+    why_react_b: str,
+    why_b_c: str,
+    entry: str,
+    stop: int,
+    goal_line: str,
+    invalid: str,
+    summary: str,
+) -> str:
+    sections = [
+        f"**سناریوی اصلی BTC**\n{title} — قیمت فعلی: {spot_disp} دلار",
+        f"**حرکت اول**\nاز {spot_disp} به {b:,}\n\n{_plain(why_spot_b)}",
+        f"**واکنش در B**\n{b:,} دلار\n\n{_plain(why_react_b)}",
+        f"**حرکت دوم**\nاز {b:,} به {c:,}\n\n{_plain(why_b_c)}",
+        f"**شرایط ورود**\n\n{_plain(entry)}",
+        f"**حد ضرر**\n{stop:,} دلار",
+        f"**هدف**\n{_plain(goal_line)}",
+        f"**ابطال سناریو**\n\n{_plain(invalid)}",
+        f"**جمع‌بندی**\n\n{_plain(summary)}",
+    ]
+    return "\n\n".join(sections)
 
 
 def format_narrative_scenario(
@@ -688,6 +435,7 @@ def format_narrative_scenario(
     path_alternate: MovementPath | None,
     ctx: Any | None = None,
 ) -> str:
+    _ = bias
     path = _resolve_path_for_narrative(
         main,
         support=support,
@@ -704,34 +452,32 @@ def format_narrative_scenario(
     b, c = plan.b, plan.c
     spot_disp = f"{spot:,.0f}"
     buf = _sl_buffer(spot)
-    phrases = _pick_phrases(
-        main, bias=bias, support=support, target=target, plan=plan, ctx=ctx
-    )
-    opening = _opening_paragraph(plan, b, phrases, ctx, main)
-    leg1 = _leg1_paragraph(plan, spot_disp, b, phrases)
-    react = _react_paragraph(plan, b, phrases)
-    leg2 = _leg2_paragraph(plan, b, c, phrases)
+    used = _UsedSignals()
+
+    why_spot_b = _why_spot_to_b(main, plan, b, ctx, used)
+    why_react_b = _why_react_at_b(main, plan, b, ctx, used)
+    why_b_c = _why_b_to_c(plan, b, c, main, ctx, used)
 
     if plan.first_dir == "down" and plan.second_dir == "up":
         entry = (
-            f"ورود خرید فقط بعد از واکنش معتبر در {b:,} انجام شود؛ "
-            f"ترجیحاً با بسته‌شدن کندل ۱۵ دقیقه‌ای بالای محدوده و تأیید افزایش فشار خرید."
+            f"ورود خرید فقط پس از واکنش معتبر در {b:,} دلار؛ "
+            f"ترجیحاً بسته‌شدن کندل ۱۵ دقیقه‌ای بالای محدوده و تأیید فشار خرید."
         )
         stop = b - buf
-        goal = c
         invalid = (
-            f"اگر قیمت زیر {b:,} دلار تثبیت شود و حمایت از دست برود، "
-            f"سناریوی برگشت صعودی دیگر معتبر نیست."
+            f"تثبیت قیمت زیر {b:,} دلار بدون واکنش صعودی؛ "
+            f"از دست رفتن حمایت و باطل شدن سناریوی برگشت به {c:,}."
         )
     elif plan.first_dir == "up" and plan.second_dir == "down":
         entry = (
-            f"ورود long فقط با تأیید صعود (کندل ۱۵ دقیقه بالای {support:,})؛ "
-            f"خروج یا hedge نزدیک {b:,}. short بعد از B فقط با تأیید نزول."
+            f"ورود خرید اهرمی فقط با تأیید صعود (کندل ۱۵ دقیقه بالای {support:,})؛ "
+            f"خروج یا پوشش ریسک نزدیک {b:,}. "
+            f"فروش اهرمی پس از واکنش در {b:,} فقط با تأیید نزول."
         )
         stop = support - buf
-        goal = b
         invalid = (
-            f"شکست {support - buf:,} قبل از رسیدن به {b:,} سناریوی صعود اول را لغو می‌کند."
+            f"شکست {support - buf:,} دلار قبل از رسیدن به {b:,}؛ "
+            f"لغو سناریوی صعود اول و مسیر بعدی به {c:,}."
         )
     elif plan.first_dir == "up":
         entry = (
@@ -739,30 +485,35 @@ def format_narrative_scenario(
             f"با تأیید فشار خرید."
         )
         stop = support - buf
-        goal = b
-        invalid = f"تثبیت زیر {support:,} بدون برگشت، مسیر به {b:,} باطل می‌شود."
+        invalid = (
+            f"تثبیت زیر {support:,} بدون برگشت؛ باطل شدن مسیر به {b:,} "
+            f"و ادامه تا {c:,}."
+        )
     else:
         entry = (
             f"ورود خرید فقط بعد از واکنش در {b:,} (۱۵ دقیقه بالای سطح). "
-            f"رسیدن به B به‌تنهایی ورود نیست."
+            f"رسیدن به مقصد اول به‌تنهایی ورود نیست."
         )
         stop = b - buf
-        goal = c
-        invalid = f"تثبیت زیر {b:,} دلار بدون واکنش، سناریو را باطل می‌کند."
+        invalid = (
+            f"تثبیت زیر {b:,} دلار بدون واکنش؛ باطل شدن سناریو و مسیر بعدی به {c:,}."
+        )
 
-    conclusion = _conclusion_paragraph(spot_disp, b, c, plan)
+    goal_line = _goal_line(plan, b, c)
+    summary = _summary_paragraph(spot_disp, b, c, plan)
+    title = _title_label(plan)
 
-    return _assemble_prose_report(
+    return _assemble_structured_report(
+        title=title,
         spot_disp=spot_disp,
         b=b,
         c=c,
-        stop=stop,
-        goal=goal,
-        opening=opening,
-        leg1=leg1,
-        react=react,
-        leg2=leg2,
+        why_spot_b=why_spot_b,
+        why_react_b=why_react_b,
+        why_b_c=why_b_c,
         entry=entry,
+        stop=stop,
+        goal_line=goal_line,
         invalid=invalid,
-        conclusion=conclusion,
+        summary=summary,
     )
