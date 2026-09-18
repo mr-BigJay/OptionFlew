@@ -333,9 +333,6 @@ def _ensure_price_levels(report: dict[str, Any] | None) -> dict[str, Any] | None
     return out
 
 
-    return out
-
-
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
     if current_user(request):
@@ -491,6 +488,7 @@ async def home(request: Request):
         request,
         "home.html",
         _page_ctx(
+            request,
             report_4h=report_4h,
             report_daily=report_daily,
             report_4h_has_chart=report_has_chart(
