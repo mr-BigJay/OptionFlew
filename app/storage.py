@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import sqlite3
 from contextlib import contextmanager
@@ -259,24 +260,31 @@ def get_report(report_id: int) -> dict[str, Any] | None:
 
 
 def get_latest_report(report_kind: str | None = None) -> dict[str, Any] | None:
+    """آخرین گزارش هر kind (زمان‌بندی‌شده یا دستی معتبر)."""
     purge_expired_manual_reports()
+    now = utc_now_iso()
+    visible = """
+        (is_manual IS NULL OR is_manual = 0
+         OR (expires_at IS NOT NULL AND expires_at > ?))
+    """
     with connect() as conn:
         if report_kind:
             row = conn.execute(
                 f"""
                 SELECT * FROM reports
-                WHERE report_kind = ? AND {_scheduled_only_sql()}
+                WHERE report_kind = ? AND {visible}
                 ORDER BY created_at DESC LIMIT 1
                 """,
-                (report_kind,),
+                (report_kind, now),
             ).fetchone()
         else:
             row = conn.execute(
                 f"""
                 SELECT * FROM reports
-                WHERE {_scheduled_only_sql()}
+                WHERE {visible}
                 ORDER BY created_at DESC LIMIT 1
-                """
+                """,
+                (now,),
             ).fetchone()
         return dict(row) if row else None
 
@@ -352,7 +360,7 @@ def report_has_chart(report_code: str | None) -> bool:
 
 
 def ensure_report_chart(report: dict[str, Any] | None) -> None:
-    """اگر PNG نیست ولی متن prose-v3 است، چارت را می‌سازد."""
+    """اگر PNG نیست، چارت را از متن یا سطوح گزارش می‌سازد."""
     if not report:
         return
     code = report.get("report_code")
@@ -363,6 +371,12 @@ def ensure_report_chart(report: dict[str, Any] | None) -> None:
     png = chart_png_for_report_row(report)
     if png:
         save_report_chart(code, png)
+        return
+    logging.getLogger("optionflow.storage").warning(
+        "Chart not built for %s kind=%s (check prose-v3 or matplotlib/Binance)",
+        code,
+        report.get("report_kind"),
+    )
 
 
 def parse_iso(s: str) -> datetime:

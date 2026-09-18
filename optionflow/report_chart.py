@@ -71,8 +71,21 @@ def scenario_plan_from_row(report: dict[str, Any]) -> ScenarioPlan | None:
             two_legs=True,
         )
     spot = float(report.get("spot") or 0)
-    if spot <= 0:
-        return None
+    support = report.get("support_zone")
+    target = report.get("target_zone")
+    if spot > 0 and support and target:
+        b = int(target)
+        c = int(support)
+        if b < c:
+            b, c = c, b
+        return ScenarioPlan(
+            spot=spot,
+            b=b,
+            c=c,
+            first_dir="up",
+            second_dir="down",
+            two_legs=True,
+        )
     return None
 
 

@@ -138,6 +138,16 @@ html, body {
   overflow: hidden;
   border: 1px solid #263238;
   background: #0d1117;
+  width: 100%;
+}
+
+.scenario-chart img {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  object-fit: contain;
+  vertical-align: top;
 }
 
 .report-prose .report-section {

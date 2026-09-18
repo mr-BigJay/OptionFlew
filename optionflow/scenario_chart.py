@@ -107,8 +107,9 @@ def render_btcusdt_scenario_chart(
     b = float(plan.b)
     c = float(plan.c)
 
-    fig_w = 14 if candle_limit >= 300 else 12
-    fig, ax = plt.subplots(figsize=(fig_w, 5.8), dpi=130)
+    fig_w = 12
+    fig_h = 6.2
+    fig, ax = plt.subplots(figsize=(fig_w, fig_h), dpi=110, layout="constrained")
     fig.patch.set_facecolor("#0d1117")
     ax.set_facecolor("#0d1117")
 
@@ -167,42 +168,31 @@ def render_btcusdt_scenario_chart(
     pad = max(spot * 0.002, 80.0)
     ax.set_ylim(min(y_min, spot, b, c) - pad, max(y_max, spot, b, c) + pad)
 
-    ax.text(
-        0.99,
-        spot,
-        f" Spot {spot:,.2f}",
-        transform=ax.get_yaxis_transform(),
-        ha="left",
-        va="center",
-        color="#90caf9",
-        fontsize=9,
-        fontfamily="monospace",
-    )
-    ax.text(
-        0.99,
-        b,
-        f" B {b:,.0f}",
-        transform=ax.get_yaxis_transform(),
-        ha="left",
-        va="center",
-        color="#ffcc80",
-        fontsize=9,
-        fontfamily="monospace",
-    )
-    ax.text(
-        0.99,
-        c,
-        f" C {c:,.0f}",
-        transform=ax.get_yaxis_transform(),
-        ha="left",
-        va="center",
-        color="#e1bee7",
-        fontsize=9,
-        fontfamily="monospace",
-    )
+    x_end = t_c + bar_days * 2
+    ax.set_xlim(xs[0] - bar_days * 2, x_end)
+
+    label_x = xs[-1] + (x_end - xs[-1]) * 0.02
+    for y_val, label, color in (
+        (spot, f"Spot {spot:,.2f}", "#90caf9"),
+        (b, f"B {b:,.0f}", "#ffcc80"),
+        (c, f"C {c:,.0f}", "#e1bee7"),
+    ):
+        ax.annotate(
+            label,
+            xy=(label_x, y_val),
+            xytext=(4, 0),
+            textcoords="offset points",
+            va="center",
+            ha="left",
+            color=color,
+            fontsize=8,
+            fontfamily="monospace",
+            annotation_clip=False,
+        )
 
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%m-%d %H:%M"))
-    ax.tick_params(colors="#b0bec5", labelsize=8)
+    ax.tick_params(colors="#b0bec5", labelsize=7, axis="x", rotation=25)
+    plt.setp(ax.get_xticklabels(), ha="right")
     for spine in ax.spines.values():
         spine.set_color("#37474f")
     ax.grid(True, color="#263238", linewidth=0.6, alpha=0.7)
@@ -214,11 +204,14 @@ def render_btcusdt_scenario_chart(
     )
     ax.set_ylabel("USDT", color="#b0bec5", fontsize=9)
 
-    fig.autofmt_xdate()
-    fig.tight_layout()
-
     buf = io.BytesIO()
-    fig.savefig(buf, format="png", facecolor=fig.get_facecolor())
+    fig.savefig(
+        buf,
+        format="png",
+        facecolor=fig.get_facecolor(),
+        edgecolor="none",
+        pad_inches=0.05,
+    )
     plt.close(fig)
     buf.seek(0)
     return buf.read()
