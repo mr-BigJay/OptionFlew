@@ -9,6 +9,8 @@
   {% endif %}
   {% if request.query_params.get('err') == 'channel' %}
   <p class="flash err">دسترسی به این دامنه (stable/enrich) برای حساب شما فعال نیست.</p>
+  {% elif request.query_params.get('err') == 'admin' %}
+  <p class="flash err">حساب ادمین از این صفحه وارد نمی‌شود. از مسیر <bdi dir="ltr">/bigjay_controller/login</bdi> استفاده کنید.</p>
   {% elif request.query_params.get('err') %}
   <p class="flash err">نام کاربری یا رمز اشتباه است.</p>
   {% endif %}
