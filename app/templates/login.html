@@ -1,24 +1,54 @@
-{% extends "base.html" %}
+{% extends "auth_layout.html" %}
 {% block title %}ورود — OptionFlow{% endblock %}
-{% block header %}ورود{% endblock %}
+
+{% block brand_extra %}
+<span class="auth-login-badge">{{ channel_label }}</span>
+{% endblock %}
 
 {% block content %}
-<form class="filter-card auth-form" method="post" action="/login">
+<form class="auth-login-form" method="post" action="/login">
   {% if request.query_params.get('next') %}
   <input type="hidden" name="next" value="{{ request.query_params.get('next') }}">
   {% endif %}
   {% if request.query_params.get('err') == 'channel' %}
-  <p class="flash err">دسترسی به این دامنه (stable/enrich) برای حساب شما فعال نیست.</p>
+  <p class="auth-login-flash err">دسترسی به این دامنه (stable/enrich) برای حساب شما فعال نیست.</p>
   {% elif request.query_params.get('err') == 'admin' %}
-  <p class="flash err">حساب ادمین از این صفحه وارد نمی‌شود. از مسیر <bdi dir="ltr">/bigjay_controller/login</bdi> استفاده کنید.</p>
+  <p class="auth-login-flash err">حساب ادمین از این صفحه وارد نمی‌شود. از مسیر <bdi dir="ltr">/bigjay_controller/login</bdi> استفاده کنید.</p>
   {% elif request.query_params.get('err') %}
-  <p class="flash err">نام کاربری یا رمز اشتباه است.</p>
+  <p class="auth-login-flash err">نام کاربری یا رمز اشتباه است.</p>
   {% endif %}
-  <label>نام کاربری</label>
-  <input name="username" required autocomplete="username">
-  <label>رمز عبور</label>
-  <input name="password" type="password" required autocomplete="current-password">
-  <button type="submit" class="btn primary full">ورود</button>
-  <p class="hint muted">دامنه: {{ channel_label }}</p>
+
+  <div class="auth-field">
+    <label for="username">نام کاربری</label>
+    <div class="auth-field-inner">
+      <svg class="auth-field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+        <circle cx="12" cy="7" r="4"/>
+      </svg>
+      <input id="username" name="username" required autocomplete="username" placeholder="نام کاربری">
+    </div>
+  </div>
+
+  <div class="auth-field">
+    <label for="password">رمز عبور</label>
+    <div class="auth-field-inner">
+      <svg class="auth-field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+        <rect x="3" y="11" width="18" height="11" rx="2"/>
+        <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+      </svg>
+      <input id="password" name="password" type="password" required autocomplete="current-password" placeholder="••••••••">
+    </div>
+  </div>
+
+  <button type="submit" class="auth-login-submit">
+    <span>ورود</span>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
+      <path d="M5 12h14M13 6l6 6-6 6"/>
+    </svg>
+  </button>
 </form>
+{% endblock %}
+
+{% block footer %}
+<p>به دنیای تحلیل و معامله خوش آمدید.</p>
 {% endblock %}
