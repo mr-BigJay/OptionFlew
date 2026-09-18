@@ -8,9 +8,9 @@ from optionflow.patterns.types import PatternHit
 SWING_LEFT = 3
 SWING_RIGHT = 2
 _MIN_SWINGS = 5  # حداقل یک فنر کامل: مثلاً H-L-H-L-H
-_MIN_SPAN = {"5m": 20, "15m": 16, "1h": 12, "4h": 10, "1d": 8}
+_MIN_SPAN = {"5m": 20, "15m": 16, "1h": 30, "4h": 14, "1d": 10}
 _FLAT_PCT = {"5m": 0.0028, "15m": 0.0038, "1h": 0.005, "4h": 0.007, "1d": 0.01}
-_MAX_PIVOT_AGE = {"5m": 20, "15m": 14, "1h": 12, "4h": 10, "1d": 8}
+_MAX_PIVOT_AGE = {"5m": 20, "15m": 14, "1h": 18, "4h": 10, "1d": 8}
 
 
 def _y(slope: float, intercept: float, i: float) -> float:

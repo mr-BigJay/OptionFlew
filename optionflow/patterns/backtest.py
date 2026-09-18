@@ -24,7 +24,7 @@ logger = logging.getLogger("optionflow.patterns.backtest")
 
 CATEGORIES = ("triangle", "flag", "divergence")
 STRIDE_BY_TF = {"5m": 6, "15m": 2, "1h": 1, "4h": 1, "1d": 1}
-DEDUPE_BARS = {"5m": 48, "15m": 20, "1h": 16, "4h": 8, "1d": 4}
+DEDUPE_BARS = {"5m": 48, "15m": 20, "1h": 24, "4h": 8, "1d": 4}
 FORWARD_BARS = {"5m": 36, "15m": 24, "1h": 18, "4h": 12, "1d": 8}
 MIN_MOVE_PCT = {"5m": 0.008, "15m": 0.012, "1h": 0.015, "4h": 0.02, "1d": 0.025}
 BACKTEST_TIMEFRAMES = ("5m", "15m", "1h", "4h", "1d")
