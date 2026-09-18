@@ -278,8 +278,14 @@ def _render_price_pattern(
                 last_y = bars[sig].close
                 y_u = su * j + iu
                 y_l = sl * j + il
-                d = meta.get("kind")
-                if d == "ascending":
+                d = meta.get("direction") or (
+                    "up"
+                    if meta.get("kind") == "ascending"
+                    else "down"
+                    if meta.get("kind") == "descending"
+                    else None
+                )
+                if d == "up":
                     ty = y_u * 1.001
                     ax.annotate(
                         "",
@@ -287,21 +293,13 @@ def _render_price_pattern(
                         xytext=(last_x, last_y),
                         arrowprops=dict(arrowstyle="->", color="#66bb6a", lw=1.8),
                     )
-                elif d == "descending":
+                elif d == "down":
                     ty = y_l * 0.999
                     ax.annotate(
                         "",
                         xy=(last_x, ty),
                         xytext=(last_x, last_y),
                         arrowprops=dict(arrowstyle="->", color="#ef5350", lw=1.8),
-                    )
-                else:
-                    mid_y = (y_u + y_l) / 2
-                    ax.annotate(
-                        "",
-                        xy=(last_x, mid_y),
-                        xytext=(last_x, last_y),
-                        arrowprops=dict(arrowstyle="->", color="#ff9800", lw=1.8),
                     )
 
     elif hit.category == "flag":

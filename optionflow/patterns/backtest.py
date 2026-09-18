@@ -24,7 +24,7 @@ logger = logging.getLogger("optionflow.patterns.backtest")
 
 CATEGORIES = ("triangle", "flag", "divergence")
 STRIDE_BY_TF = {"5m": 6, "15m": 2, "1h": 1, "4h": 1, "1d": 1}
-DEDUPE_BARS = {"5m": 36, "15m": 12, "1h": 8, "4h": 4, "1d": 2}
+DEDUPE_BARS = {"5m": 48, "15m": 20, "1h": 16, "4h": 8, "1d": 4}
 FORWARD_BARS = {"5m": 36, "15m": 24, "1h": 18, "4h": 12, "1d": 8}
 MIN_MOVE_PCT = {"5m": 0.008, "15m": 0.012, "1h": 0.015, "4h": 0.02, "1d": 0.025}
 BACKTEST_TIMEFRAMES = ("5m", "15m", "1h", "4h", "1d")
@@ -103,7 +103,9 @@ class BacktestResult:
 
 def _detector(category: str):
     return {
-        "triangle": detect_triangle,
+        "triangle": lambda bars, tf: detect_triangle(
+            bars, tf, require_breakout=True
+        ),
         "flag": detect_flag,
         "divergence": lambda bars, tf: detect_rsi_divergence(
             bars, tf, allow_early=False
@@ -117,15 +119,10 @@ def expected_direction(hit: PatternHit) -> str | None:
     if hit.category == "flag":
         return hit.meta.get("direction")
     if hit.category == "triangle":
-        kind = hit.meta.get("kind")
-        if kind == "ascending":
-            return "up"
-        if kind == "descending":
-            return "down"
-        last = hit.meta.get("last_close") or 0
-        mid = hit.meta.get("mid") or 0
-        if mid:
-            return "up" if last >= mid else "down"
+        explicit = hit.meta.get("direction")
+        if explicit in ("up", "down"):
+            return explicit
+        return None
     return None
 
 

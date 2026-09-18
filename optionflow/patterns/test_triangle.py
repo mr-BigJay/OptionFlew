@@ -63,6 +63,8 @@ def test_textbook_ascending() -> None:
     hit = detect_triangle(bars, "5m")
     assert hit is not None
     assert hit.meta["kind"] == "ascending"
+    assert hit.meta.get("direction") is None
+    assert detect_triangle(bars, "5m", require_breakout=True) is None
 
 
 def test_textbook_descending() -> None:
@@ -97,3 +99,23 @@ def test_textbook_symmetrical() -> None:
     hit = detect_triangle(bars, "5m")
     assert hit is not None
     assert hit.meta["kind"] == "symmetrical"
+
+
+def test_backtest_only_counts_breakout_bar() -> None:
+    bars = _empty(125, 99_400)
+    _set_swing(bars, 40, 100_000, "high")
+    _set_swing(bars, 55, 98_400, "low")
+    _set_swing(bars, 70, 100_020, "high")
+    _set_swing(bars, 85, 98_900, "low")
+    _set_swing(bars, 100, 99_980, "high")
+    _set_swing(bars, 115, 99_350, "low")
+    for i in range(116, 124):
+        px = 99_500 + (i - 116) * 20
+        bars[i] = OhlcBar(bars[i].ts, px, px + 40, px - 40, px, 1.0)
+    bars[-1] = OhlcBar(
+        bars[-1].ts, 99_800, 100_400, 99_750, 100_280, 1.0
+    )
+    hit = detect_triangle(bars, "5m", require_breakout=True)
+    assert hit is not None
+    assert hit.meta["direction"] == "up"
+    assert hit.meta["stage"] == "breakout"

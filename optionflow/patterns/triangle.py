@@ -183,7 +183,7 @@ def _score_window(
     l_now = _y(sl, il, n - 1)
     if u_now <= l_now:
         return None
-    if last.close > u_now + atr_now or last.close < l_now - atr_now:
+    if last.close > u_now + atr_now * 2.4 or last.close < l_now - atr_now * 2.4:
         return None
 
     apex = _apex_index(su, iu, sl, il)
@@ -213,7 +213,12 @@ def _score_window(
     }
 
 
-def detect_triangle(bars: list[OhlcBar], timeframe: str) -> PatternHit | None:
+def detect_triangle(
+    bars: list[OhlcBar],
+    timeframe: str,
+    *,
+    require_breakout: bool = False,
+) -> PatternHit | None:
     if len(bars) < 60:
         return None
     window = bars[-180:] if len(bars) >= 180 else bars[:]
@@ -261,19 +266,47 @@ def detect_triangle(bars: list[OhlcBar], timeframe: str) -> PatternHit | None:
     titles = {
         "ascending": (
             "مثلث صعودی (فشردگی)",
-            "مقاومت افقی و کف‌های بالاتر — احتمال شکست رو به بالا.",
+            "مقاومت افقی و کف‌های بالاتر — ورود فقط با بسته شدن بالای مقاومت.",
         ),
         "descending": (
             "مثلث نزولی (فشردگی)",
-            "حمایت افقی و سقف‌های پایین‌تر — احتمال شکست رو به پایین.",
+            "حمایت افقی و سقف‌های پایین‌تر — ورود فقط با بسته شدن زیر حمایت.",
         ),
         "symmetrical": (
             "مثلث متقارن (فشردگی)",
-            "سقف پایین‌تر و کف بالاتر — شکست جهت‌دار پس از فشردگی.",
+            "سقف پایین‌تر و کف بالاتر — جهت بعد از شکست خط مشخص می‌شود.",
         ),
     }
     title, forecast = titles[kind]
-    status = "تأییدشده" if best["gap_end"] / best["gap_start"] < 0.58 else "در حال شکل‌گیری"
+    u_now, l_now = best["u_now"], best["l_now"]
+    atr_buf = atr_now * 0.12
+    broke_up = last.close > u_now + atr_buf
+    broke_down = last.close < l_now - atr_buf
+    prev_inside = True
+    if n >= 2:
+        prev = window[-2]
+        u_prev = _y(best["su"], best["iu"], n - 2)
+        l_prev = _y(best["sl"], best["il"], n - 2)
+        prev_inside = l_prev <= prev.close <= u_prev
+
+    direction: str | None = None
+    if broke_up and prev_inside:
+        direction = "up"
+    elif broke_down and prev_inside:
+        direction = "down"
+
+    if require_breakout and direction is None:
+        return None
+
+    if direction == "up":
+        status = "شکست صعودی"
+        forecast = f"شکست بالای خط در قیمت {last.close:,.0f}."
+    elif direction == "down":
+        status = "شکست نزولی"
+        forecast = f"شکست پایین خط در قیمت {last.close:,.0f}."
+    else:
+        status = "در حال فشردگی"
+        forecast = titles[kind][1]
 
     return PatternHit(
         category="triangle",
@@ -284,7 +317,12 @@ def detect_triangle(bars: list[OhlcBar], timeframe: str) -> PatternHit | None:
         summary_fa=(
             f"{best['touches_high']} برخورد سقف و {best['touches_low']} برخورد کف. "
             f"فاصله خطوط از {best['gap_start']:,.0f} به {best['gap_end']:,.0f} دلار. "
-            f"قیمت {last.close:,.0f}."
+            f"قیمت {last.close:,.0f}"
+            + (
+                f" — تأیید شکست {'صعودی' if direction == 'up' else 'نزولی'}."
+                if direction
+                else " — هنوز داخل الگو؛ منتظر شکست."
+            )
         ),
         forecast_fa=forecast,
         meta={
@@ -297,11 +335,16 @@ def detect_triangle(bars: list[OhlcBar], timeframe: str) -> PatternHit | None:
             "window_offset": len(bars) - n,
             "kind": kind,
             "last_close": last.close,
-            "mid": (best["u_now"] + best["l_now"]) / 2,
+            "mid": (u_now + l_now) / 2,
             "apex_index": best["apex"],
             "touches_high": best["touches_high"],
             "touches_low": best["touches_low"],
             "touch_highs": best["hi_idx"],
             "touch_lows": best["lo_idx"],
+            "direction": direction,
+            "stage": "breakout" if direction else "forming",
+            "confirm_index": n - 1 + (len(bars) - n),
+            "upper_now": u_now,
+            "lower_now": l_now,
         },
     )
