@@ -5,12 +5,13 @@
 {% block content %}
 <form class="filter-card auth-form" method="post" action="/bigjay_controller/login">
   {% if error %}
-  <p class="flash err">{{ error }}</p>
+  <p class="flash err">نام کاربری یا رمز اشتباه است — یا ادمین هنوز ساخته نشده (در .env مقدار OPTIONFLOW_ADMIN_PASSWORD را بگذارید و سرویس را restart کنید).</p>
   {% endif %}
   <label>نام کاربری ادمین</label>
   <input name="username" required autocomplete="username">
   <label>رمز عبور</label>
   <input name="password" type="password" required autocomplete="current-password">
   <button type="submit" class="btn primary full">ورود به پنل</button>
+  <p class="hint muted">کاربر عادی از <bdi dir="ltr">/login</bdi> وارد می‌شود.</p>
 </form>
 {% endblock %}

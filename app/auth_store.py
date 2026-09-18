@@ -70,12 +70,32 @@ def bootstrap_admin() -> None:
             "OPTIONFLOW_ADMIN_PASSWORD not set — admin user not auto-created"
         )
         return
+    pw_hash = _hash_password(admin_pass)
     with connect() as conn:
         row = conn.execute(
-            "SELECT id FROM users WHERE username = ? COLLATE NOCASE",
+            """
+            SELECT id, is_admin FROM users
+            WHERE username = ? COLLATE NOCASE
+            """,
             (admin_user,),
         ).fetchone()
         if row:
+            conn.execute(
+                """
+                UPDATE users SET
+                    password_hash = ?,
+                    is_admin = 1,
+                    allow_enrich = 1,
+                    allow_stable = 1,
+                    must_change_password = 0
+                WHERE id = ?
+                """,
+                (pw_hash, row["id"]),
+            )
+            logger.info(
+                "Bootstrap admin %s: password synced from OPTIONFLOW_ADMIN_PASSWORD",
+                admin_user,
+            )
             return
         conn.execute(
             """
@@ -84,7 +104,7 @@ def bootstrap_admin() -> None:
              must_change_password, created_at)
             VALUES (?, ?, ?, 1, 1, 1, 0, ?)
             """,
-            (admin_user, "", _hash_password(admin_pass), _utc_now()),
+            (admin_user, "", pw_hash, _utc_now()),
         )
         logger.info("Bootstrap admin user %s created", admin_user)
 

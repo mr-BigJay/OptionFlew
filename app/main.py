@@ -353,7 +353,9 @@ async def login_post(
     next: str = Form(""),
 ):
     user = authenticate(username, password)
-    if not user or user.get("is_admin"):
+    if user and user.get("is_admin"):
+        return RedirectResponse("/login?err=admin", status_code=303)
+    if not user:
         return RedirectResponse("/login?err=1", status_code=303)
     if not channel_allowed(user):
         return RedirectResponse("/login?err=channel", status_code=303)

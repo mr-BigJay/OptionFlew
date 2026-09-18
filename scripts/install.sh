@@ -106,6 +106,7 @@ OPTIONFLOW_PUBLIC_URL=https://$DOMAIN
 OPTIONFLOW_ADMIN_USER=BigJay
 OPTIONFLOW_SESSION_SECRET=$(openssl rand -hex 32 2>/dev/null || python3 -c "import secrets; print(secrets.token_hex(32))")
 # OPTIONFLOW_ADMIN_PASSWORD=your-strong-password-here
+# اگر رمز @ یا # دارد، در .env داخل کوتیشن بگذارید: OPTIONFLOW_ADMIN_PASSWORD='603240@Example'
 EOF
 say "Set OPTIONFLOW_ADMIN_PASSWORD in $ENV_FILE then restart service (creates admin BigJay)."
 
