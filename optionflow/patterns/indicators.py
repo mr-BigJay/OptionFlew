@@ -1,35 +1,99 @@
 from __future__ import annotations
 
 
+def rma(values: list[float], period: int) -> list[float | None]:
+    """RMA / SMMA (همان ta.rma در TradingView)."""
+    n = len(values)
+    out: list[float | None] = [None] * n
+    if period < 1 or n < period:
+        return out
+    seed = sum(values[:period]) / period
+    out[period - 1] = seed
+    prev = seed
+    for i in range(period, n):
+        prev = (prev * (period - 1) + values[i]) / period
+        out[i] = prev
+    return out
+
+
 def rsi(closes: list[float], period: int = 14) -> list[float | None]:
-    """RSI وایlder (مثل TradingView/Binance) — ایندکس هم‌تراز با closes."""
+    """RSI built-in TradingView: RMA روی up/down از ta.change(close)."""
     n = len(closes)
     out: list[float | None] = [None] * n
-    if n < period + 1:
+    if n < 2 or period < 1:
         return out
 
-    gains: list[float] = []
-    losses: list[float] = []
-    for i in range(1, n):
-        ch = closes[i] - closes[i - 1]
-        gains.append(max(ch, 0.0))
-        losses.append(max(-ch, 0.0))
+    changes = [0.0] + [closes[i] - closes[i - 1] for i in range(1, n)]
+    ups = [max(c, 0.0) for c in changes]
+    downs = [-min(c, 0.0) for c in changes]
 
-    avg_g = sum(gains[:period]) / period
-    avg_l = sum(losses[:period]) / period
-    if avg_l <= 0:
-        out[period] = 100.0
-    else:
-        out[period] = 100.0 - 100.0 / (1.0 + avg_g / avg_l)
+    up_r = rma(ups, period)
+    down_r = rma(downs, period)
 
-    for i in range(period, len(gains)):
-        avg_g = (avg_g * (period - 1) + gains[i]) / period
-        avg_l = (avg_l * (period - 1) + losses[i]) / period
-        if avg_l <= 0:
-            out[i + 1] = 100.0
+    for i in range(n):
+        u = up_r[i]
+        d = down_r[i]
+        if u is None or d is None:
+            continue
+        if d == 0:
+            out[i] = 100.0
+        elif u == 0:
+            out[i] = 0.0
         else:
-            rs = avg_g / avg_l
-            out[i + 1] = 100.0 - 100.0 / (1.0 + rs)
+            out[i] = 100.0 - 100.0 / (1.0 + u / d)
+    return out
+
+
+def is_pivot_low(values: list[float | None], p: int, left: int, right: int) -> bool:
+    if p - left < 0 or p + right >= len(values):
+        return False
+    val = values[p]
+    if val is None:
+        return False
+    for j in range(p - left, p + right + 1):
+        v = values[j]
+        if v is None:
+            return False
+        if j != p and v < val:
+            return False
+    return True
+
+
+def is_pivot_high(values: list[float | None], p: int, left: int, right: int) -> bool:
+    if p - left < 0 or p + right >= len(values):
+        return False
+    val = values[p]
+    if val is None:
+        return False
+    for j in range(p - left, p + right + 1):
+        v = values[j]
+        if v is None:
+            return False
+        if j != p and v > val:
+            return False
+    return True
+
+
+def rsi_pivot_low_confirmations(
+    rs: list[float | None], *, left: int = 5, right: int = 5
+) -> list[tuple[int, int]]:
+    """(confirm_bar, pivot_bar) — مثل ta.pivotlow با تأخیر right."""
+    out: list[tuple[int, int]] = []
+    for conf in range(left + right, len(rs)):
+        p = conf - right
+        if is_pivot_low(rs, p, left, right):
+            out.append((conf, p))
+    return out
+
+
+def rsi_pivot_high_confirmations(
+    rs: list[float | None], *, left: int = 5, right: int = 5
+) -> list[tuple[int, int]]:
+    out: list[tuple[int, int]] = []
+    for conf in range(left + right, len(rs)):
+        p = conf - right
+        if is_pivot_high(rs, p, left, right):
+            out.append((conf, p))
     return out
 
 

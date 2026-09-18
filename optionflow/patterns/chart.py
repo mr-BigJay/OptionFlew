@@ -285,6 +285,29 @@ def _render_price_pattern(
     return buf.read()
 
 
+def _style_rsi_pane(ax: Any, xs: list[float], rsi_y: list[float]) -> None:
+    """ظاهر نزدیک RSI پیش‌فرض TradingView."""
+    ax.set_facecolor("#0d1117")
+    ax.axhspan(30, 70, facecolor=(126 / 255, 87 / 255, 194 / 255, 0.35), zorder=0)
+    ax.axhline(70, color="#787B86", linewidth=0.8, zorder=1)
+    ax.axhline(50, color=(120 / 255, 123 / 255, 134 / 255, 0.5), linewidth=0.6, zorder=1)
+    ax.axhline(30, color="#787B86", linewidth=0.8, zorder=1)
+    ax.set_ylim(0, 100)
+    ax.set_yticks([30, 50, 70])
+    if len(xs) == len(rsi_y) and xs:
+        import numpy as np
+
+        y = np.array(rsi_y, dtype=float)
+        x = np.array(xs, dtype=float)
+        mid = 50.0
+        over = np.ma.masked_where(y <= 70, y)
+        under = np.ma.masked_where(y >= 30, y)
+        ax.fill_between(x, mid, over, where=y > 70, color=(0, 1, 0, 0.12), interpolate=True, zorder=2)
+        ax.fill_between(x, under, mid, where=y < 30, color=(1, 0, 0, 0.12), interpolate=True, zorder=2)
+    ax.plot(xs, rsi_y, color="#7E57C2", linewidth=1.6, zorder=3, label="RSI")
+    ax.set_ylabel("RSI(14)", color="#787B86", fontsize=8)
+
+
 def _render_divergence(
     bars: list[OhlcBar],
     hit: PatternHit,
@@ -322,29 +345,30 @@ def _render_divergence(
     direction = meta.get("direction")
     x_a = mdates.date2num(bars[pa[0]].ts)
     x_b = mdates.date2num(bars[pb[0]].ts)
-    ax1.scatter([x_a, x_b], [pa[1], pb[1]], c="#ff9800", s=55, zorder=6, edgecolors="#fff", linewidths=0.4)
-    ax1.plot([x_a, x_b], [pa[1], pb[1]], color="#ff9800", linestyle="--", linewidth=1.2, alpha=0.85)
+    if direction == "down":
+        ax1.scatter([x_a, x_b], [pa[1], pb[1]], c="#ef5350", s=55, zorder=6, edgecolors="#fff", linewidths=0.4)
+        ax1.plot([x_a, x_b], [pa[1], pb[1]], color="#ef5350", linestyle="--", linewidth=1.2, alpha=0.9)
+    else:
+        ax1.scatter([x_a, x_b], [pa[1], pb[1]], c="#66bb6a", s=55, zorder=6, edgecolors="#fff", linewidths=0.4)
+        ax1.plot([x_a, x_b], [pa[1], pb[1]], color="#66bb6a", linestyle="--", linewidth=1.2, alpha=0.9)
 
     rsi_y: list[float] = []
     for i in range(start, end):
         v = rs[i] if i < len(rs) else None
-        rsi_y.append(float("nan") if v is None else v)
-    ax2.plot(xs, rsi_y, color="#ce93d8", linewidth=1.3)
+        rsi_y.append(float("nan") if v is None else float(v))
+    _style_rsi_pane(ax2, xs, rsi_y)
     ra, rb = meta["rsi_a"], meta["rsi_b"]
+    line_color = "#ef5350" if direction == "down" else "#66bb6a"
     ax2.scatter(
         [x_a, x_b],
         [ra, rb],
-        c="#ff9800",
-        s=45,
-        zorder=5,
+        c=line_color,
+        s=48,
+        zorder=6,
         edgecolors="#fff",
         linewidths=0.4,
     )
-    ax2.plot([x_a, x_b], [ra, rb], color="#ff9800", linestyle="--", linewidth=1.0, alpha=0.85)
-    ax2.axhline(70, color="#455a64", linewidth=0.6, linestyle=":")
-    ax2.axhline(30, color="#455a64", linewidth=0.6, linestyle=":")
-    ax2.set_ylim(0, 100)
-    ax2.set_ylabel("RSI(14)", color="#90a4ae", fontsize=8)
+    ax2.plot([x_a, x_b], [ra, rb], color=line_color, linestyle="--", linewidth=1.2, alpha=0.9)
 
     if sig is not None and 0 <= sig < len(bars):
         _mark_signal_and_forward(ax1, xs, slice_bars, sig, start, forward_bars, outcome_success)
