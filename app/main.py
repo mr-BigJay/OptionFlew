@@ -31,6 +31,14 @@ from app.storage import (
     set_setting,
 )
 from app.telegram_notify import send_telegram_message, send_telegram_photo, telegram_enabled
+from optionflow.patterns.backtest import (
+    CATEGORIES as PATTERN_CATEGORIES,
+    load_backtest_report,
+    parse_user_datetime,
+    run_backtest,
+    save_backtest_report,
+)
+from optionflow.patterns.history import download_and_cache, history_data_dir
 from optionflow.patterns.service import (
     get_cached_scan,
     invalidate_pattern_cache,
@@ -358,13 +366,18 @@ async def report_detail(request: Request, report_id: int):
 
 
 @app.get("/patterns", response_class=HTMLResponse)
-async def patterns_page(request: Request, tab: str = "triangle"):
+async def patterns_page(
+    request: Request,
+    tab: str = "triangle",
+    bt: str = "",
+):
     if tab not in ("triangle", "flag", "divergence"):
         tab = "triangle"
     scan = get_cached_scan(_patterns_dir)
     hits = scan.get(tab, {})
     rows = [(tf, hits.get(tf)) for tf in ("5m", "15m", "1h")]
     cache_ts = pattern_cache_timestamp()
+    backtest = load_backtest_report(data_dir())
     return templates.TemplateResponse(
         request,
         "patterns.html",
@@ -378,8 +391,83 @@ async def patterns_page(request: Request, tab: str = "triangle"):
                 "15m": "۱۵ دقیقه",
                 "1h": "۱ ساعت",
             },
+            backtest=backtest,
+            bt_flash=bt,
+            pattern_categories=PATTERN_CATEGORIES,
         ),
     )
+
+
+@app.post("/patterns/history/download")
+async def patterns_history_download(
+    date_from: str = Form(...),
+    date_to: str = Form(...),
+    interval_1h: str = Form(""),
+    interval_15m: str = Form(""),
+    interval_5m: str = Form(""),
+):
+    start = parse_user_datetime(date_from)
+    end = parse_user_datetime(date_to, end_of_day=True)
+    hist = history_data_dir(data_dir())
+    intervals: list[str] = []
+    if interval_1h == "on":
+        intervals.append("1h")
+    if interval_15m == "on":
+        intervals.append("15m")
+    if interval_5m == "on":
+        intervals.append("5m")
+    if not intervals:
+        intervals = ["1h"]
+    try:
+        for iv in intervals:
+            download_and_cache(hist, iv, start, end)
+        msg = "ok"
+    except Exception as e:
+        logger.exception("history download failed")
+        msg = quote(str(e)[:120])
+    return RedirectResponse(f"/patterns?tab=triangle&bt=dl_{msg}", status_code=303)
+
+
+@app.post("/patterns/backtest")
+async def patterns_backtest_run(
+    tab: str = Form("triangle"),
+    date_from: str = Form(...),
+    date_to: str = Form(...),
+    timeframe: str = Form("1h"),
+    cat_triangle: str = Form(""),
+    cat_flag: str = Form(""),
+    cat_divergence: str = Form(""),
+    cache_only: str = Form(""),
+):
+    if timeframe not in ("5m", "15m", "1h"):
+        timeframe = "1h"
+    cats: list[str] = []
+    if cat_triangle == "on":
+        cats.append("triangle")
+    if cat_flag == "on":
+        cats.append("flag")
+    if cat_divergence == "on":
+        cats.append("divergence")
+    if not cats:
+        cats = list(PATTERN_CATEGORIES)
+    try:
+        result = run_backtest(
+            data_base=data_dir(),
+            chart_dir=_patterns_dir,
+            timeframe=timeframe,
+            start=parse_user_datetime(date_from),
+            end=parse_user_datetime(date_to, end_of_day=True),
+            categories=cats,
+            use_cache_only=cache_only == "on",
+        )
+        save_backtest_report(data_dir(), result)
+        n = len(result.findings)
+        flash = f"ok_{n}" if not result.error else quote(result.error[:100])
+    except Exception as e:
+        logger.exception("backtest failed")
+        flash = quote(str(e)[:120])
+    safe_tab = tab if tab in ("triangle", "flag", "divergence") else "triangle"
+    return RedirectResponse(f"/patterns?tab={safe_tab}&bt={flash}", status_code=303)
 
 
 @app.post("/patterns/refresh")
