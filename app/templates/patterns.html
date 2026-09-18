@@ -24,7 +24,7 @@
   <article class="pattern-card">
     <header class="pattern-head">
       <span class="pattern-title">{{ hit.title_fa }}</span>
-      <span class="pattern-status">{{ hit.status_fa }}</span>
+      <span class="pattern-status{% if hit.meta.get('stage') == 'early' %} early{% elif hit.meta.get('stage') == 'confirmed' %} confirmed{% endif %}">{{ hit.status_fa }}</span>
     </header>
     <p class="pattern-summary">{{ hit.summary_fa }}</p>
     <p class="pattern-forecast"><strong>پیش‌بینی:</strong> {{ hit.forecast_fa }}</p>

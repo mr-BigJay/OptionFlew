@@ -105,7 +105,9 @@ def _detector(category: str):
     return {
         "triangle": detect_triangle,
         "flag": detect_flag,
-        "divergence": detect_rsi_divergence,
+        "divergence": lambda bars, tf: detect_rsi_divergence(
+            bars, tf, allow_early=False
+        ),
     }[category]
 
 
