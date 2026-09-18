@@ -2,27 +2,34 @@ from __future__ import annotations
 
 
 def rsi(closes: list[float], period: int = 14) -> list[float | None]:
-    if len(closes) < period + 1:
-        return [None] * len(closes)
-    out: list[float | None] = [None] * len(closes)
+    """RSI وایlder (مثل TradingView/Binance) — ایندکس هم‌تراز با closes."""
+    n = len(closes)
+    out: list[float | None] = [None] * n
+    if n < period + 1:
+        return out
+
     gains: list[float] = []
     losses: list[float] = []
-    for i in range(1, len(closes)):
+    for i in range(1, n):
         ch = closes[i] - closes[i - 1]
         gains.append(max(ch, 0.0))
         losses.append(max(-ch, 0.0))
-    if len(gains) < period:
-        return out
+
     avg_g = sum(gains[:period]) / period
     avg_l = sum(losses[:period]) / period
+    if avg_l <= 0:
+        out[period] = 100.0
+    else:
+        out[period] = 100.0 - 100.0 / (1.0 + avg_g / avg_l)
+
     for i in range(period, len(gains)):
-        if i == period:
-            rs = avg_g / max(avg_l, 1e-12)
+        avg_g = (avg_g * (period - 1) + gains[i]) / period
+        avg_l = (avg_l * (period - 1) + losses[i]) / period
+        if avg_l <= 0:
+            out[i + 1] = 100.0
         else:
-            avg_g = (avg_g * (period - 1) + gains[i]) / period
-            avg_l = (avg_l * (period - 1) + losses[i]) / period
-            rs = avg_g / max(avg_l, 1e-12)
-        out[i + 1] = 100.0 - 100.0 / (1.0 + rs)
+            rs = avg_g / avg_l
+            out[i + 1] = 100.0 - 100.0 / (1.0 + rs)
     return out
 
 

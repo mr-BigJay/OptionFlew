@@ -253,7 +253,13 @@ def run_backtest(
         elif success is False:
             result.fail_count += 1
         if n < max_charts:
-            png = render_pattern_chart(full[: idx + 1], hit)
+            png = render_pattern_chart(
+                full,
+                hit,
+                signal_index=idx,
+                forward_bars=FORWARD_BARS.get(timeframe, 18),
+                outcome_success=success,
+            )
             if png:
                 fname = f"{chart_prefix}bt_{category}_{timeframe}_{idx}_{hit.pattern_id}.png"
                 (chart_dir / fname).write_bytes(png)
