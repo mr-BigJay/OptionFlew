@@ -721,6 +721,16 @@ body.chart-lightbox-open {
   color: var(--accent);
 }
 
+.pattern-status.early {
+  background: rgba(251, 191, 36, 0.18);
+  color: #fbbf24;
+}
+
+.pattern-status.confirmed {
+  background: rgba(52, 211, 153, 0.16);
+  color: #34d399;
+}
+
 .pattern-summary,
 .pattern-forecast {
   font-size: 0.88rem;
