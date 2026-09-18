@@ -16,6 +16,7 @@ logger = logging.getLogger("optionflow.jobs")
 def _scenario_chart_png(snapshot) -> bytes | None:
     if snapshot.scenario_b is None or snapshot.scenario_c is None:
         return None
+    kind: ReportKind = snapshot.report_kind if snapshot.report_kind in ("4h", "daily") else "4h"
     plan = ScenarioPlan(
         spot=float(snapshot.spot),
         b=int(snapshot.scenario_b),
@@ -24,7 +25,7 @@ def _scenario_chart_png(snapshot) -> bytes | None:
         second_dir="down",
         two_legs=True,
     )
-    return render_btcusdt_scenario_chart(plan)
+    return render_btcusdt_scenario_chart(plan, report_kind=kind)
 
 
 def _notify_report(snapshot, prefix: str) -> None:

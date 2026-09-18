@@ -4,7 +4,7 @@ import io
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 
@@ -12,8 +12,17 @@ from optionflow.scenario_narrative import ScenarioPlan
 
 logger = logging.getLogger("optionflow.chart")
 
+ReportChartKind = Literal["4h", "daily"]
+
 BINANCE_KLINES_PRIMARY = "https://api.binance.com/api/v3/klines"
 BINANCE_KLINES_MIRROR = "https://data-api.binance.vision/api/v3/klines"
+
+
+def chart_settings_for_report(report_kind: ReportChartKind) -> tuple[str, int, int]:
+    """بازه و تعداد کندل: 4h گزارش → چارت 1h؛ daily → چارت 4h."""
+    if report_kind == "daily":
+        return "4h", 360, 14
+    return "1h", 360, 20
 
 
 @dataclass
@@ -63,10 +72,17 @@ def fetch_btcusdt_klines(
 def render_btcusdt_scenario_chart(
     plan: ScenarioPlan,
     *,
-    interval: str = "15m",
-    forward_bars: int = 24,
+    report_kind: ReportChartKind = "4h",
+    interval: str | None = None,
+    candle_limit: int | None = None,
+    forward_bars: int | None = None,
 ) -> bytes | None:
     """چارت واقعی BTCUSDT + مسیر دقیق Spot→B→C (قیمت‌ها از سناریو)."""
+    default_interval, default_limit, default_forward = chart_settings_for_report(report_kind)
+    interval = interval or default_interval
+    candle_limit = candle_limit or default_limit
+    forward_bars = forward_bars if forward_bars is not None else default_forward
+
     try:
         import matplotlib
 
@@ -79,7 +95,7 @@ def render_btcusdt_scenario_chart(
         return None
 
     try:
-        candles = fetch_btcusdt_klines(interval=interval, limit=160)
+        candles = fetch_btcusdt_klines(interval=interval, limit=candle_limit)
     except Exception as e:
         logger.warning("Binance klines failed: %s", e)
         return None
@@ -91,7 +107,8 @@ def render_btcusdt_scenario_chart(
     b = float(plan.b)
     c = float(plan.c)
 
-    fig, ax = plt.subplots(figsize=(10, 5.5), dpi=130)
+    fig_w = 14 if candle_limit >= 300 else 12
+    fig, ax = plt.subplots(figsize=(fig_w, 5.8), dpi=130)
     fig.patch.set_facecolor("#0d1117")
     ax.set_facecolor("#0d1117")
 
