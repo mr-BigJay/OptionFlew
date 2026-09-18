@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}بکتست — OptionFlow{% endblock %}
+{% block header %}<span class="header-title">بکتست</span>{% endblock %}
+{% block subheader %}
+<nav class="backtest-subnav" aria-label="بکتست">
+  <a href="/backtest/reports" class="backtest-archive-link">گزارش بکتست‌ها</a>
+</nav>
+{% endblock %}
+
+{% block content %}
+<section class="bt-cache-panel card">
+  <h2 class="bt-section-title">وضعیت ذخیرهٔ کندل‌ها (BTCUSDT)</h2>
+  <p class="muted bt-hint">پیش‌فرض نصب: حدود ۲ سال برای ۵m، ۱۵m، ۱h، ۴h و روزانه</p>
+
+  <div id="history-dl-progress" class="bt-progress-wrap" {% if not history_dl.running %}hidden{% endif %}>
+    <div class="bt-progress-track">
+      <div class="bt-progress-bar" id="history-dl-bar" style="width: {{ history_dl.progress_pct }}%"></div>
+    </div>
+    <span class="bt-progress-label" id="history-dl-label">{{ history_dl.message or history_dl.progress_pct ~ '%' }}</span>
+  </div>
+
+  <table class="bt-cache-table">
+    <thead>
+      <tr>
+        <th>تایم‌فریم</th>
+        <th>وضعیت</th>
+        <th>از</th>
+        <th>تا</th>
+        <th>تعداد</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in cache_rows %}
+      <tr class="bt-cache-row status-{{ row.status }}">
+        <td>{{ row.label_fa }}</td>
+        <td>{{ row.status_fa }}</td>
+        <td>{% if row.from_iso %}{{ fmt_date(row.from_iso) }}{% else %}—{% endif %}</td>
+        <td>{% if row.to_iso %}{{ fmt_date(row.to_iso) }}{% else %}—{% endif %}</td>
+        <td>{{ row.count }}</td>
+        <td>
+          {% if row.needs_download %}
+          <form method="post" action="/backtest/history/download" class="inline-form">
+            <input type="hidden" name="interval" value="{{ row.interval }}">
+            <button type="submit" class="btn secondary btn-compact">دانلود</button>
+          </form>
+          {% else %}
+          <span class="muted">✓</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <form method="post" action="/backtest/history/download" class="bt-cache-all">
+    <input type="hidden" name="interval" value="all">
+    <button type="submit" class="btn secondary full">دانلود / تکمیل همهٔ تایم‌فریم‌ها</button>
+  </form>
+</section>
+
+<nav class="tabs tabs-patterns" aria-label="نوع الگو">
+  <a href="/backtest?tab=triangle" class="{% if tab == 'triangle' %}on{% endif %}">مثلث فشرده</a>
+  <a href="/backtest?tab=flag" class="{% if tab == 'flag' %}on{% endif %}">الگوی پرچم</a>
+  <a href="/backtest?tab=divergence" class="{% if tab == 'divergence' %}on{% endif %}">واگرایی RSI</a>
+</nav>
+
+<form class="filter-card pattern-bt-form" method="post" action="/backtest/start">
+  <input type="hidden" name="tab" value="{{ tab }}">
+  <h3 class="pattern-form-title">بکتست {{ category_labels[tab] }}</h3>
+  <label>تایم‌فریم</label>
+  <select name="timeframe" required>
+    {% for tf, label in bt_tf_labels.items() %}
+    <option value="{{ tf }}">{{ label }}</option>
+    {% endfor %}
+  </select>
+  <label>از تاریخ</label>
+  <input type="date" name="date_from" required>
+  <label>تا تاریخ</label>
+  <input type="date" name="date_to" required>
+  <button type="submit" class="btn primary full">شروع بکتست</button>
+</form>
+
+<div id="bt-run-progress" class="bt-progress-wrap" {% if not run_id or (active_run and active_run.status != 'running') %}hidden{% endif %} data-run-id="{{ run_id }}">
+  <p class="bt-run-title">در حال بررسی…</p>
+  <div class="bt-progress-track">
+    <div class="bt-progress-bar" id="bt-run-bar" style="width: 0%"></div>
+  </div>
+  <span class="bt-progress-label" id="bt-run-label">۰٪</span>
+</div>
+
+<div id="bt-run-results" class="bt-results">
+  {% if active_run and active_run.status in ('done', 'error') %}
+  {% set show_archive_link = true %}
+  {% include "backtest_findings_partial.html" %}
+  {% endif %}
+</div>
+
+<script src="/static/backtest.js?v=1" defer></script>
+{% endblock %}

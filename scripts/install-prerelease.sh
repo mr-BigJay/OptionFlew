@@ -1,21 +1,17 @@
 #!/usr/bin/env bash
-# OptionFlow VPS installer (Finglish UI, nginx + SSL)
-# Behtarin ravesh:
-#   curl -fsSL https://raw.githubusercontent.com/mr-BigJay/OptionFlew/cursor/optionflow-guide-9890/scripts/install.sh -o install.sh
-#   sudo bash install.sh
-#
-# Ya non-interactive:
-#   sudo OPTIONFLOW_DOMAIN=flow.example.com OPTIONFLOW_EMAIL=you@mail.com bash install.sh
+# OptionFlow PRE-RELEASE / dev (enriched: Binance, gamma, max pain)
+# One-line:
+#   curl -fsSL https://raw.githubusercontent.com/mr-BigJay/OptionFlew/pre-release/scripts/install-prerelease.sh | sudo bash
 set -euo pipefail
 
-INSTALL_DIR="${OPTIONFLOW_DIR:-/opt/optionflow-dashboard}"
+INSTALL_DIR="${OPTIONFLOW_DIR:-/opt/optionflow-dashboard-pre}"
 REPO="${OPTIONFLOW_REPO:-https://github.com/mr-BigJay/OptionFlew.git}"
-BRANCH="${OPTIONFLOW_BRANCH:-cursor/optionflow-guide-9890}"
-PORT="${OPTIONFLOW_PORT:-8080}"
+BRANCH="${OPTIONFLOW_BRANCH:-pre-release}"
+PORT="${OPTIONFLOW_PORT:-8081}"
 INTERVAL_HOURS="${OPTIONFLOW_INTERVAL_HOURS:-2}"
 WINDOW_HOURS="${OPTIONFLOW_WINDOW_HOURS:-2}"
-SERVICE_NAME="optionflow-dashboard.service"
-NGINX_SITE="optionflow"
+SERVICE_NAME="optionflow-dashboard-pre.service"
+NGINX_SITE="optionflow-pre"
 
 say() { echo "[OptionFlow] $*"; }
 die() { say "ERROR: $*"; exit 1; }
@@ -44,9 +40,11 @@ if [[ -z "${OPTIONFLOW_EMAIL:-}" ]]; then
 fi
 
 say "=========================================="
-say "  OptionFlow Dashboard — shoro nasb"
+say "  OptionFlow PRE-RELEASE (dev)"
+say "  Branch: $BRANCH"
 say "  Domain: $DOMAIN"
 say "  Install dir: $INSTALL_DIR"
+say "  Port: $PORT"
 say "=========================================="
 
 # --- OS & prerequisites ---
@@ -103,6 +101,8 @@ OPTIONFLOW_PORT=$PORT
 OPTIONFLOW_INTERVAL_HOURS=$INTERVAL_HOURS
 OPTIONFLOW_WINDOW_HOURS=$WINDOW_HOURS
 OPTIONFLOW_PUBLIC_URL=https://$DOMAIN
+OPTIONFLOW_CHANNEL=prerelease
+OPTIONFLOW_ENRICHED=1
 OPTIONFLOW_ADMIN_USER=BigJay
 OPTIONFLOW_SESSION_SECRET=$(openssl rand -hex 32 2>/dev/null || python3 -c "import secrets; print(secrets.token_hex(32))")
 # OPTIONFLOW_ADMIN_PASSWORD=your-strong-password-here
@@ -134,6 +134,13 @@ systemctl daemon-reload
 systemctl enable "$SERVICE_NAME"
 systemctl restart "$SERVICE_NAME"
 say "Service bala omad (127.0.0.1:$PORT)."
+
+say "BTC history baraye backtest (~2 sal, 5m/15m/1h/4h/1d) — momkene chand daqiqe tool bekeshad..."
+if OPTIONFLOW_DATA="$INSTALL_DIR/data" "$INSTALL_DIR/.venv/bin/python" -m optionflow.patterns seed --days 730; then
+  say "History seed tamam shod."
+else
+  say "WARN: history seed fail — ba dashboard > backtest > download dobare talash kon."
+fi
 
 # --- nginx ---
 say "Nginx config baraye $DOMAIN ..."

@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}ورود ادمین — OptionFlow{% endblock %}
+{% block header %}کنترل ادمین{% endblock %}
+
+{% block content %}
+<form class="filter-card auth-form" method="post" action="/bigjay_controller/login">
+  {% if error %}
+  <p class="flash err">{{ error }}</p>
+  {% endif %}
+  <label>نام کاربری ادمین</label>
+  <input name="username" required autocomplete="username">
+  <label>رمز عبور</label>
+  <input name="password" type="password" required autocomplete="current-password">
+  <button type="submit" class="btn primary full">ورود به پنل</button>
+</form>
+{% endblock %}

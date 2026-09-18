@@ -124,13 +124,33 @@ def weighted_strike_center(strikes: dict[float, float]) -> float | None:
     return sum(k * v for k, v in strikes.items()) / total
 
 
+def top_strikes(strikes: dict[float, float], n: int = 3) -> list[tuple[float, float]]:
+    return sorted(strikes.items(), key=lambda x: -x[1])[:n]
+
+
+def top_strikes_near_spot(
+    strikes: dict[float, float],
+    spot: float,
+    n: int = 2,
+    *,
+    pct_lo: float,
+    pct_hi: float,
+) -> list[tuple[float, float]]:
+    if spot <= 0 or not strikes:
+        return []
+    lo, hi = spot * pct_lo, spot * pct_hi
+    band = {k: v for k, v in strikes.items() if lo <= k <= hi and v > 0}
+    if not band:
+        return []
+    return sorted(band.items(), key=lambda x: -x[1])[:n]
+
+
 def weighted_strike_center_near_spot(
     strikes: dict[float, float],
     spot: float,
     *,
     half_range_pct: float = 0.025,
 ) -> float | None:
-    """Volume-weighted strike center; far OTM strikes decay (short-horizon levels)."""
     if not strikes or spot <= 0:
         return None
     half = max(half_range_pct, 0.005)
@@ -146,25 +166,3 @@ def weighted_strike_center_near_spot(
     if total_w <= 0:
         return None
     return weighted / total_w
-
-
-def top_strikes(strikes: dict[float, float], n: int = 3) -> list[tuple[float, float]]:
-    return sorted(strikes.items(), key=lambda x: -x[1])[:n]
-
-
-def top_strikes_near_spot(
-    strikes: dict[float, float],
-    spot: float,
-    n: int = 2,
-    *,
-    pct_lo: float,
-    pct_hi: float,
-) -> list[tuple[float, float]]:
-    """Highest-volume strikes within a spot-relative band (drops far OTM noise)."""
-    if spot <= 0 or not strikes:
-        return []
-    lo, hi = spot * pct_lo, spot * pct_hi
-    band = {k: v for k, v in strikes.items() if lo <= k <= hi and v > 0}
-    if not band:
-        return []
-    return sorted(band.items(), key=lambda x: -x[1])[:n]

@@ -1,0 +1,198 @@
+from __future__ import annotations
+
+import hashlib
+import logging
+import os
+import secrets
+import sqlite3
+from datetime import datetime, timezone
+from typing import Any
+
+from app.storage import connect, init_db
+
+logger = logging.getLogger("optionflow.auth")
+
+DEFAULT_USER_PASSWORD = "12345678"
+MIN_PASSWORD_LEN = 8
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _hash_password(password: str, salt: bytes | None = None) -> str:
+    salt = salt or secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 260_000)
+    return "pbkdf2_sha256$260000$" + salt.hex() + "$" + digest.hex()
+
+
+def verify_password(password: str, stored: str) -> bool:
+    try:
+        algo, iters, salt_hex, hash_hex = stored.split("$", 3)
+        if algo != "pbkdf2_sha256":
+            return False
+        salt = bytes.fromhex(salt_hex)
+        check = hashlib.pbkdf2_hmac(
+            "sha256", password.encode("utf-8"), salt, int(iters)
+        ).hex()
+        return secrets.compare_digest(check, hash_hex)
+    except Exception:
+        return False
+
+
+def ensure_users_schema() -> None:
+    init_db()
+    with connect() as conn:
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+                mobile TEXT NOT NULL DEFAULT '',
+                password_hash TEXT NOT NULL,
+                is_admin INTEGER NOT NULL DEFAULT 0,
+                allow_enrich INTEGER NOT NULL DEFAULT 0,
+                allow_stable INTEGER NOT NULL DEFAULT 0,
+                must_change_password INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+            """
+        )
+
+
+def bootstrap_admin() -> None:
+    ensure_users_schema()
+    admin_user = os.environ.get("OPTIONFLOW_ADMIN_USER", "BigJay").strip()
+    admin_pass = os.environ.get("OPTIONFLOW_ADMIN_PASSWORD", "").strip()
+    if not admin_pass:
+        logger.warning(
+            "OPTIONFLOW_ADMIN_PASSWORD not set — admin user not auto-created"
+        )
+        return
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT id FROM users WHERE username = ? COLLATE NOCASE",
+            (admin_user,),
+        ).fetchone()
+        if row:
+            return
+        conn.execute(
+            """
+            INSERT INTO users
+            (username, mobile, password_hash, is_admin, allow_enrich, allow_stable,
+             must_change_password, created_at)
+            VALUES (?, ?, ?, 1, 1, 1, 0, ?)
+            """,
+            (admin_user, "", _hash_password(admin_pass), _utc_now()),
+        )
+        logger.info("Bootstrap admin user %s created", admin_user)
+
+
+def get_user(user_id: int | None) -> dict[str, Any] | None:
+    if not user_id:
+        return None
+    ensure_users_schema()
+    with connect() as conn:
+        row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    if not row:
+        return None
+    return _row_to_dict(row)
+
+
+def get_user_by_username(username: str) -> dict[str, Any] | None:
+    ensure_users_schema()
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM users WHERE username = ? COLLATE NOCASE",
+            (username.strip(),),
+        ).fetchone()
+    return _row_to_dict(row) if row else None
+
+
+def authenticate(username: str, password: str) -> dict[str, Any] | None:
+    user = get_user_by_username(username)
+    if not user:
+        return None
+    if not verify_password(password, user["password_hash"]):
+        return None
+    return user
+
+
+def list_users() -> list[dict[str, Any]]:
+    ensure_users_schema()
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM users WHERE is_admin = 0 ORDER BY id DESC"
+        ).fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
+def create_user(
+    *,
+    username: str,
+    mobile: str,
+    allow_enrich: bool,
+    allow_stable: bool,
+) -> tuple[int | None, str]:
+    username = username.strip()
+    mobile = mobile.strip()
+    if len(username) < 2:
+        return None, "نام کاربری کوتاه است."
+    if get_user_by_username(username):
+        return None, "این نام کاربری وجود دارد."
+    ensure_users_schema()
+    with connect() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO users
+            (username, mobile, password_hash, is_admin, allow_enrich, allow_stable,
+             must_change_password, created_at)
+            VALUES (?, ?, ?, 0, ?, ?, 1, ?)
+            """,
+            (
+                username,
+                mobile,
+                _hash_password(DEFAULT_USER_PASSWORD),
+                1 if allow_enrich else 0,
+                1 if allow_stable else 0,
+                _utc_now(),
+            ),
+        )
+        return int(cur.lastrowid), ""
+
+
+def set_user_password(user_id: int, new_password: str, *, force_change: bool) -> str:
+    if len(new_password) < MIN_PASSWORD_LEN:
+        return f"حداقل {MIN_PASSWORD_LEN} کاراکتر."
+    ensure_users_schema()
+    with connect() as conn:
+        conn.execute(
+            """
+            UPDATE users SET password_hash = ?, must_change_password = ?
+            WHERE id = ?
+            """,
+            (_hash_password(new_password), 1 if force_change else 0, user_id),
+        )
+    return ""
+
+
+def admin_reset_user_password(user_id: int) -> None:
+    set_user_password(user_id, DEFAULT_USER_PASSWORD, force_change=True)
+
+
+def clear_must_change(user_id: int) -> None:
+    with connect() as conn:
+        conn.execute(
+            "UPDATE users SET must_change_password = 0 WHERE id = ?",
+            (user_id,),
+        )
+
+
+def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
+    d = dict(row)
+    d["is_admin"] = bool(d.get("is_admin"))
+    d["allow_enrich"] = bool(d.get("allow_enrich"))
+    d["allow_stable"] = bool(d.get("allow_stable"))
+    d["must_change_password"] = bool(d.get("must_change_password"))
+    return d

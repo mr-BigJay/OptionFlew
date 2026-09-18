@@ -7,33 +7,6 @@ from datetime import datetime, timezone
 from optionflow.deribit_client import DeribitClient
 from optionflow.flow_analyzer import analyze_trades
 from optionflow.guide import build_guidance, format_report, format_simple_paragraph
-from optionflow.report_service import produce_report
-from optionflow.tehran_time import to_utc_ms
-
-REPORT_FORMAT_ID = "prose-v2"
-
-
-def _print_version() -> None:
-    import optionflow.guide as guide_mod
-    import optionflow.scenario_narrative as narrative_mod
-    import subprocess
-    from pathlib import Path
-
-    root = Path(__file__).resolve().parent.parent
-    try:
-        rev = subprocess.check_output(
-            ["git", "rev-parse", "--short", "HEAD"],
-            cwd=root,
-            stderr=subprocess.DEVNULL,
-            text=True,
-        ).strip()
-    except Exception:
-        rev = "unknown"
-    print(
-        f"OptionFlow report_format={REPORT_FORMAT_ID} git={rev}\n"
-        f"  guide={guide_mod.__file__}\n"
-        f"  scenario_narrative={narrative_mod.__file__}"
-    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -43,13 +16,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--hours",
         type=float,
-        default=4.0,
-        help="پنجره rolling (ساعت) وقتی --rolling فعال است",
-    )
-    parser.add_argument(
-        "--daily",
-        action="store_true",
-        help="گزارش روزانه (کندل تقویم تهران) به‌جای ۴ ساعته",
+        default=2.0,
+        help="پنجرهٔ اصلی تحلیل (پیش‌فرض: 2 ساعت)",
     )
     parser.add_argument(
         "--pre-event-minutes",
@@ -74,39 +42,20 @@ def main(argv: list[str] | None = None) -> int:
         help="فقط یک پاراگراف روند و مسیر (متن ساده)",
     )
     parser.add_argument(
-        "--rolling",
+        "--enriched",
         action="store_true",
-        help="پنجرهٔ rolling به‌جای کندل تهران (مثل داشبورد نیست)",
-    )
-    parser.add_argument(
-        "--version",
-        action="store_true",
-        help="نسخهٔ کد و مسیر ماژول گزارش (برای عیب‌یابی deploy)",
+        help="همراه --simple: funding، OI، liquid، gamma، max pain، اخبار",
     )
     args = parser.parse_args(argv)
 
-    if args.version:
-        _print_version()
+    if args.simple and args.enriched:
+        from optionflow.report_service import produce_report
+
+        print(produce_report(report_kind="4h", enriched=True, use_candle_window=True).paragraph)
         return 0
 
-    kind = "daily" if args.daily else "4h"
-
-    if args.simple and not args.rolling and not args.pre_event_minutes:
-        snap = produce_report(report_kind=kind, use_candle_window=True)
-        print(snap.paragraph)
-        return 0
-
-    if args.rolling:
-        start, end = DeribitClient.window_ms(args.hours)
-        window_label = f"{args.hours:g} ساعت اخیر"
-    else:
-        from optionflow.tehran_time import candle_window_4h, candle_window_daily
-
-        if kind == "daily":
-            start_dt, end_dt, window_label = candle_window_daily()
-        else:
-            start_dt, end_dt, window_label = candle_window_4h()
-        start, end = to_utc_ms(start_dt), to_utc_ms(end_dt)
+    start, end = DeribitClient.window_ms(args.hours)
+    window_label = f"{args.hours:g} ساعت اخیر"
 
     with DeribitClient() as client:
         trades = client.fetch_option_trades(start_ms=start, end_ms=end)
@@ -119,7 +68,6 @@ def main(argv: list[str] | None = None) -> int:
         trades,
         spot=spot,
         window_label=window_label,
-        window_hours=24.0 if args.daily else (args.hours if args.rolling else 4.0),
     )
 
     pre_analysis = None

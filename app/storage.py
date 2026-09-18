@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import sqlite3
 from contextlib import contextmanager
@@ -184,19 +185,28 @@ def _next_manual_index(conn: sqlite3.Connection, date_key: str) -> int:
 
 def save_scheduled_report(snapshot: ReportSnapshot) -> int:
     """Insert or replace scheduled report keyed by report_code (4h slot / daily)."""
+    from optionflow.report_chart import chart_png_for_snapshot
+
     purge_expired_manual_reports()
     kind: ReportKind = snapshot.report_kind  # type: ignore[assignment]
     code = snapshot.report_code or scheduled_report_code(kind)
+    snapshot.report_code = code
     row = snapshot.to_row()
     row["report_code"] = code
     row["is_manual"] = 0
     row["expires_at"] = None
     with connect() as conn:
-        return _upsert_scheduled(conn, row)
+        rid = _upsert_scheduled(conn, row)
+    png = chart_png_for_snapshot(snapshot)
+    if png:
+        save_report_chart(code, png)
+    return rid
 
 
 def save_manual_report(snapshot: ReportSnapshot) -> int:
     """Manual run (تولید الان): YYYYMMDD-jn, expires 24h after creation."""
+    from optionflow.report_chart import chart_png_for_snapshot
+
     purge_expired_manual_reports()
     created = parse_iso(snapshot.created_at)
     expires = (created + timedelta(hours=24)).replace(microsecond=0)
@@ -220,7 +230,12 @@ def save_manual_report(snapshot: ReportSnapshot) -> int:
             """,
             row,
         )
-        return int(cur.lastrowid)
+        rid = int(cur.lastrowid)
+    snapshot.report_code = code
+    png = chart_png_for_snapshot(snapshot)
+    if png:
+        save_report_chart(code, png)
+    return rid
 
 
 def insert_report(snapshot: ReportSnapshot) -> int:
@@ -244,25 +259,35 @@ def get_report(report_id: int) -> dict[str, Any] | None:
         return r
 
 
-def get_latest_report(report_kind: str | None = None) -> dict[str, Any] | None:
+def get_latest_report(
+    report_kind: str | None = None, *, scheduled_only: bool = False
+) -> dict[str, Any] | None:
+    """آخرین گزارش هر kind (زمان‌بندی‌شده یا دستی معتبر)."""
     purge_expired_manual_reports()
+    now = utc_now_iso()
+    visible = """
+        (is_manual IS NULL OR is_manual = 0
+         OR (expires_at IS NOT NULL AND expires_at > ?))
+    """
+    manual_clause = " AND (is_manual IS NULL OR is_manual = 0)" if scheduled_only else ""
     with connect() as conn:
         if report_kind:
             row = conn.execute(
                 f"""
                 SELECT * FROM reports
-                WHERE report_kind = ? AND {_scheduled_only_sql()}
+                WHERE report_kind = ? AND {visible}{manual_clause}
                 ORDER BY created_at DESC LIMIT 1
                 """,
-                (report_kind,),
+                (report_kind, now),
             ).fetchone()
         else:
             row = conn.execute(
                 f"""
                 SELECT * FROM reports
-                WHERE {_scheduled_only_sql()}
+                WHERE {visible}{manual_clause}
                 ORDER BY created_at DESC LIMIT 1
-                """
+                """,
+                (now,),
             ).fetchone()
         return dict(row) if row else None
 
@@ -279,13 +304,16 @@ def list_reports(
     start_iso: str | None = None,
     end_iso: str | None = None,
     limit: int = 200,
+    scheduled_only: bool = False,
 ) -> list[dict[str, Any]]:
     purge_expired_manual_reports()
     now = utc_now_iso()
-    q = """
+    manual_clause = " AND (is_manual IS NULL OR is_manual = 0)" if scheduled_only else ""
+    q = f"""
         SELECT * FROM reports WHERE 1=1
         AND (is_manual IS NULL OR is_manual = 0
              OR (expires_at IS NOT NULL AND expires_at > ?))
+        {manual_clause}
     """
     params: list[Any] = [now]
     if start_iso:
@@ -316,6 +344,45 @@ def set_setting(key: str, value: str) -> None:
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             (key, value),
         )
+
+
+def chart_path_for_code(report_code: str) -> Path:
+    return data_dir() / "charts" / f"{report_code}.png"
+
+
+def save_report_chart(report_code: str, png: bytes) -> Path | None:
+    if not report_code or not png:
+        return None
+    path = chart_path_for_code(report_code)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(png)
+    return path
+
+
+def report_has_chart(report_code: str | None) -> bool:
+    if not report_code:
+        return False
+    return chart_path_for_code(report_code).is_file()
+
+
+def ensure_report_chart(report: dict[str, Any] | None) -> None:
+    """اگر PNG نیست، چارت را از متن یا سطوح گزارش می‌سازد."""
+    if not report:
+        return
+    code = report.get("report_code")
+    if not code or report_has_chart(code):
+        return
+    from optionflow.report_chart import chart_png_for_report_row
+
+    png = chart_png_for_report_row(report)
+    if png:
+        save_report_chart(code, png)
+        return
+    logging.getLogger("optionflow.storage").warning(
+        "Chart not built for %s kind=%s (check prose-v3 or matplotlib/Binance)",
+        code,
+        report.get("report_kind"),
+    )
 
 
 def parse_iso(s: str) -> datetime:

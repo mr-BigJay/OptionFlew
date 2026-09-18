@@ -5,12 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0a1018">
   <title>{% block title %}OptionFlow{% endblock %}</title>
-  <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/app.css?v=4">
 </head>
 <body>
   <header class="top-bar">
     <h1>{% block header %}OptionFlow{% endblock %}</h1>
     {% block subheader %}{% endblock %}
+    {% if auth_user %}
+    <p class="top-user-bar">
+      {{ auth_user.username }}
+      {% if is_admin %}<a href="/bigjay_controller">ادمین</a>{% endif %}
+      <a href="/logout">خروج</a>
+    </p>
+    {% endif %}
   </header>
 
   <main class="page">
@@ -26,10 +33,32 @@
       <span class="icon">☰</span>
       <span>گزارش‌ها</span>
     </a>
+    {% if is_admin %}
+    <a href="/patterns" class="{% if active == 'patterns' %}active{% endif %}">
+      <span class="icon">◇</span>
+      <span>الگوها</span>
+    </a>
+    <a href="/backtest" class="{% if active == 'backtest' %}active{% endif %}">
+      <span class="icon">⏪</span>
+      <span>بکتست</span>
+    </a>
     <a href="/telegram" class="{% if active == 'telegram' %}active{% endif %}">
       <span class="icon">✈</span>
       <span>تلگرام</span>
     </a>
+    {% endif %}
   </nav>
+
+  <div id="chart-lightbox" class="chart-lightbox" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-label="نمایش چارت">
+    <button type="button" class="chart-lightbox-close" aria-label="بستن">×</button>
+    <div class="chart-lightbox-stage" id="chart-lightbox-inner">
+      <img id="chart-lightbox-img" alt="" />
+    </div>
+    <div class="chart-lightbox-bar">
+      <button type="button" class="chart-lightbox-rotate" id="chart-lightbox-rotate">↻ چرخش تصویر</button>
+    </div>
+  </div>
+
+  <script src="/static/chart-lightbox.js?v=3" defer></script>
 </body>
 </html>

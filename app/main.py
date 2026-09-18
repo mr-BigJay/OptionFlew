@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import secrets
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -10,24 +11,57 @@ from urllib.parse import quote
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from starlette.middleware.sessions import SessionMiddleware
+
+from app.auth_middleware import (
+    AuthMiddleware,
+    channel_allowed,
+    current_user,
+    deployment_channel_label,
+    login_session,
+    logout_session,
+)
+from app.auth_store import (
+    MIN_PASSWORD_LEN,
+    admin_reset_user_password,
+    authenticate,
+    bootstrap_admin,
+    clear_must_change,
+    create_user,
+    list_users,
+    set_user_password,
+)
+from app.backtest_jobs import start_backtest_job
+from app.backtest_store import get_backtest_run, list_backtest_runs
+from app.history_jobs import history_download_state, start_history_download
 from app.jobs import (
     run_scheduled_4h_report,
     run_scheduled_daily_report,
     run_scheduled_report,
 )
 from app.storage import (
+    data_dir,
+    ensure_report_chart,
     get_latest_report,
     get_report,
     get_setting,
     init_db,
     list_reports,
+    report_has_chart,
     set_setting,
 )
-from app.telegram_notify import send_telegram_message, telegram_enabled
+from app.telegram_notify import send_telegram_message, send_telegram_photo, telegram_enabled
+from optionflow.patterns.history import cache_status
+from optionflow.patterns.service import (
+    get_cached_scan,
+    invalidate_pattern_cache,
+    pattern_cache_timestamp,
+    patterns_data_dir,
+)
 from optionflow.price_levels import fetch_price_levels
 from optionflow.tehran_time import (
     CRON_4H_HOURS,
@@ -49,6 +83,26 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("optionflow.web")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.dirname(BASE_DIR)
+
+
+def _load_env_file() -> None:
+    env_path = os.path.join(ROOT_DIR, ".env")
+    if not os.path.isfile(env_path):
+        return
+    with open(env_path, encoding="utf-8") as f:
+        for raw in f:
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, val = line.partition("=")
+            key = key.strip()
+            val = val.strip().strip('"').strip("'")
+            if key:
+                os.environ.setdefault(key, val)
+
+
+_load_env_file()
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 scheduler = BackgroundScheduler()
 
@@ -87,6 +141,59 @@ def _clean_paragraph(text: str) -> str:
     return text.strip()
 
 
+def _format_prose_report_html(text: str) -> str:
+    """prose-v3: **تیتر** → section؛ برای داشبورد (نه فقط چارت)."""
+    import html as html_mod
+    import re
+
+    text = _clean_paragraph(text)
+    if "حرکت اول" not in text and "**" not in text:
+        return f'<p class="report-section-body">{html_mod.escape(text)}</p>'
+
+    parts: list[str] = []
+    for block in re.split(r"\n\n+", text.strip()):
+        block = block.strip()
+        if not block:
+            continue
+        m = re.match(r"^\*\*(.+?)\*\*\s*\n?(.*)$", block, re.DOTALL)
+        if m:
+            title = html_mod.escape(m.group(1).strip())
+            body = html_mod.escape(m.group(2).strip())
+            parts.append(f'<section class="report-section"><h3 class="report-section-title">{title}</h3>')
+            if body:
+                parts.append(f'<p class="report-section-body">{body}</p>')
+            parts.append("</section>")
+        else:
+            parts.append(
+                f'<p class="report-section-body">{html_mod.escape(block)}</p>'
+            )
+    return "\n".join(parts)
+
+
+def _category_fa(category: str) -> str:
+    return {
+        "triangle": "مثلث فشرده",
+        "flag": "الگوی پرچم",
+        "divergence": "واگرایی RSI",
+    }.get(category, category)
+
+
+def _page_ctx(request: Request, **extra: Any) -> dict[str, Any]:
+    user = current_user(request)
+    return _template_ctx(
+        request=request,
+        auth_user=user,
+        is_admin=bool(user and user.get("is_admin")),
+        channel_label=deployment_channel_label(),
+        **extra,
+    )
+
+
+def _scheduled_only(request: Request) -> bool:
+    user = current_user(request)
+    return not (user and user.get("is_admin"))
+
+
 def _template_ctx(**extra: Any) -> dict[str, Any]:
     return {
         "fmt_dt": _fmt_dt,
@@ -95,6 +202,8 @@ def _template_ctx(**extra: Any) -> dict[str, Any]:
         "fmt_date": format_date_tehran,
         "bias_fa": _bias_fa,
         "clean_paragraph": _clean_paragraph,
+        "format_report_html": _format_prose_report_html,
+        "category_fa": _category_fa,
         **extra,
     }
 
@@ -136,7 +245,28 @@ def _range_custom_tehran(from_date: str, to_date: str) -> tuple[str, str]:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    import optionflow.guide as guide_mod
+
+    try:
+        import subprocess
+
+        git_head = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=ROOT_DIR,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip()
+    except Exception:
+        git_head = "unknown"
+    logger.info(
+        "OptionFlow web boot: git=%s guide=%s enriched=%s data=%s",
+        git_head,
+        guide_mod.__file__,
+        os.environ.get("OPTIONFLOW_ENRICHED", "0"),
+        os.environ.get("OPTIONFLOW_DATA", "data"),
+    )
     init_db()
+    bootstrap_admin()
     scheduler.add_job(
         run_scheduled_4h_report,
         trigger=CronTrigger(
@@ -172,7 +302,19 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="OptionFlow Dashboard", lifespan=lifespan)
+_session_secret = os.environ.get("OPTIONFLOW_SESSION_SECRET") or secrets.token_hex(32)
+app.add_middleware(AuthMiddleware)
+app.add_middleware(SessionMiddleware, secret_key=_session_secret, same_site="lax")
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
+_charts_dir = data_dir() / "charts"
+_charts_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/charts", StaticFiles(directory=str(_charts_dir)), name="charts")
+_patterns_dir = patterns_data_dir(data_dir())
+app.mount(
+    "/pattern-charts",
+    StaticFiles(directory=str(_patterns_dir)),
+    name="pattern-charts",
+)
 
 
 def _ensure_price_levels(report: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -191,16 +333,170 @@ def _ensure_price_levels(report: dict[str, Any] | None) -> dict[str, Any] | None
     return out
 
 
+    return out
+
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request):
+    if current_user(request):
+        return RedirectResponse("/", status_code=303)
+    return templates.TemplateResponse(
+        request, "login.html", _page_ctx(request, active="home")
+    )
+
+
+@app.post("/login")
+async def login_post(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+    next: str = Form(""),
+):
+    user = authenticate(username, password)
+    if not user or user.get("is_admin"):
+        return RedirectResponse("/login?err=1", status_code=303)
+    if not channel_allowed(user):
+        return RedirectResponse("/login?err=channel", status_code=303)
+    login_session(request, user, admin_panel=False)
+    dest = next if next.startswith("/") and not next.startswith("//") else "/"
+    return RedirectResponse(dest, status_code=303)
+
+
+@app.get("/logout")
+async def logout(request: Request):
+    logout_session(request)
+    return RedirectResponse("/login", status_code=303)
+
+
+@app.get("/change-password", response_class=HTMLResponse)
+async def change_password_page(request: Request, error: str = ""):
+    return templates.TemplateResponse(
+        request,
+        "change_password.html",
+        _page_ctx(request, error=error),
+    )
+
+
+@app.post("/change-password")
+async def change_password_post(
+    request: Request,
+    password: str = Form(...),
+    password2: str = Form(...),
+):
+    user = current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    if password != password2:
+        return RedirectResponse("/change-password?error=mismatch", status_code=303)
+    err = set_user_password(user["id"], password, force_change=False)
+    if err:
+        return templates.TemplateResponse(
+            request,
+            "change_password.html",
+            _page_ctx(request, error=err),
+        )
+    clear_must_change(user["id"])
+    return RedirectResponse("/", status_code=303)
+
+
+@app.get("/bigjay_controller/login", response_class=HTMLResponse)
+async def admin_login_page(request: Request, error: str = ""):
+    return templates.TemplateResponse(
+        request,
+        "admin/login.html",
+        _page_ctx(request, error=error),
+    )
+
+
+@app.post("/bigjay_controller/login")
+async def admin_login_post(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+):
+    user = authenticate(username, password)
+    if not user or not user.get("is_admin"):
+        return RedirectResponse(
+            "/bigjay_controller/login?error=1", status_code=303
+        )
+    login_session(request, user, admin_panel=True)
+    return RedirectResponse("/bigjay_controller", status_code=303)
+
+
+@app.get("/bigjay_controller", response_class=HTMLResponse)
+async def admin_dashboard(request: Request):
+    return templates.TemplateResponse(
+        request,
+        "admin/dashboard.html",
+        _page_ctx(request, active="admin"),
+    )
+
+
+@app.get("/bigjay_controller/users", response_class=HTMLResponse)
+async def admin_users_page(request: Request, msg: str = "", error: str = ""):
+    return templates.TemplateResponse(
+        request,
+        "admin/users.html",
+        _page_ctx(request, users=list_users(), msg=msg, error=error),
+    )
+
+
+@app.post("/bigjay_controller/users/create")
+async def admin_users_create(
+    request: Request,
+    username: str = Form(...),
+    mobile: str = Form(""),
+    allow_enrich: str = Form(""),
+    allow_stable: str = Form(""),
+):
+    uid, err = create_user(
+        username=username,
+        mobile=mobile,
+        allow_enrich=allow_enrich == "on",
+        allow_stable=allow_stable == "on",
+    )
+    if err:
+        return RedirectResponse(
+            f"/bigjay_controller/users?error={quote(err)}", status_code=303
+        )
+    return RedirectResponse(
+        "/bigjay_controller/users?msg=created", status_code=303
+    )
+
+
+@app.post("/bigjay_controller/users/{user_id}/reset-password")
+async def admin_users_reset(user_id: int):
+    admin_reset_user_password(user_id)
+    return RedirectResponse("/bigjay_controller/users?msg=reset", status_code=303)
+
+
+@app.post("/bigjay_controller/run-now")
+async def admin_run_now():
+    run_scheduled_report()
+    return RedirectResponse("/bigjay_controller?msg=run", status_code=303)
+
+
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
-    report_4h = _ensure_price_levels(get_latest_report("4h"))
-    report_daily = _ensure_price_levels(get_latest_report("daily"))
+    sched = _scheduled_only(request)
+    report_4h = _ensure_price_levels(get_latest_report("4h", scheduled_only=sched))
+    report_daily = _ensure_price_levels(
+        get_latest_report("daily", scheduled_only=sched)
+    )
+    ensure_report_chart(report_4h)
+    ensure_report_chart(report_daily)
     return templates.TemplateResponse(
         request,
         "home.html",
-        _template_ctx(
+        _page_ctx(
             report_4h=report_4h,
             report_daily=report_daily,
+            report_4h_has_chart=report_has_chart(
+                report_4h.get("report_code") if report_4h else None
+            ),
+            report_daily_has_chart=report_has_chart(
+                report_daily.get("report_code") if report_daily else None
+            ),
             active="home",
         ),
     )
@@ -217,22 +513,28 @@ async def reports_page(
     if period not in ("day", "week", "month", "range"):
         period = "day"
 
+    sched = _scheduled_only(request)
     if period == "range" and from_date and to_date:
         start_iso, end_iso = _range_custom_tehran(from_date, to_date)
-        items = list_reports(start_iso=start_iso, end_iso=end_iso)
+        items = list_reports(
+            start_iso=start_iso, end_iso=end_iso, scheduled_only=sched
+        )
     elif period == "range":
         items = []
     else:
         anchor = date or None
         start_iso, end_iso = _range_for_period(period, anchor)
-        items = list_reports(start_iso=start_iso, end_iso=end_iso)
+        items = list_reports(
+            start_iso=start_iso, end_iso=end_iso, scheduled_only=sched
+        )
 
     grouped = _group_by_date(items)
 
     return templates.TemplateResponse(
         request,
         "reports.html",
-        _template_ctx(
+        _page_ctx(
+            request,
             active="reports",
             period=period,
             date=date,
@@ -249,11 +551,187 @@ async def report_detail(request: Request, report_id: int):
     report = get_report(report_id)
     if not report:
         return RedirectResponse("/reports", status_code=302)
+    if _scheduled_only(request) and report.get("is_manual"):
+        return RedirectResponse("/reports", status_code=302)
+    ensure_report_chart(report)
     return templates.TemplateResponse(
         request,
         "report_detail.html",
-        _template_ctx(active="reports", report=report),
+        _page_ctx(
+            request,
+            active="reports",
+            report=report,
+            has_chart=report_has_chart(report.get("report_code")),
+        ),
     )
+
+
+@app.get("/patterns", response_class=HTMLResponse)
+async def patterns_page(request: Request, tab: str = "triangle"):
+    if tab not in ("triangle", "flag", "divergence"):
+        tab = "triangle"
+    scan = get_cached_scan(_patterns_dir)
+    hits = scan.get(tab, {})
+    rows = [(tf, hits.get(tf)) for tf in ("5m", "15m", "1h")]
+    cache_ts = pattern_cache_timestamp()
+    return templates.TemplateResponse(
+        request,
+        "patterns.html",
+        _page_ctx(
+            request,
+            active="patterns",
+            tab=tab,
+            rows=rows,
+            cache_ts=cache_ts,
+            tf_labels={
+                "5m": "۵ دقیقه",
+                "15m": "۱۵ دقیقه",
+                "1h": "۱ ساعت",
+            },
+        ),
+    )
+
+
+@app.get("/backtest", response_class=HTMLResponse)
+async def backtest_page(
+    request: Request,
+    tab: str = "triangle",
+    run_id: int = 0,
+):
+    if tab not in ("triangle", "flag", "divergence"):
+        tab = "triangle"
+    active_run = get_backtest_run(run_id) if run_id else None
+    return templates.TemplateResponse(
+        request,
+        "backtest.html",
+        _page_ctx(
+            request,
+            active="backtest",
+            tab=tab,
+            cache_rows=cache_status(data_dir()),
+            run_id=run_id,
+            active_run=active_run,
+            history_dl=history_download_state(),
+            category_labels={
+                "triangle": "مثلث فشرده",
+                "flag": "الگوی پرچم",
+                "divergence": "واگرایی RSI",
+            },
+            bt_tf_labels={
+                "5m": "۵ دقیقه",
+                "15m": "۱۵ دقیقه",
+                "1h": "۱ ساعت",
+                "4h": "۴ ساعت",
+                "1d": "روزانه",
+            },
+        ),
+    )
+
+
+@app.get("/backtest/reports", response_class=HTMLResponse)
+async def backtest_reports_page(request: Request):
+    runs = list_backtest_runs(limit=80)
+    labels = {
+        "triangle": "مثلث فشرده",
+        "flag": "الگوی پرچم",
+        "divergence": "واگرایی RSI",
+    }
+    return templates.TemplateResponse(
+        request,
+        "backtest_reports.html",
+        _page_ctx(
+            request,
+            active="backtest", runs=runs, category_labels=labels, bt_tf_labels={
+                "5m": "۵ دقیقه", "15m": "۱۵ دقیقه", "1h": "۱ ساعت", "4h": "۴ ساعت", "1d": "روزانه",
+            }),
+    )
+
+
+@app.get("/backtest/reports/{run_id}", response_class=HTMLResponse)
+async def backtest_report_detail(request: Request, run_id: int):
+    run = get_backtest_run(run_id)
+    if not run:
+        return RedirectResponse("/backtest/reports", status_code=302)
+    labels = {
+        "triangle": "مثلث فشرده",
+        "flag": "الگوی پرچم",
+        "divergence": "واگرایی RSI",
+    }
+    return templates.TemplateResponse(
+        request,
+        "backtest_report_detail.html",
+        _page_ctx(request, active="backtest", run=run, category_labels=labels),
+    )
+
+
+@app.get("/backtest/api/run/{run_id}")
+async def backtest_run_api(run_id: int):
+    run = get_backtest_run(run_id)
+    if not run:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    payload: dict[str, Any] = {
+        "id": run["id"],
+        "status": run["status"],
+        "progress_pct": run["progress_pct"],
+        "findings_count": run["findings_count"],
+        "success_count": run["success_count"],
+        "fail_count": run["fail_count"],
+        "error_message": run.get("error_message") or "",
+    }
+    if run["status"] in ("done", "error"):
+        payload["findings"] = run.get("findings") or []
+    return JSONResponse(payload)
+
+
+@app.get("/backtest/api/history")
+async def backtest_history_api():
+    return JSONResponse(
+        {
+            "download": history_download_state(),
+            "cache": cache_status(data_dir()),
+        }
+    )
+
+
+@app.post("/backtest/history/download")
+async def backtest_history_download(
+    interval: str = Form("all"),
+):
+    iv = None if interval in ("", "all") else interval
+    if iv and iv not in ("5m", "15m", "1h", "4h", "1d"):
+        iv = None
+    started = start_history_download(interval=iv)
+    q = "dl=busy" if not started else "dl=started"
+    return RedirectResponse(f"/backtest?{q}", status_code=303)
+
+
+@app.post("/backtest/start")
+async def backtest_start(
+    tab: str = Form("triangle"),
+    date_from: str = Form(...),
+    date_to: str = Form(...),
+    timeframe: str = Form("1h"),
+):
+    if tab not in ("triangle", "flag", "divergence"):
+        tab = "triangle"
+    if timeframe not in ("5m", "15m", "1h", "4h", "1d"):
+        timeframe = "1h"
+    run_id = start_backtest_job(
+        category=tab,
+        timeframe=timeframe,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    return RedirectResponse(f"/backtest?tab={tab}&run_id={run_id}", status_code=303)
+
+
+@app.post("/patterns/refresh")
+async def patterns_refresh(tab: str = Form("triangle")):
+    if tab not in ("triangle", "flag", "divergence"):
+        tab = "triangle"
+    invalidate_pattern_cache()
+    get_cached_scan(_patterns_dir)
+    return RedirectResponse(f"/patterns?tab={tab}", status_code=303)
 
 
 @app.get("/telegram", response_class=HTMLResponse)
@@ -261,7 +739,8 @@ async def telegram_page(request: Request, msg: str = "", ok: str = ""):
     return templates.TemplateResponse(
         request,
         "telegram.html",
-        _template_ctx(
+        _page_ctx(
+            request,
             active="telegram",
             bot_token=get_setting("telegram_bot_token", ""),
             chat_id=get_setting("telegram_chat_id", ""),
@@ -290,15 +769,14 @@ async def telegram_save(
 @app.post("/telegram/test")
 async def telegram_test():
     latest = get_latest_report()
+    if latest:
+        ensure_report_chart(latest)
     text = latest["paragraph"] if latest else "تست OptionFlow — اتصال تلگرام برقرار است."
+    if latest and latest.get("report_code") and report_has_chart(latest["report_code"]):
+        path = data_dir() / "charts" / f"{latest['report_code']}.png"
+        send_telegram_photo(path.read_bytes(), caption="BTCUSDT — مسیر سناریو")
     ok, msg = send_telegram_message(text)
     return RedirectResponse(
         f"/telegram?ok={'1' if ok else '0'}&msg={quote(msg)}",
         status_code=303,
     )
-
-
-@app.post("/admin/run-now")
-async def run_now():
-    run_scheduled_report()
-    return RedirectResponse("/", status_code=303)

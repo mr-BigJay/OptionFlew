@@ -1,0 +1,41 @@
+{% if active_run.error_message %}
+<p class="flash err">{{ active_run.error_message }}</p>
+{% endif %}
+
+{% if not hide_bt_summary %}
+<div class="bt-stats-row" aria-label="خلاصه بکتست">
+  <span class="bt-stat-item">بکتست <bdi dir="ltr">#{{ active_run.id }}</bdi></span>
+  <span class="bt-stat-item bt-stat-ok">موفق <bdi dir="ltr">{{ active_run.success_count }}</bdi></span>
+  <span class="bt-stat-item bt-stat-fail">ناموفق <bdi dir="ltr">{{ active_run.fail_count }}</bdi></span>
+  <span class="bt-stat-item">کل <bdi dir="ltr">{{ active_run.findings_count }}</bdi></span>
+  {% if show_archive_link %}
+  <a href="/backtest/reports/{{ active_run.id }}" class="bt-stat-link">جزئیات در بایگانی</a>
+  {% endif %}
+</div>
+{% endif %}
+
+{% for f in active_run.findings %}
+<article class="pattern-card bt-finding {% if f.success %}bt-outcome-ok{% elif f.success is sameas false %}bt-outcome-fail{% else %}bt-outcome-neutral{% endif %}">
+  <header class="pattern-head">
+    <span class="pattern-title">{{ f.title_fa }}</span>
+    <span class="pattern-status bt-finding-status">
+      <span class="bt-verdict {% if f.success %}bt-verdict-ok{% elif f.success is sameas false %}bt-verdict-fail{% endif %}">
+        {% if f.success %}✓ تأیید{% elif f.success is sameas false %}✗ رد{% else %}؟ نامشخص{% endif %}
+      </span>
+      <time class="bt-finding-time" datetime="{{ f.detected_at }}">{{ fmt_dt(f.detected_at) }}</time>
+    </span>
+  </header>
+  <p class="pattern-summary">{{ f.summary_fa }}</p>
+  <p class="pattern-forecast"><strong>پیش‌بینی:</strong> {{ f.forecast_fa }}</p>
+  {% if f.outcome_fa %}
+  <p class="bt-outcome-note"><bdi dir="ltr">{{ f.outcome_fa }}</bdi></p>
+  {% endif %}
+  {% if f.chart_file %}
+  <figure class="scenario-chart pattern-chart">
+    <div class="scenario-chart-frame">
+      <img class="chart-preview" src="/pattern-charts/{{ f.chart_file }}" alt="" loading="lazy" />
+    </div>
+  </figure>
+  {% endif %}
+</article>
+{% endfor %}

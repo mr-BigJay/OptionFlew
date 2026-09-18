@@ -1,19 +1,24 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from typing import Literal
 
 from optionflow.deribit_client import DeribitClient
 from optionflow.flow_analyzer import analyze_trades
-from optionflow.guide import build_guidance, format_simple_paragraph
+from optionflow.guide import build_guidance, format_enriched_simple_paragraph, format_simple_paragraph
+from optionflow.market_context import collect_market_context
 from optionflow.price_levels import fetch_price_levels
+from optionflow.scenario_narrative import resolve_scenario_plan
 
 from optionflow.tehran_time import (
     candle_window_4h,
     candle_window_daily,
     to_utc_ms,
 )
+
+logger = logging.getLogger("optionflow.report")
 
 ReportKind = Literal["4h", "daily"]
 
@@ -40,6 +45,8 @@ class ReportSnapshot:
     report_code: str = ""
     is_manual: int = 0
     expires_at: str | None = None
+    scenario_b: int | None = None
+    scenario_c: int | None = None
 
     def to_row(self) -> dict:
         return asdict(self)
@@ -58,6 +65,7 @@ def produce_report(
     report_kind: ReportKind = "4h",
     use_candle_window: bool = True,
     window_hours: float | None = None,
+    enriched: bool = False,
 ) -> ReportSnapshot:
     if use_candle_window:
         start_ms, end_ms, window_label, wh = _window_for_kind(report_kind)
@@ -80,7 +88,22 @@ def produce_report(
         window_hours=wh,
     )
     guidance = build_guidance(analysis)
-    paragraph = format_simple_paragraph(analysis, guidance)
+    plan = resolve_scenario_plan(
+        analysis,
+        support=guidance.support_zone,
+        target=guidance.target_zone,
+        path_primary=guidance.path_primary,
+        path_alternate=guidance.path_alternate,
+    )
+    if enriched:
+        ctx = collect_market_context(analysis.spot)
+        paragraph = format_enriched_simple_paragraph(analysis, guidance, ctx)
+    else:
+        paragraph = format_simple_paragraph(analysis, guidance)
+    if enriched and ("جمع‌بندی" not in paragraph and "نتیجه‌گیری" not in paragraph):
+        logger.error(
+            "Enriched report missing prose narrative; check deployment."
+        )
     levels = fetch_price_levels()
     now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
@@ -102,4 +125,6 @@ def produce_report(
         pdl=levels.pdl,
         pwh=levels.pwh,
         pwl=levels.pwl,
+        scenario_b=plan.b if plan else None,
+        scenario_c=plan.c if plan else None,
     )

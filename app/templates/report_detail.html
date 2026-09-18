@@ -12,7 +12,14 @@
     <span class="muted">امتیاز {{ report.score }} · {{ report.confidence_pct }}%</span>
   </div>
   <p class="headline">{{ report.headline }}</p>
-  <p class="paragraph paragraph-justify">{{ clean_paragraph(report.paragraph) }}</p>
+  {% if report.get('report_code') and has_chart %}
+  <figure class="scenario-chart">
+    <div class="scenario-chart-frame">
+    <img class="chart-preview" src="/charts/{{ report.report_code }}.png?v={{ report.created_at }}" alt="BTCUSDT scenario — برای بزرگ‌نمایی لمس کنید" loading="lazy" />
+    </div>
+  </figure>
+  {% endif %}
+  <div class="paragraph paragraph-justify report-prose">{{ format_report_html(report.paragraph) | safe }}</div>
   <div class="stats">
     <span>{{ report.trade_count }} معامله</span>
     <span>Spot {{ "{:,.0f}".format(report.spot) }}</span>

@@ -16,6 +16,20 @@ curl -fsSL https://raw.githubusercontent.com/mr-BigJay/OptionFlew/main/scripts/i
 curl -fsSL https://raw.githubusercontent.com/mr-BigJay/OptionFlew/pre-release/scripts/install-prerelease.sh | sudo bash
 ```
 
+## اکانتینگ (Enrich + Stable)
+
+- کاربر عادی: `/login` — فقط گزارش‌های زمان‌بندی‌شده ۴h و روزانه.
+- ادمین: `/bigjay_controller/login` — مدیریت کاربر، بکتست، الگوها، گزارش دستی، تلگرام.
+- در `.env` روی **هر دو** VPS:
+
+```bash
+OPTIONFLOW_ADMIN_USER=BigJay
+OPTIONFLOW_ADMIN_PASSWORD=...   # فقط روی سرور؛ در git نگذارید
+OPTIONFLOW_SESSION_SECRET=...   # install script یک مقدار تصادفی می‌سازد
+```
+
+پس از restart، ادمین یک‌بار با مسیر بالا وارد شود. کاربران با تیک Enrich/Stable در پنل ادمین ساخته می‌شوند.
+
 ## به‌روزرسانی stable (روی VPS)
 
 ```bash
