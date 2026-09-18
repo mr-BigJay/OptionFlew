@@ -35,7 +35,9 @@
     <div class="home-report-body report-prose">
     {% if report.get('report_code') and has_chart %}
     <figure class="scenario-chart">
+      <div class="scenario-chart-frame">
       <img class="chart-preview" src="/charts/{{ report.report_code }}.png?v={{ report.created_at }}" alt="BTCUSDT scenario — برای بزرگ‌نمایی لمس کنید" loading="lazy" />
+      </div>
     </figure>
     {% endif %}
     <div class="home-paragraph paragraph-justify">{{ format_report_html(report.paragraph) | safe }}</div>

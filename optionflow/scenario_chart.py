@@ -107,9 +107,9 @@ def render_btcusdt_scenario_chart(
     b = float(plan.b)
     c = float(plan.c)
 
-    fig_w = 12
-    fig_h = 6.2
-    fig, ax = plt.subplots(figsize=(fig_w, fig_h), dpi=110, layout="constrained")
+    fig_w = 8.0
+    fig_h = 4.6
+    fig, ax = plt.subplots(figsize=(fig_w, fig_h), dpi=100, layout="constrained")
     fig.patch.set_facecolor("#0d1117")
     ax.set_facecolor("#0d1117")
 
