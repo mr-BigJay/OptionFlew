@@ -2,48 +2,27 @@ from __future__ import annotations
 
 from optionflow.patterns.indicators import atr
 from optionflow.patterns.ohlc import OhlcBar
-from optionflow.patterns.pivots import zigzag_pivots
 from optionflow.patterns.types import PatternHit
 
-# فشردگی واقعی، نه هر کانال باریک‌شوندهٔ نویزی
-_ZIGZAG_PCT = {"5m": 0.006, "15m": 0.01, "1h": 0.016, "4h": 0.02, "1d": 0.026}
-_MIN_SPAN = {"5m": 28, "15m": 22, "1h": 18, "4h": 14, "1d": 12}
-_MAX_LAST_PIVOT_AGE = {"5m": 16, "15m": 12, "1h": 10, "4h": 8, "1d": 6}
-_CONTRACTION = 0.68  # gap_end باید کمتر از ۶۸٪ gap_start باشد
-_TOUCH_ATR = 0.5
-_FLAT_SLOPE = 0.00012  # شیب نسبی به قیمت برای خط «افقی»
+# پیوت ساختاری (چپ/راست) — برخوردهای شکل کتابی
+SWING_LEFT = 3
+SWING_RIGHT = 2
+_MIN_SWINGS = 5  # حداقل یک فنر کامل: مثلاً H-L-H-L-H
+_MIN_SPAN = {"5m": 20, "15m": 16, "1h": 12, "4h": 10, "1d": 8}
+_FLAT_PCT = {"5m": 0.0028, "15m": 0.0038, "1h": 0.005, "4h": 0.007, "1d": 0.01}
+_MAX_PIVOT_AGE = {"5m": 20, "15m": 14, "1h": 12, "4h": 10, "1d": 8}
 
 
-def _line_fit(indices: list[int], prices: list[float]) -> tuple[float, float]:
-    n = len(indices)
-    if n < 2:
-        return 0.0, prices[0] if prices else 0.0
-    sx = sum(indices)
-    sy = sum(prices)
-    sxx = sum(i * i for i in indices)
-    sxy = sum(i * p for i, p in zip(indices, prices))
-    den = n * sxx - sx * sx
-    if abs(den) < 1e-9:
-        return 0.0, sy / n
-    slope = (n * sxy - sx * sy) / den
-    intercept = (sy - slope * sx) / n
-    return slope, intercept
-
-
-def _y(slope: float, intercept: float, i: int) -> float:
+def _y(slope: float, intercept: float, i: float) -> float:
     return slope * i + intercept
 
 
-def _touches_line(
-    idxs: list[int],
-    px: list[float],
-    slope: float,
-    intercept: float,
-    tol: float,
-) -> bool:
-    if not idxs:
-        return False
-    return all(abs(p - _y(slope, intercept, i)) <= tol for i, p in zip(idxs, px))
+def _line_through(i0: int, p0: float, i1: int, p1: float) -> tuple[float, float]:
+    den = i1 - i0
+    if abs(den) < 1e-9:
+        return 0.0, p0
+    slope = (p1 - p0) / den
+    return slope, p0 - slope * i0
 
 
 def _apex_index(su: float, iu: float, sl: float, il: float) -> float | None:
@@ -53,126 +32,248 @@ def _apex_index(su: float, iu: float, sl: float, il: float) -> float | None:
     return (il - iu) / den
 
 
-def detect_triangle(bars: list[OhlcBar], timeframe: str) -> PatternHit | None:
-    if len(bars) < 80:
-        return None
-    window = bars[-120:]
-    n = len(window)
-    highs = [b.high for b in window]
-    lows = [b.low for b in window]
-    pct = _ZIGZAG_PCT.get(timeframe, 0.01)
-    pivots = zigzag_pivots(highs, lows, pct=pct)
-    if len(pivots) < 4:
-        return None
-
-    seq = pivots[-6:]
-    kinds = [p.kind for p in seq]
-    if all(kinds[i] == kinds[i + 1] for i in range(len(kinds) - 1)):
-        return None
-    # باید H/L یکی‌درمیان باشد (الگوی مثلث، نه دو سقف پشت‌سرهم)
-    alt = seq[:]
-    cleaned = [alt[0]]
-    for p in alt[1:]:
-        if p.kind == cleaned[-1].kind:
-            # نویز zigzag: هم‌نوع را نگه ندار
-            if p.kind == "high" and p.price >= cleaned[-1].price:
-                cleaned[-1] = p
-            elif p.kind == "low" and p.price <= cleaned[-1].price:
-                cleaned[-1] = p
+def _strict_swing(
+    values: list[float], i: int, left: int, right: int, *, high: bool
+) -> bool:
+    """اکسترمم یکتا — فلات افقی سقف/کف حساب نمی‌شود."""
+    if i - left < 0 or i + right >= len(values):
+        return False
+    val = values[i]
+    for j in range(i - left, i + right + 1):
+        if j == i:
             continue
-        cleaned.append(p)
-    if len(cleaned) < 4:
-        return None
-    seq = cleaned[-5:]
+        if high and values[j] >= val:
+            return False
+        if not high and values[j] <= val:
+            return False
+    return True
 
-    ph = [p for p in seq if p.kind == "high"]
-    pl = [p for p in seq if p.kind == "low"]
+
+def _price_swings(
+    highs: list[float], lows: list[float]
+) -> list[tuple[int, float, str]]:
+    n = len(highs)
+    raw: list[tuple[int, float, str]] = []
+    for i in range(SWING_LEFT, n - SWING_RIGHT):
+        if _strict_swing(highs, i, SWING_LEFT, SWING_RIGHT, high=True):
+            raw.append((i, highs[i], "high"))
+        if _strict_swing(lows, i, SWING_LEFT, SWING_RIGHT, high=False):
+            raw.append((i, lows[i], "low"))
+    raw.sort(key=lambda x: (x[0], 0 if x[2] == "high" else 1))
+    if not raw:
+        return []
+
+    alt: list[tuple[int, float, str]] = []
+    for item in raw:
+        if not alt:
+            alt.append(item)
+            continue
+        i, p, k = item
+        _pi, pp, pk = alt[-1]
+        if k == pk:
+            if (k == "high" and p >= pp) or (k == "low" and p <= pp):
+                alt[-1] = item
+            continue
+        alt.append(item)
+    return alt
+
+
+def _flat_enough(values: list[float], atr_now: float, flat_pct: float) -> bool:
+    span = max(values) - min(values)
+    mid = sum(values) / len(values)
+    return span <= max(atr_now * 0.75, mid * flat_pct)
+
+
+def _points_on_line(
+    idxs: list[int],
+    px: list[float],
+    slope: float,
+    intercept: float,
+    tol: float,
+    *,
+    side: str,
+) -> bool:
+    for i, p in zip(idxs, px):
+        line = _y(slope, intercept, i)
+        if side == "high" and p > line + tol:
+            return False
+        if side == "low" and p < line - tol:
+            return False
+        if abs(p - line) > tol * 1.8:
+            return False
+    return True
+
+
+def _classify(
+    hi_px: list[float],
+    lo_px: list[float],
+    atr_now: float,
+    flat_pct: float,
+) -> str | None:
+    hi_dir = hi_px[-1] - hi_px[0]
+    lo_dir = lo_px[-1] - lo_px[0]
+    move = max(atr_now * 0.35, hi_px[-1] * 0.0015)
+    highs_fall = hi_dir <= -move
+    lows_rise = lo_dir >= move
+    flat_hi = _flat_enough(hi_px, atr_now, flat_pct)
+    flat_lo = _flat_enough(lo_px, atr_now, flat_pct)
+
+    if flat_hi and lows_rise:
+        return "ascending"
+    if flat_lo and highs_fall:
+        return "descending"
+    if highs_fall and lows_rise:
+        return "symmetrical"
+    return None
+
+
+def _score_window(
+    seq: list[tuple[int, float, str]],
+    n: int,
+    last: OhlcBar,
+    atr_now: float,
+    timeframe: str,
+) -> dict | None:
+    ph = [(i, p) for i, p, k in seq if k == "high"]
+    pl = [(i, p) for i, p, k in seq if k == "low"]
     if len(ph) < 2 or len(pl) < 2:
         return None
 
-    hi_idx = [p.index for p in ph]
-    hi_px = [p.price for p in ph]
-    lo_idx = [p.index for p in pl]
-    lo_px = [p.price for p in pl]
-
-    su, iu = _line_fit(hi_idx, hi_px)
-    sl, il = _line_fit(lo_idx, lo_px)
-
-    start_i = min(hi_idx + lo_idx)
-    end_i = max(hi_idx + lo_idx)
-    min_span = _MIN_SPAN.get(timeframe, 22)
-    if end_i - start_i < min_span:
+    hi_idx = [i for i, _ in ph]
+    hi_px = [p for _, p in ph]
+    lo_idx = [i for i, _ in pl]
+    lo_px = [p for _, p in pl]
+    start_i = min(hi_idx[0], lo_idx[0])
+    end_i = max(hi_idx[-1], lo_idx[-1])
+    if end_i - start_i < _MIN_SPAN.get(timeframe, 16):
+        return None
+    if n - 1 - seq[-1][0] > _MAX_PIVOT_AGE.get(timeframe, 16):
         return None
 
-    last_pivot_i = max(p.index for p in seq)
-    max_age = _MAX_LAST_PIVOT_AGE.get(timeframe, 12)
-    if n - 1 - last_pivot_i > max_age:
+    kind = _classify(hi_px, lo_px, atr_now, _FLAT_PCT.get(timeframe, 0.004))
+    if kind is None:
         return None
 
-    upper_start = _y(su, iu, start_i)
-    upper_end = _y(su, iu, end_i)
-    lower_start = _y(sl, il, start_i)
-    lower_end = _y(sl, il, end_i)
-    gap_start = upper_start - lower_start
-    gap_end = upper_end - lower_end
+    if kind == "ascending":
+        level = sum(hi_px) / len(hi_px)
+        su, iu = 0.0, level
+        sl, il = _line_through(lo_idx[0], lo_px[0], lo_idx[-1], lo_px[-1])
+    elif kind == "descending":
+        level = sum(lo_px) / len(lo_px)
+        sl, il = 0.0, level
+        su, iu = _line_through(hi_idx[0], hi_px[0], hi_idx[-1], hi_px[-1])
+    else:
+        su, iu = _line_through(hi_idx[0], hi_px[0], hi_idx[-1], hi_px[-1])
+        sl, il = _line_through(lo_idx[0], lo_px[0], lo_idx[-1], lo_px[-1])
+
+    tol = atr_now * 0.85
+    if not _points_on_line(hi_idx, hi_px, su, iu, tol, side="high"):
+        return None
+    if not _points_on_line(lo_idx, lo_px, sl, il, tol, side="low"):
+        return None
+
+    gap_start = _y(su, iu, start_i) - _y(sl, il, start_i)
+    gap_end = _y(su, iu, end_i) - _y(sl, il, end_i)
     if gap_start <= 0 or gap_end <= 0:
         return None
-    if gap_end >= gap_start * _CONTRACTION:
+    if gap_end >= gap_start * 0.92:
+        return None
+
+    u_now = _y(su, iu, n - 1)
+    l_now = _y(sl, il, n - 1)
+    if u_now <= l_now:
+        return None
+    if last.close > u_now + atr_now or last.close < l_now - atr_now:
+        return None
+
+    apex = _apex_index(su, iu, sl, il)
+    if apex is not None and apex < end_i:
+        return None
+
+    contraction = 1.0 - (gap_end / gap_start)
+    score = contraction * 10 + len(seq) + (2 if kind != "symmetrical" else 1)
+    return {
+        "kind": kind,
+        "su": su,
+        "iu": iu,
+        "sl": sl,
+        "il": il,
+        "start_i": start_i,
+        "end_i": end_i,
+        "gap_start": gap_start,
+        "gap_end": gap_end,
+        "u_now": u_now,
+        "l_now": l_now,
+        "apex": apex,
+        "hi_idx": hi_idx,
+        "lo_idx": lo_idx,
+        "score": score,
+        "touches_high": len(ph),
+        "touches_low": len(pl),
+    }
+
+
+def detect_triangle(bars: list[OhlcBar], timeframe: str) -> PatternHit | None:
+    if len(bars) < 60:
+        return None
+    window = bars[-180:] if len(bars) >= 180 else bars[:]
+    n = len(window)
+    highs = [b.high for b in window]
+    lows = [b.low for b in window]
+    swings = _price_swings(highs, lows)
+    if len(swings) < _MIN_SWINGS:
         return None
 
     atr_vals = atr(window)
     atr_now = next((v for v in reversed(atr_vals) if v is not None), None)
     if atr_now is None or atr_now <= 0:
         return None
-    tol = atr_now * _TOUCH_ATR
-    if not _touches_line(hi_idx, hi_px, su, iu, tol):
-        return None
-    if not _touches_line(lo_idx, lo_px, sl, il, tol):
-        return None
 
     last = window[-1]
-    u_now = _y(su, iu, n - 1)
-    l_now = _y(sl, il, n - 1)
-    if u_now <= l_now:
-        return None
-    # قیمت باید داخل مثلث باشد (بدنه از خطوط نگذشته)
-    if last.close > u_now or last.close < l_now:
-        return None
-    if last.high > u_now + tol or last.low < l_now - tol:
-        return None
-
-    apex = _apex_index(su, iu, sl, il)
-    if apex is None:
-        return None
-    # رأس باید جلوتر باشد، نه اینکه الگو تمام شده باشد
-    if apex <= n - 1:
-        return None
-    if apex - (n - 1) > (end_i - start_i) * 2.5:
-        return None
-
-    px = last.close
-    flat = _FLAT_SLOPE * px
-    upper_falling = su < -flat * 0.35
-    lower_rising = sl > flat * 0.35
-    upper_flat = abs(su) <= flat
-    lower_flat = abs(sl) <= flat
-
-    if lower_rising and (upper_flat or abs(su) < abs(sl) * 0.45):
-        kind = "ascending"
-        title = "مثلث صعودی (فشردگی)"
-        forecast = "احتمال شکست بالای مقاومت افقی و حرکت صعودی در صورت بسته شدن بالای خط."
-    elif upper_falling and (lower_flat or abs(sl) < abs(su) * 0.45):
-        kind = "descending"
-        title = "مثلث نزولی (فشردگی)"
-        forecast = "احتمال شکست پایین حمایت افقی و ادامهٔ نزول در صورت بسته شدن زیر خط."
-    elif upper_falling and lower_rising:
-        kind = "symmetrical"
-        title = "مثلث متقارن (فشردگی)"
-        forecast = "شکست جهت‌دار از محدودهٔ فشرده؛ جهت را کندل تأییدکننده مشخص می‌کند."
-    else:
+    cleaned: list[tuple[int, float, str]] = []
+    min_leg = atr_now * 0.55
+    for item in swings:
+        if not cleaned:
+            cleaned.append(item)
+            continue
+        i, p, k = item
+        _pi, pp, pk = cleaned[-1]
+        if k == pk:
+            if (k == "high" and p >= pp) or (k == "low" and p <= pp):
+                cleaned[-1] = item
+            continue
+        if abs(p - pp) < min_leg:
+            continue
+        cleaned.append(item)
+    swings = cleaned
+    if len(swings) < _MIN_SWINGS:
         return None
 
-    status = "تأییدشده" if gap_end / gap_start < 0.5 else "در حال شکل‌گیری"
+    best: dict | None = None
+    for length in range(_MIN_SWINGS, min(9, len(swings) + 1)):
+        cand = _score_window(swings[-length:], n, last, atr_now, timeframe)
+        if cand and (best is None or cand["score"] > best["score"]):
+            best = cand
+    if best is None:
+        return None
+
+    kind = best["kind"]
+    titles = {
+        "ascending": (
+            "مثلث صعودی (فشردگی)",
+            "مقاومت افقی و کف‌های بالاتر — احتمال شکست رو به بالا.",
+        ),
+        "descending": (
+            "مثلث نزولی (فشردگی)",
+            "حمایت افقی و سقف‌های پایین‌تر — احتمال شکست رو به پایین.",
+        ),
+        "symmetrical": (
+            "مثلث متقارن (فشردگی)",
+            "سقف پایین‌تر و کف بالاتر — شکست جهت‌دار پس از فشردگی.",
+        ),
+    }
+    title, forecast = titles[kind]
+    status = "تأییدشده" if best["gap_end"] / best["gap_start"] < 0.58 else "در حال شکل‌گیری"
 
     return PatternHit(
         category="triangle",
@@ -181,24 +282,26 @@ def detect_triangle(bars: list[OhlcBar], timeframe: str) -> PatternHit | None:
         title_fa=title,
         status_fa=status,
         summary_fa=(
-            f"{len(ph)} برخورد سقف و {len(pl)} برخورد کف به خطوط؛ "
-            f"فاصله از {gap_start:,.0f} به {gap_end:,.0f} دلار رسیده. "
-            f"قیمت داخل الگو ({last.close:,.0f})."
+            f"{best['touches_high']} برخورد سقف و {best['touches_low']} برخورد کف. "
+            f"فاصله خطوط از {best['gap_start']:,.0f} به {best['gap_end']:,.0f} دلار. "
+            f"قیمت {last.close:,.0f}."
         ),
         forecast_fa=forecast,
         meta={
-            "upper_slope": su,
-            "upper_intercept": iu,
-            "lower_slope": sl,
-            "lower_intercept": il,
-            "start_i": start_i,
-            "end_i": end_i,
+            "upper_slope": best["su"],
+            "upper_intercept": best["iu"],
+            "lower_slope": best["sl"],
+            "lower_intercept": best["il"],
+            "start_i": best["start_i"],
+            "end_i": best["end_i"],
             "window_offset": len(bars) - n,
             "kind": kind,
             "last_close": last.close,
-            "mid": (u_now + l_now) / 2,
-            "apex_index": apex,
-            "touches_high": len(ph),
-            "touches_low": len(pl),
+            "mid": (best["u_now"] + best["l_now"]) / 2,
+            "apex_index": best["apex"],
+            "touches_high": best["touches_high"],
+            "touches_low": best["touches_low"],
+            "touch_highs": best["hi_idx"],
+            "touch_lows": best["lo_idx"],
         },
     )
