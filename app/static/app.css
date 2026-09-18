@@ -139,15 +139,116 @@ html, body {
   border: 1px solid #263238;
   background: #0d1117;
   width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
-.scenario-chart img {
+.scenario-chart img.chart-preview {
   display: block;
   width: 100%;
   max-width: 100%;
   height: auto;
+  max-height: min(52vw, 240px);
   object-fit: contain;
-  vertical-align: top;
+  object-position: center;
+  cursor: zoom-in;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.chart-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  background: rgba(0, 0, 0, 0.94);
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+    env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+.chart-lightbox[hidden] {
+  display: none !important;
+}
+
+body.chart-lightbox-open {
+  overflow: hidden;
+}
+
+.chart-lightbox-close {
+  position: absolute;
+  top: max(12px, env(safe-area-inset-top));
+  left: 12px;
+  z-index: 2;
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 1.6rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.chart-lightbox-stage {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 48px 8px 8px;
+  overflow: auto;
+}
+
+.chart-lightbox-stage img {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: min(96vw, 96vh);
+  max-height: min(96vh, 96vw);
+  object-fit: contain;
+  transition: transform 0.25s ease;
+}
+
+.chart-lightbox-bar {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  padding: 12px 16px max(16px, env(safe-area-inset-bottom));
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.85));
+}
+
+.chart-lightbox-rotate {
+  min-width: 140px;
+  padding: 12px 20px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 999px;
+  background: rgba(30, 40, 52, 0.95);
+  color: #eceff1;
+  font-size: 0.95rem;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.chart-lightbox-rotate:active {
+  background: rgba(50, 65, 82, 0.95);
+}
+
+.home-report-body {
+  margin-bottom: 14px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.card.hero {
+  overflow: hidden;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .report-prose .report-section {
@@ -331,11 +432,6 @@ html, body {
   margin: 0 0 10px;
   font-size: 0.76rem;
   line-height: 1.4;
-}
-
-.home-report-body {
-  margin-bottom: 14px;
-  width: 100%;
 }
 
 .home-headline {

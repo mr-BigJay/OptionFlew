@@ -14,7 +14,7 @@
   <p class="headline">{{ report.headline }}</p>
   {% if report.get('report_code') and has_chart %}
   <figure class="scenario-chart">
-    <img src="/charts/{{ report.report_code }}.png?v={{ report.created_at }}" alt="BTCUSDT scenario path" loading="lazy" />
+    <img class="chart-preview" src="/charts/{{ report.report_code }}.png?v={{ report.created_at }}" alt="BTCUSDT scenario — برای بزرگ‌نمایی لمس کنید" loading="lazy" />
   </figure>
   {% endif %}
   <div class="paragraph paragraph-justify report-prose">{{ format_report_html(report.paragraph) | safe }}</div>

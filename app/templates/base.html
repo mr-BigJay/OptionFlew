@@ -31,5 +31,17 @@
       <span>تلگرام</span>
     </a>
   </nav>
+
+  <div id="chart-lightbox" class="chart-lightbox" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-label="نمایش چارت">
+    <button type="button" class="chart-lightbox-close" aria-label="بستن">×</button>
+    <div class="chart-lightbox-stage" id="chart-lightbox-inner">
+      <img id="chart-lightbox-img" alt="" />
+    </div>
+    <div class="chart-lightbox-bar">
+      <button type="button" class="chart-lightbox-rotate" id="chart-lightbox-rotate">↻ چرخش تصویر</button>
+    </div>
+  </div>
+
+  <script src="/static/chart-lightbox.js" defer></script>
 </body>
 </html>
