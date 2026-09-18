@@ -1,19 +1,37 @@
 {% extends "base.html" %}
 {% block title %}بکتست #{{ run.id }} — OptionFlow{% endblock %}
-{% block header %}<span class="header-title">بکتست #{{ run.id }}</span>{% endblock %}
+{% block header %}<span class="header-title">بکتست <bdi dir="ltr">#{{ run.id }}</bdi></span>{% endblock %}
 {% block subheader %}
-<p class="backtest-subnav">
+<nav class="backtest-subnav" aria-label="بکتست">
   <a href="/backtest/reports">گزارش بکتست‌ها</a>
-  · <a href="/backtest">بکتست جدید</a>
-</p>
+  <a href="/backtest">بکتست جدید</a>
+</nav>
 {% endblock %}
 
 {% block content %}
-<p class="muted">
-  {{ category_labels.get(run.category, run.category) }} · {{ run.timeframe }} ·
-  {{ fmt_date(run.from_iso) }} تا {{ fmt_date(run.to_iso) }} ·
-  {{ fmt_dt(run.created_at) }}
-</p>
+<div class="bt-run-meta card">
+  <div class="bt-meta-row">
+    <span class="bt-meta-label">الگو</span>
+    <span class="bt-meta-value">{{ category_labels.get(run.category, run.category) }}</span>
+  </div>
+  <div class="bt-meta-row">
+    <span class="bt-meta-label">تایم‌فریم</span>
+    <span class="bt-meta-value"><bdi dir="ltr">{{ run.timeframe }}</bdi></span>
+  </div>
+  <div class="bt-meta-row">
+    <span class="bt-meta-label">بازه</span>
+    <span class="bt-meta-value bt-meta-ltr">
+      <bdi dir="ltr">{{ fmt_date(run.from_iso) }} – {{ fmt_date(run.to_iso) }}</bdi>
+    </span>
+  </div>
+  <div class="bt-meta-row">
+    <span class="bt-meta-label">زمان اجرا</span>
+    <span class="bt-meta-value bt-meta-ltr"><bdi dir="ltr">{{ fmt_dt(run.created_at) }}</bdi></span>
+  </div>
+</div>
+
 {% set active_run = run %}
+{% set hide_bt_summary = true %}
+{% set show_archive_link = false %}
 {% include "backtest_findings_partial.html" %}
 {% endblock %}

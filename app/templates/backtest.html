@@ -2,9 +2,9 @@
 {% block title %}بکتست — OptionFlow{% endblock %}
 {% block header %}<span class="header-title">بکتست</span>{% endblock %}
 {% block subheader %}
-<p class="backtest-subnav">
+<nav class="backtest-subnav" aria-label="بکتست">
   <a href="/backtest/reports" class="backtest-archive-link">گزارش بکتست‌ها</a>
-</p>
+</nav>
 {% endblock %}
 
 {% block content %}
@@ -90,6 +90,7 @@
 
 <div id="bt-run-results" class="bt-results">
   {% if active_run and active_run.status in ('done', 'error') %}
+  {% set show_archive_link = true %}
   {% include "backtest_findings_partial.html" %}
   {% endif %}
 </div>

@@ -790,11 +790,159 @@ body.chart-lightbox-open {
 .backtest-subnav {
   margin: 4px 0 0;
   font-size: 0.85rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  align-items: center;
+}
+
+.backtest-subnav a {
+  color: var(--accent);
+  text-decoration: none;
 }
 
 .backtest-archive-link {
   color: var(--accent);
   text-decoration: none;
+}
+
+.bt-run-meta {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+}
+
+.bt-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 12px;
+  margin-bottom: 8px;
+  font-size: 0.86rem;
+}
+
+.bt-meta-row:last-child {
+  margin-bottom: 0;
+}
+
+.bt-meta-label {
+  color: var(--muted);
+  min-width: 4.5rem;
+  flex-shrink: 0;
+}
+
+.bt-meta-value {
+  color: var(--text);
+}
+
+.bt-meta-ltr bdi,
+bdi[dir="ltr"] {
+  unicode-bidi: isolate;
+}
+
+.bt-stats-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  align-items: center;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid #2a3441;
+  border-radius: var(--radius);
+  font-size: 0.86rem;
+}
+
+.bt-stat-item {
+  white-space: nowrap;
+}
+
+.bt-stat-link {
+  color: var(--accent);
+  text-decoration: none;
+  margin-right: auto;
+}
+
+.bt-finding-status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  text-align: left;
+  direction: ltr;
+}
+
+.bt-finding-time {
+  font-size: 0.72rem;
+  color: var(--muted);
+  unicode-bidi: isolate;
+}
+
+.bt-verdict-ok {
+  color: var(--accent2);
+}
+
+.bt-verdict-fail {
+  color: var(--danger);
+}
+
+.pattern-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.bt-run-list-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  font-size: 0.88rem;
+  margin-bottom: 6px;
+}
+
+.bt-run-id {
+  font-weight: 700;
+}
+
+.bt-run-tf {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.bt-run-list-range {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 0.8rem;
+  margin-bottom: 6px;
+}
+
+.bt-run-list-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  font-size: 0.8rem;
+  margin-bottom: 4px;
+}
+
+.bt-stat-ok {
+  color: var(--accent2);
+}
+
+.bt-stat-fail {
+  color: var(--danger);
+}
+
+.bt-run-list-time {
+  font-size: 0.72rem;
+  color: var(--muted);
+  display: block;
+  unicode-bidi: isolate;
+  direction: ltr;
+  text-align: right;
 }
 
 .bt-section-title {
