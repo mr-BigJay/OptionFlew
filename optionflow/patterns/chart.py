@@ -167,6 +167,49 @@ def _mark_signal_and_forward(
     ax.axvline(x_sig, color=edge, linewidth=1.2, linestyle=":", alpha=0.9, zorder=4)
 
 
+def _mark_early_entry(
+    ax: Any,
+    bars: list[OhlcBar],
+    meta: dict[str, Any],
+    start: int,
+    end: int,
+) -> None:
+    """نقطه/فلش طلایی بالای کندل تأیید اولیه."""
+    early_ix = meta.get("early_index")
+    if not isinstance(early_ix, int) or early_ix < start or early_ix >= min(end, len(bars)):
+        return
+    import matplotlib.dates as mdates
+
+    bar = bars[early_ix]
+    x = mdates.date2num(bar.ts)
+    window = bars[start:end]
+    span = max(b.high for b in window) - min(b.low for b in window)
+    pad = max(span * 0.012, bar.high * 0.0004)
+    y_tip = bar.high + pad
+    y_head = bar.high + pad * 2.4
+    ax.annotate(
+        "",
+        xy=(x, y_tip),
+        xytext=(x, y_head),
+        arrowprops=dict(
+            arrowstyle="-|>",
+            color="#fbbf24",
+            lw=1.6,
+            mutation_scale=12,
+        ),
+        zorder=9,
+    )
+    ax.scatter(
+        [x],
+        [y_head],
+        s=42,
+        c="#fbbf24",
+        zorder=10,
+        edgecolors="#fff8e1",
+        linewidths=0.5,
+    )
+
+
 def _render_price_pattern(
     bars: list[OhlcBar],
     hit: PatternHit,
@@ -321,9 +364,16 @@ def _render_divergence(
 
     meta = hit.meta
     ia, ib = meta["pivot_a"][0], meta["pivot_b"][0]
-    sig = signal_index if signal_index is not None else ib
-    start = max(0, min(ia, ib, sig) - 25)
-    end = min(len(bars), max(ia, ib, sig) + forward_bars + 1)
+    early_ix = meta.get("early_index")
+    final_ix = meta.get("final_index")
+    sig = signal_index if signal_index is not None else meta.get("confirm_index", ib)
+    idxs = [ia, ib, sig]
+    if isinstance(early_ix, int):
+        idxs.append(early_ix)
+    if isinstance(final_ix, int):
+        idxs.append(final_ix)
+    start = max(0, min(idxs) - 25)
+    end = min(len(bars), max(idxs) + forward_bars + 1)
     slice_bars = bars[start:end]
     if len(slice_bars) < 10:
         return None
@@ -369,6 +419,8 @@ def _render_divergence(
         linewidths=0.4,
     )
     ax2.plot([x_a, x_b], [ra, rb], color=line_color, linestyle="--", linewidth=1.2, alpha=0.9)
+
+    _mark_early_entry(ax1, bars, meta, start, end)
 
     if sig is not None and 0 <= sig < len(bars):
         _mark_signal_and_forward(ax1, xs, slice_bars, sig, start, forward_bars, outcome_success)
