@@ -14,10 +14,10 @@
   <p class="headline">{{ report.headline }}</p>
   {% if report.get('report_code') and has_chart %}
   <figure class="scenario-chart">
-    <img src="/charts/{{ report.report_code }}.png" alt="BTCUSDT scenario path" loading="lazy" />
+    <img src="/charts/{{ report.report_code }}.png?v={{ report.created_at }}" alt="BTCUSDT scenario path" loading="lazy" />
   </figure>
   {% endif %}
-  <p class="paragraph paragraph-justify">{{ clean_paragraph(report.paragraph) }}</p>
+  <div class="paragraph paragraph-justify report-prose">{{ format_report_html(report.paragraph) | safe }}</div>
   <div class="stats">
     <span>{{ report.trade_count }} معامله</span>
     <span>Spot {{ "{:,.0f}".format(report.spot) }}</span>

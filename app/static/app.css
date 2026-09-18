@@ -140,10 +140,22 @@ html, body {
   background: #0d1117;
 }
 
-.scenario-chart img {
-  display: block;
-  width: 100%;
-  height: auto;
+.report-prose .report-section {
+  margin-bottom: 14px;
+}
+
+.report-prose .report-section-title {
+  margin: 0 0 6px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #90caf9;
+}
+
+.report-prose .report-section-body {
+  margin: 0;
+  line-height: 1.75;
+  font-size: 0.92rem;
+  color: #c8d2dc;
 }
 
 .header-title {
