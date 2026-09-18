@@ -253,10 +253,11 @@ def run_backtest(
         elif success is False:
             result.fail_count += 1
         if n < max_charts:
+            sig_ix = hit.meta.get("confirm_index", idx)
             png = render_pattern_chart(
                 full,
                 hit,
-                signal_index=idx,
+                signal_index=sig_ix,
                 forward_bars=FORWARD_BARS.get(timeframe, 18),
                 outcome_success=success,
             )
