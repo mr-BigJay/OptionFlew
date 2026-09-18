@@ -31,6 +31,12 @@ from app.storage import (
     set_setting,
 )
 from app.telegram_notify import send_telegram_message, send_telegram_photo, telegram_enabled
+from optionflow.patterns.service import (
+    get_cached_scan,
+    invalidate_pattern_cache,
+    pattern_cache_timestamp,
+    patterns_data_dir,
+)
 from optionflow.price_levels import fetch_price_levels
 from optionflow.tehran_time import (
     CRON_4H_HOURS,
@@ -249,6 +255,12 @@ app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), na
 _charts_dir = data_dir() / "charts"
 _charts_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/charts", StaticFiles(directory=str(_charts_dir)), name="charts")
+_patterns_dir = patterns_data_dir(data_dir())
+app.mount(
+    "/pattern-charts",
+    StaticFiles(directory=str(_patterns_dir)),
+    name="pattern-charts",
+)
 
 
 def _ensure_price_levels(report: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -343,6 +355,40 @@ async def report_detail(request: Request, report_id: int):
             has_chart=report_has_chart(report.get("report_code")),
         ),
     )
+
+
+@app.get("/patterns", response_class=HTMLResponse)
+async def patterns_page(request: Request, tab: str = "triangle"):
+    if tab not in ("triangle", "flag", "divergence"):
+        tab = "triangle"
+    scan = get_cached_scan(_patterns_dir)
+    hits = scan.get(tab, {})
+    rows = [(tf, hits.get(tf)) for tf in ("5m", "15m", "1h")]
+    cache_ts = pattern_cache_timestamp()
+    return templates.TemplateResponse(
+        request,
+        "patterns.html",
+        _template_ctx(
+            active="patterns",
+            tab=tab,
+            rows=rows,
+            cache_ts=cache_ts,
+            tf_labels={
+                "5m": "۵ دقیقه",
+                "15m": "۱۵ دقیقه",
+                "1h": "۱ ساعت",
+            },
+        ),
+    )
+
+
+@app.post("/patterns/refresh")
+async def patterns_refresh(tab: str = Form("triangle")):
+    if tab not in ("triangle", "flag", "divergence"):
+        tab = "triangle"
+    invalidate_pattern_cache()
+    get_cached_scan(_patterns_dir)
+    return RedirectResponse(f"/patterns?tab={tab}", status_code=303)
 
 
 @app.get("/telegram", response_class=HTMLResponse)

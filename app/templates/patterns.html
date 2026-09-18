@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}الگوها — OptionFlow{% endblock %}
+{% block header %}<span class="header-title">الگوها</span>{% endblock %}
+{% block subheader %}
+<p class="muted patterns-sub">BTCUSDT · تایم‌فریم ۵m، ۱۵m، ۱h — جدا از گزارش ۴h و روزانه</p>
+{% endblock %}
+
+{% block content %}
+<nav class="tabs tabs-patterns" aria-label="نوع الگو">
+  <a href="/patterns?tab=triangle" class="{% if tab == 'triangle' %}on{% endif %}">مثلث فشرده</a>
+  <a href="/patterns?tab=flag" class="{% if tab == 'flag' %}on{% endif %}">الگوی پرچم</a>
+  <a href="/patterns?tab=divergence" class="{% if tab == 'divergence' %}on{% endif %}">واگرایی</a>
+</nav>
+
+<form class="patterns-refresh" method="post" action="/patterns/refresh">
+  <input type="hidden" name="tab" value="{{ tab }}">
+  <button type="submit" class="btn secondary full">به‌روزرسانی اسکن</button>
+</form>
+
+{% for tf, hit in rows %}
+<section class="pattern-tf-block">
+  <h2 class="pattern-tf-title">{{ tf_labels[tf] }}</h2>
+  {% if hit %}
+  <article class="pattern-card">
+    <header class="pattern-head">
+      <span class="pattern-title">{{ hit.title_fa }}</span>
+      <span class="pattern-status">{{ hit.status_fa }}</span>
+    </header>
+    <p class="pattern-summary">{{ hit.summary_fa }}</p>
+    <p class="pattern-forecast"><strong>پیش‌بینی:</strong> {{ hit.forecast_fa }}</p>
+    {% if hit.chart_file %}
+    <figure class="scenario-chart pattern-chart">
+      <div class="scenario-chart-frame">
+        <img
+          class="chart-preview"
+          src="/pattern-charts/{{ hit.chart_file }}?v={{ cache_ts }}"
+          alt="چارت الگو {{ hit.title_fa }}"
+          loading="lazy"
+        />
+      </div>
+    </figure>
+    {% endif %}
+  </article>
+  {% else %}
+  <p class="pattern-empty muted">در این تایم‌فریم الگوی فعالی شناسایی نشد.</p>
+  {% endif %}
+</section>
+{% endfor %}
+{% endblock %}
