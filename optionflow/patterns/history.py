@@ -230,6 +230,17 @@ def slice_with_warmup(
 DEFAULT_HISTORY_DAYS = 730
 
 
+def _stale_after(interval: str) -> timedelta:
+    """حداکثر فاصلهٔ مجاز تا آخرین کندل (بازهٔ باز شدن کندل، نه «الان»)."""
+    return {
+        "5m": timedelta(minutes=45),
+        "15m": timedelta(hours=2),
+        "1h": timedelta(hours=6),
+        "4h": timedelta(hours=16),
+        "1d": timedelta(days=3),
+    }.get(interval, timedelta(hours=6))
+
+
 def cache_status(data_dir: Path, *, target_days: int = DEFAULT_HISTORY_DAYS) -> list[dict[str, Any]]:
     """وضعیت کش هر تایم‌فریم برای UI بکتست."""
     hist = history_data_dir(data_dir)
@@ -256,11 +267,19 @@ def cache_status(data_dir: Path, *, target_days: int = DEFAULT_HISTORY_DAYS) -> 
             continue
         from_dt = bars[0].ts.astimezone(timezone.utc)
         to_dt = bars[-1].ts.astimezone(timezone.utc)
-        stale_end = (now - to_dt) > timedelta(hours=6)
+        stale_end = (now - to_dt) > _stale_after(iv)
         shallow = from_dt > want_start + timedelta(days=14)
-        if stale_end or shallow:
-            status, status_fa = "partial", "ناقص / قدیمی"
-            needs = True
+        span_days = (to_dt - from_dt).total_seconds() / 86400.0
+        enough_bars = len(bars) >= max(50, target_days - 20)
+        deep_enough = span_days >= target_days - 25
+        if stale_end or shallow or not (enough_bars and deep_enough):
+            if shallow or not deep_enough:
+                status_fa = "ناقص (عمق کمتر از ~۲ سال)"
+            elif stale_end:
+                status_fa = "قدیمی (آخرین کندل قدیمی است)"
+            else:
+                status_fa = "ناقص / قدیمی"
+            status, needs = "partial", True
         else:
             status, status_fa = "ok", "آماده"
             needs = False
