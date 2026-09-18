@@ -8,7 +8,7 @@ import sqlite3
 from datetime import datetime, timezone
 from typing import Any
 
-from app.storage import connect, connect_users, db_path, init_db, users_db_path
+from app.storage import connect_users, db_path, init_db, users_db_path
 
 logger = logging.getLogger("optionflow.auth")
 
