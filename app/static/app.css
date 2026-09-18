@@ -85,7 +85,7 @@ html, body {
   justify-content: center;
   text-decoration: none;
   color: var(--muted);
-  font-size: 0.72rem;
+  font-size: 0.65rem;
   gap: 2px;
 }
 
@@ -785,6 +785,148 @@ body.chart-lightbox-open {
 .filter-card code {
   font-size: 0.75rem;
   word-break: break-all;
+}
+
+.backtest-subnav {
+  margin: 4px 0 0;
+  font-size: 0.85rem;
+}
+
+.backtest-archive-link {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.bt-section-title {
+  font-size: 0.95rem;
+  margin: 0 0 8px;
+}
+
+.bt-hint {
+  font-size: 0.78rem;
+  margin: 0 0 12px;
+}
+
+.bt-cache-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.72rem;
+  margin-bottom: 12px;
+}
+
+.bt-cache-table th,
+.bt-cache-table td {
+  padding: 8px 4px;
+  border-bottom: 1px solid #2a3441;
+  text-align: right;
+}
+
+.bt-cache-row.status-missing td:first-child {
+  color: var(--danger);
+}
+
+.bt-cache-row.status-partial td:nth-child(2) {
+  color: #f39c12;
+}
+
+.btn-compact {
+  padding: 6px 10px;
+  font-size: 0.75rem;
+}
+
+.bt-cache-all {
+  margin-top: 8px;
+}
+
+.bt-progress-wrap {
+  margin: 12px 0 16px;
+}
+
+.bt-progress-track {
+  height: 10px;
+  background: var(--surface2);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.bt-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  transition: width 0.3s ease;
+}
+
+.bt-progress-label {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-top: 6px;
+}
+
+.bt-run-title {
+  font-size: 0.85rem;
+  margin: 0 0 8px;
+}
+
+.bt-outcome-ok {
+  box-shadow: 0 0 0 2px rgba(46, 204, 113, 0.45);
+  background: rgba(46, 204, 113, 0.06);
+}
+
+.bt-outcome-fail {
+  box-shadow: 0 0 0 2px rgba(231, 76, 60, 0.45);
+  background: rgba(231, 76, 60, 0.06);
+}
+
+.bt-outcome-neutral {
+  box-shadow: 0 0 0 1px #3a4555;
+}
+
+.bt-outcome-note {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin: 0 0 8px;
+}
+
+.bt-run-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.bt-run-list-item {
+  display: block;
+  padding: 14px;
+  margin-bottom: 10px;
+  background: var(--surface);
+  border: 1px solid #2a3441;
+  border-radius: var(--radius);
+  text-decoration: none;
+  color: inherit;
+}
+
+.bt-run-list-head {
+  display: block;
+  font-size: 0.88rem;
+  margin-bottom: 4px;
+}
+
+.bt-run-list-meta {
+  display: block;
+  font-size: 0.8rem;
+}
+
+.bt-ok-mini {
+  color: var(--accent2);
+}
+
+.bt-fail-mini {
+  color: var(--danger);
+}
+
+.bt-run-list-time {
+  font-size: 0.72rem;
+  display: block;
+  margin-top: 4px;
 }
 
 .filter-compact {

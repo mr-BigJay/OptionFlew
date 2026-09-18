@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}گزارش بکتست‌ها — OptionFlow{% endblock %}
+{% block header %}<span class="header-title">گزارش بکتست‌ها</span>{% endblock %}
+{% block subheader %}
+<p class="backtest-subnav"><a href="/backtest">← بازگشت به بکتست</a></p>
+{% endblock %}
+
+{% block content %}
+{% if not runs %}
+<p class="empty">هنوز بکتستی اجرا نشده.</p>
+{% else %}
+<ul class="bt-run-list">
+  {% for r in runs %}
+  <li>
+    <a href="/backtest/reports/{{ r.id }}" class="bt-run-list-item">
+      <span class="bt-run-list-head">
+        <strong>#{{ r.id }}</strong>
+        {{ category_labels.get(r.category, r.category) }} · {{ bt_tf_labels.get(r.timeframe, r.timeframe) if bt_tf_labels is defined else r.timeframe }}
+        · {{ fmt_date(r.from_iso) }} — {{ fmt_date(r.to_iso) }}
+      </span>
+      <span class="bt-run-list-meta">
+        {% if r.status == 'running' %}در حال اجرا {{ r.progress_pct }}٪
+        {% elif r.status == 'error' %}خطا
+        {% else %}
+        <span class="bt-ok-mini">{{ r.success_count }} موفق</span>
+        ·
+        <span class="bt-fail-mini">{{ r.fail_count }} ناموفق</span>
+        · {{ r.findings_count }} الگو
+        {% endif %}
+      </span>
+      <span class="muted bt-run-list-time">{{ fmt_dt(r.created_at) }}</span>
+    </a>
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}
+{% endblock %}

@@ -3,7 +3,7 @@ from __future__ import annotations
 import gzip
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +22,16 @@ INTERVAL_MS = {
     "1h": 3_600_000,
     "4h": 14_400_000,
     "1d": 86_400_000,
+}
+
+BACKTEST_INTERVALS = ("5m", "15m", "1h", "4h", "1d")
+
+INTERVAL_LABEL_FA = {
+    "5m": "۵ دقیقه",
+    "15m": "۱۵ دقیقه",
+    "1h": "۱ ساعت",
+    "4h": "۴ ساعت",
+    "1d": "روزانه",
 }
 
 
@@ -215,3 +225,56 @@ def slice_with_warmup(
 
     scan_start = max(first_in, warmup)
     return bars, scan_start, last_in
+
+
+DEFAULT_HISTORY_DAYS = 730
+
+
+def cache_status(data_dir: Path, *, target_days: int = DEFAULT_HISTORY_DAYS) -> list[dict[str, Any]]:
+    """وضعیت کش هر تایم‌فریم برای UI بکتست."""
+    hist = history_data_dir(data_dir)
+    now = datetime.now(timezone.utc)
+    want_start = now - timedelta(days=target_days)
+    rows: list[dict[str, Any]] = []
+    for iv in BACKTEST_INTERVALS:
+        path = _cache_file(hist, iv)
+        bars = load_cached_bars(hist, iv) if path.is_file() else []
+        if not bars:
+            rows.append(
+                {
+                    "interval": iv,
+                    "label_fa": INTERVAL_LABEL_FA.get(iv, iv),
+                    "count": 0,
+                    "from_iso": "",
+                    "to_iso": "",
+                    "file_exists": path.is_file(),
+                    "status": "missing",
+                    "status_fa": "ذخیره نشده",
+                    "needs_download": True,
+                }
+            )
+            continue
+        from_dt = bars[0].ts.astimezone(timezone.utc)
+        to_dt = bars[-1].ts.astimezone(timezone.utc)
+        stale_end = (now - to_dt) > timedelta(hours=6)
+        shallow = from_dt > want_start + timedelta(days=14)
+        if stale_end or shallow:
+            status, status_fa = "partial", "ناقص / قدیمی"
+            needs = True
+        else:
+            status, status_fa = "ok", "آماده"
+            needs = False
+        rows.append(
+            {
+                "interval": iv,
+                "label_fa": INTERVAL_LABEL_FA.get(iv, iv),
+                "count": len(bars),
+                "from_iso": from_dt.isoformat().replace("+00:00", "Z"),
+                "to_iso": to_dt.isoformat().replace("+00:00", "Z"),
+                "file_exists": True,
+                "status": status,
+                "status_fa": status_fa,
+                "needs_download": needs,
+            }
+        )
+    return rows

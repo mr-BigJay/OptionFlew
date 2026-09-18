@@ -13,8 +13,8 @@ def detect_flag(bars: list[OhlcBar], timeframe: str) -> PatternHit | None:
     highs = [b.high for b in window]
     lows = [b.low for b in window]
 
-    pole_len = {"5m": 12, "15m": 10, "1h": 8}.get(timeframe, 10)
-    flag_len = {"5m": 15, "15m": 12, "1h": 10}.get(timeframe, 12)
+    pole_len = {"5m": 12, "15m": 10, "1h": 8, "4h": 6, "1d": 5}.get(timeframe, 10)
+    flag_len = {"5m": 15, "15m": 12, "1h": 10, "4h": 8, "1d": 6}.get(timeframe, 12)
     if len(closes) < pole_len + flag_len + 5:
         return None
 
@@ -27,7 +27,9 @@ def detect_flag(bars: list[OhlcBar], timeframe: str) -> PatternHit | None:
     if p0 <= 0:
         return None
     pole_ret = (p1 - p0) / p0
-    min_pole = {"5m": 0.012, "15m": 0.018, "1h": 0.022}.get(timeframe, 0.015)
+    min_pole = {"5m": 0.012, "15m": 0.018, "1h": 0.022, "4h": 0.028, "1d": 0.035}.get(
+        timeframe, 0.015
+    )
     if abs(pole_ret) < min_pole:
         return None
 

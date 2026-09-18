@@ -10,10 +10,13 @@ from urllib.parse import quote
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from app.backtest_jobs import start_backtest_job
+from app.backtest_store import get_backtest_run, list_backtest_runs
+from app.history_jobs import history_download_state, start_history_download
 from app.jobs import (
     run_scheduled_4h_report,
     run_scheduled_daily_report,
@@ -31,14 +34,7 @@ from app.storage import (
     set_setting,
 )
 from app.telegram_notify import send_telegram_message, send_telegram_photo, telegram_enabled
-from optionflow.patterns.backtest import (
-    CATEGORIES as PATTERN_CATEGORIES,
-    load_backtest_report,
-    parse_user_datetime,
-    run_backtest,
-    save_backtest_report,
-)
-from optionflow.patterns.history import download_and_cache, history_data_dir
+from optionflow.patterns.history import cache_status
 from optionflow.patterns.service import (
     get_cached_scan,
     invalidate_pattern_cache,
@@ -153,6 +149,14 @@ def _format_prose_report_html(text: str) -> str:
     return "\n".join(parts)
 
 
+def _category_fa(category: str) -> str:
+    return {
+        "triangle": "مثلث فشرده",
+        "flag": "الگوی پرچم",
+        "divergence": "واگرایی RSI",
+    }.get(category, category)
+
+
 def _template_ctx(**extra: Any) -> dict[str, Any]:
     return {
         "fmt_dt": _fmt_dt,
@@ -162,6 +166,7 @@ def _template_ctx(**extra: Any) -> dict[str, Any]:
         "bias_fa": _bias_fa,
         "clean_paragraph": _clean_paragraph,
         "format_report_html": _format_prose_report_html,
+        "category_fa": _category_fa,
         **extra,
     }
 
@@ -366,18 +371,13 @@ async def report_detail(request: Request, report_id: int):
 
 
 @app.get("/patterns", response_class=HTMLResponse)
-async def patterns_page(
-    request: Request,
-    tab: str = "triangle",
-    bt: str = "",
-):
+async def patterns_page(request: Request, tab: str = "triangle"):
     if tab not in ("triangle", "flag", "divergence"):
         tab = "triangle"
     scan = get_cached_scan(_patterns_dir)
     hits = scan.get(tab, {})
     rows = [(tf, hits.get(tf)) for tf in ("5m", "15m", "1h")]
     cache_ts = pattern_cache_timestamp()
-    backtest = load_backtest_report(data_dir())
     return templates.TemplateResponse(
         request,
         "patterns.html",
@@ -391,83 +391,138 @@ async def patterns_page(
                 "15m": "۱۵ دقیقه",
                 "1h": "۱ ساعت",
             },
-            backtest=backtest,
-            bt_flash=bt,
-            pattern_categories=PATTERN_CATEGORIES,
         ),
     )
 
 
-@app.post("/patterns/history/download")
-async def patterns_history_download(
-    date_from: str = Form(...),
-    date_to: str = Form(...),
-    interval_1h: str = Form(""),
-    interval_15m: str = Form(""),
-    interval_5m: str = Form(""),
+@app.get("/backtest", response_class=HTMLResponse)
+async def backtest_page(
+    request: Request,
+    tab: str = "triangle",
+    run_id: int = 0,
 ):
-    start = parse_user_datetime(date_from)
-    end = parse_user_datetime(date_to, end_of_day=True)
-    hist = history_data_dir(data_dir())
-    intervals: list[str] = []
-    if interval_1h == "on":
-        intervals.append("1h")
-    if interval_15m == "on":
-        intervals.append("15m")
-    if interval_5m == "on":
-        intervals.append("5m")
-    if not intervals:
-        intervals = ["1h"]
-    try:
-        for iv in intervals:
-            download_and_cache(hist, iv, start, end)
-        msg = "ok"
-    except Exception as e:
-        logger.exception("history download failed")
-        msg = quote(str(e)[:120])
-    return RedirectResponse(f"/patterns?tab=triangle&bt=dl_{msg}", status_code=303)
+    if tab not in ("triangle", "flag", "divergence"):
+        tab = "triangle"
+    active_run = get_backtest_run(run_id) if run_id else None
+    return templates.TemplateResponse(
+        request,
+        "backtest.html",
+        _template_ctx(
+            active="backtest",
+            tab=tab,
+            cache_rows=cache_status(data_dir()),
+            run_id=run_id,
+            active_run=active_run,
+            history_dl=history_download_state(),
+            category_labels={
+                "triangle": "مثلث فشرده",
+                "flag": "الگوی پرچم",
+                "divergence": "واگرایی RSI",
+            },
+            bt_tf_labels={
+                "5m": "۵ دقیقه",
+                "15m": "۱۵ دقیقه",
+                "1h": "۱ ساعت",
+                "4h": "۴ ساعت",
+                "1d": "روزانه",
+            },
+        ),
+    )
 
 
-@app.post("/patterns/backtest")
-async def patterns_backtest_run(
+@app.get("/backtest/reports", response_class=HTMLResponse)
+async def backtest_reports_page(request: Request):
+    runs = list_backtest_runs(limit=80)
+    labels = {
+        "triangle": "مثلث فشرده",
+        "flag": "الگوی پرچم",
+        "divergence": "واگرایی RSI",
+    }
+    return templates.TemplateResponse(
+        request,
+        "backtest_reports.html",
+        _template_ctx(active="backtest", runs=runs, category_labels=labels, bt_tf_labels={
+                "5m": "۵ دقیقه", "15m": "۱۵ دقیقه", "1h": "۱ ساعت", "4h": "۴ ساعت", "1d": "روزانه",
+            }),
+    )
+
+
+@app.get("/backtest/reports/{run_id}", response_class=HTMLResponse)
+async def backtest_report_detail(request: Request, run_id: int):
+    run = get_backtest_run(run_id)
+    if not run:
+        return RedirectResponse("/backtest/reports", status_code=302)
+    labels = {
+        "triangle": "مثلث فشرده",
+        "flag": "الگوی پرچم",
+        "divergence": "واگرایی RSI",
+    }
+    return templates.TemplateResponse(
+        request,
+        "backtest_report_detail.html",
+        _template_ctx(active="backtest", run=run, category_labels=labels),
+    )
+
+
+@app.get("/backtest/api/run/{run_id}")
+async def backtest_run_api(run_id: int):
+    run = get_backtest_run(run_id)
+    if not run:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    payload: dict[str, Any] = {
+        "id": run["id"],
+        "status": run["status"],
+        "progress_pct": run["progress_pct"],
+        "findings_count": run["findings_count"],
+        "success_count": run["success_count"],
+        "fail_count": run["fail_count"],
+        "error_message": run.get("error_message") or "",
+    }
+    if run["status"] in ("done", "error"):
+        payload["findings"] = run.get("findings") or []
+    return JSONResponse(payload)
+
+
+@app.get("/backtest/api/history")
+async def backtest_history_api():
+    return JSONResponse(
+        {
+            "download": history_download_state(),
+            "cache": cache_status(data_dir()),
+        }
+    )
+
+
+@app.post("/backtest/history/download")
+async def backtest_history_download(
+    interval: str = Form("all"),
+):
+    iv = None if interval in ("", "all") else interval
+    if iv and iv not in ("5m", "15m", "1h", "4h", "1d"):
+        iv = None
+    started = start_history_download(interval=iv)
+    q = "dl=busy" if not started else "dl=started"
+    return RedirectResponse(f"/backtest?{q}", status_code=303)
+
+
+@app.post("/backtest/start")
+async def backtest_start(
     tab: str = Form("triangle"),
     date_from: str = Form(...),
     date_to: str = Form(...),
     timeframe: str = Form("1h"),
-    cat_triangle: str = Form(""),
-    cat_flag: str = Form(""),
-    cat_divergence: str = Form(""),
-    cache_only: str = Form(""),
 ):
-    if timeframe not in ("5m", "15m", "1h"):
+    if tab not in ("triangle", "flag", "divergence"):
+        tab = "triangle"
+    if timeframe not in ("5m", "15m", "1h", "4h", "1d"):
         timeframe = "1h"
-    cats: list[str] = []
-    if cat_triangle == "on":
-        cats.append("triangle")
-    if cat_flag == "on":
-        cats.append("flag")
-    if cat_divergence == "on":
-        cats.append("divergence")
-    if not cats:
-        cats = list(PATTERN_CATEGORIES)
-    try:
-        result = run_backtest(
-            data_base=data_dir(),
-            chart_dir=_patterns_dir,
-            timeframe=timeframe,
-            start=parse_user_datetime(date_from),
-            end=parse_user_datetime(date_to, end_of_day=True),
-            categories=cats,
-            use_cache_only=cache_only == "on",
-        )
-        save_backtest_report(data_dir(), result)
-        n = len(result.findings)
-        flash = f"ok_{n}" if not result.error else quote(result.error[:100])
-    except Exception as e:
-        logger.exception("backtest failed")
-        flash = quote(str(e)[:120])
-    safe_tab = tab if tab in ("triangle", "flag", "divergence") else "triangle"
-    return RedirectResponse(f"/patterns?tab={safe_tab}&bt={flash}", status_code=303)
+    run_id = start_backtest_job(
+        category=tab,
+        timeframe=timeframe,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    return RedirectResponse(f"/backtest?tab={tab}&run_id={run_id}", status_code=303)
 
 
 @app.post("/patterns/refresh")

@@ -29,7 +29,7 @@ def detect_triangle(bars: list[OhlcBar], timeframe: str) -> PatternHit | None:
     n = len(window)
     highs = [b.high for b in window]
     lows = [b.low for b in window]
-    pct = {"5m": 0.0035, "15m": 0.007, "1h": 0.011}.get(timeframe, 0.008)
+    pct = {"5m": 0.0035, "15m": 0.007, "1h": 0.011, "4h": 0.016, "1d": 0.022}.get(timeframe, 0.008)
     pivots = zigzag_pivots(highs, lows, pct=pct)
     ph = [p for p in pivots if p.kind == "high"]
     pl = [p for p in pivots if p.kind == "low"]

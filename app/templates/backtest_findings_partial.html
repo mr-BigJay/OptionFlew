@@ -1,0 +1,33 @@
+{% if active_run.error_message %}
+<p class="flash err">{{ active_run.error_message }}</p>
+{% endif %}
+<p class="muted">
+  بکتست #{{ active_run.id }} ·
+  موفق {{ active_run.success_count }} ·
+  ناموفق {{ active_run.fail_count }} ·
+  کل {{ active_run.findings_count }}
+  · <a href="/backtest/reports/{{ active_run.id }}">جزئیات در بایگانی</a>
+</p>
+{% for f in active_run.findings %}
+<article class="pattern-card bt-finding {% if f.success %}bt-outcome-ok{% elif f.success is sameas false %}bt-outcome-fail{% else %}bt-outcome-neutral{% endif %}">
+  <header class="pattern-head">
+    <span class="pattern-title">{{ f.title_fa }}</span>
+    <span class="pattern-status">
+      {% if f.success %}✓ تأیید{% elif f.success is sameas false %}✗ رد{% else %}؟{% endif %}
+      · {{ fmt_dt(f.detected_at) }}
+    </span>
+  </header>
+  <p class="pattern-summary">{{ f.summary_fa }}</p>
+  <p class="pattern-forecast"><strong>پیش‌بینی:</strong> {{ f.forecast_fa }}</p>
+  {% if f.outcome_fa %}
+  <p class="bt-outcome-note">{{ f.outcome_fa }}</p>
+  {% endif %}
+  {% if f.chart_file %}
+  <figure class="scenario-chart pattern-chart">
+    <div class="scenario-chart-frame">
+      <img class="chart-preview" src="/pattern-charts/{{ f.chart_file }}" alt="" loading="lazy" />
+    </div>
+  </figure>
+  {% endif %}
+</article>
+{% endfor %}

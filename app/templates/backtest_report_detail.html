@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}بکتست #{{ run.id }} — OptionFlow{% endblock %}
+{% block header %}<span class="header-title">بکتست #{{ run.id }}</span>{% endblock %}
+{% block subheader %}
+<p class="backtest-subnav">
+  <a href="/backtest/reports">گزارش بکتست‌ها</a>
+  · <a href="/backtest">بکتست جدید</a>
+</p>
+{% endblock %}
+
+{% block content %}
+<p class="muted">
+  {{ category_labels.get(run.category, run.category) }} · {{ run.timeframe }} ·
+  {{ fmt_date(run.from_iso) }} تا {{ fmt_date(run.to_iso) }} ·
+  {{ fmt_dt(run.created_at) }}
+</p>
+{% set active_run = run %}
+{% include "backtest_findings_partial.html" %}
+{% endblock %}

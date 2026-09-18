@@ -7,7 +7,7 @@ from optionflow.patterns.types import PatternHit
 
 
 def _zig_pct(tf: str) -> float:
-    return {"5m": 0.004, "15m": 0.008, "1h": 0.012}.get(tf, 0.01)
+    return {"5m": 0.004, "15m": 0.008, "1h": 0.012, "4h": 0.018, "1d": 0.025}.get(tf, 0.01)
 
 
 def detect_rsi_divergence(bars: list[OhlcBar], timeframe: str) -> PatternHit | None:

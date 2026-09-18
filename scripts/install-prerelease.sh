@@ -131,6 +131,13 @@ systemctl enable "$SERVICE_NAME"
 systemctl restart "$SERVICE_NAME"
 say "Service bala omad (127.0.0.1:$PORT)."
 
+say "BTC history baraye backtest (~2 sal, 5m/15m/1h/4h/1d) — momkene chand daqiqe tool bekeshad..."
+if OPTIONFLOW_DATA="$INSTALL_DIR/data" "$INSTALL_DIR/.venv/bin/python" -m optionflow.patterns seed --days 730; then
+  say "History seed tamam shod."
+else
+  say "WARN: history seed fail — ba dashboard > backtest > download dobare talash kon."
+fi
+
 # --- nginx ---
 say "Nginx config baraye $DOMAIN ..."
 NGINX_CONF="/etc/nginx/sites-available/$NGINX_SITE"
