@@ -103,7 +103,11 @@ OPTIONFLOW_PORT=$PORT
 OPTIONFLOW_INTERVAL_HOURS=$INTERVAL_HOURS
 OPTIONFLOW_WINDOW_HOURS=$WINDOW_HOURS
 OPTIONFLOW_PUBLIC_URL=https://$DOMAIN
+OPTIONFLOW_ADMIN_USER=BigJay
+OPTIONFLOW_SESSION_SECRET=$(openssl rand -hex 32 2>/dev/null || python3 -c "import secrets; print(secrets.token_hex(32))")
+# OPTIONFLOW_ADMIN_PASSWORD=your-strong-password-here
 EOF
+say "Set OPTIONFLOW_ADMIN_PASSWORD in $ENV_FILE then restart service (creates admin BigJay)."
 
 # --- systemd (local only — nginx miyad jolo) ---
 say "Systemd service..."

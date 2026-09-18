@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}پنل ادمین — OptionFlow{% endblock %}
+{% block header %}پنل ادمین{% endblock %}
+{% block subheader %}
+<p class="backtest-subnav">
+  <a href="/">داشبورد کاربر</a>
+  <a href="/bigjay_controller/users">کاربران</a>
+  <a href="/logout">خروج</a>
+</p>
+{% endblock %}
+
+{% block content %}
+<div class="admin-grid">
+  <a class="card admin-tile" href="/bigjay_controller/users">
+    <strong>مدیریت کاربران</strong>
+    <span class="muted">ایجاد کاربر · enrich/stable · ریست رمز</span>
+  </a>
+  <a class="card admin-tile" href="/patterns">
+    <strong>الگوها (زنده)</strong>
+  </a>
+  <a class="card admin-tile" href="/backtest">
+    <strong>بکتست الگو</strong>
+  </a>
+  <form method="post" action="/bigjay_controller/run-now" class="card admin-tile admin-tile-form">
+    <strong>گزارش دستی</strong>
+    <span class="muted">۴h + روزانه الان</span>
+    <button type="submit" class="btn secondary full">تولید</button>
+  </form>
+  <a class="card admin-tile" href="/telegram">
+    <strong>تلگرام</strong>
+  </a>
+</div>
+{% endblock %}

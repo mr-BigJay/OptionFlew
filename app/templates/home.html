@@ -89,7 +89,9 @@
 {{ report_card(report_daily, 'daily', 'روزانه', report_daily_has_chart) }}
 </div>
 
-<form method="post" action="/admin/run-now" class="inline-form">
+{% if is_admin %}
+<form method="post" action="/bigjay_controller/run-now" class="inline-form">
   <button type="submit" class="btn secondary full">تولید هر دو گزارش الان</button>
 </form>
+{% endif %}
 {% endblock %}

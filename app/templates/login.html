@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}ورود — OptionFlow{% endblock %}
+{% block header %}ورود{% endblock %}
+
+{% block content %}
+<form class="filter-card auth-form" method="post" action="/login">
+  {% if request.query_params.get('next') %}
+  <input type="hidden" name="next" value="{{ request.query_params.get('next') }}">
+  {% endif %}
+  {% if request.query_params.get('err') == 'channel' %}
+  <p class="flash err">دسترسی به این دامنه (stable/enrich) برای حساب شما فعال نیست.</p>
+  {% elif request.query_params.get('err') %}
+  <p class="flash err">نام کاربری یا رمز اشتباه است.</p>
+  {% endif %}
+  <label>نام کاربری</label>
+  <input name="username" required autocomplete="username">
+  <label>رمز عبور</label>
+  <input name="password" type="password" required autocomplete="current-password">
+  <button type="submit" class="btn primary full">ورود</button>
+  <p class="hint muted">دامنه: {{ channel_label }}</p>
+</form>
+{% endblock %}

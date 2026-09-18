@@ -702,7 +702,7 @@ body.chart-lightbox-open {
 .pattern-head {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 10px;
@@ -885,13 +885,10 @@ bdi[dir="ltr"] {
   color: var(--danger);
 }
 
-.pattern-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 10px;
+.bt-finding-status.pattern-status {
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
 }
 
 .bt-run-list-head {
@@ -943,6 +940,47 @@ bdi[dir="ltr"] {
   unicode-bidi: isolate;
   direction: ltr;
   text-align: right;
+}
+
+.top-user-bar {
+  font-size: 0.78rem;
+  margin: 4px 0 0;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.top-user-bar a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.admin-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.admin-tile {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+}
+
+.admin-tile-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.auth-form input {
+  width: 100%;
+  padding: 10px;
+  margin-bottom: 10px;
+  border-radius: 10px;
+  border: 1px solid #2a3441;
+  background: var(--bg);
+  color: var(--text);
+  box-sizing: border-box;
 }
 
 .bt-section-title {

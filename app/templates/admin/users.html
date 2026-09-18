@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}کاربران — OptionFlow{% endblock %}
+{% block header %}کاربران{% endblock %}
+{% block subheader %}
+<p class="backtest-subnav">
+  <a href="/bigjay_controller">پنل ادمین</a>
+  <a href="/logout">خروج</a>
+</p>
+{% endblock %}
+
+{% block content %}
+{% if msg %}
+<p class="flash ok">{{ msg }}</p>
+{% endif %}
+{% if error %}
+<p class="flash err">{{ error }}</p>
+{% endif %}
+
+<form class="filter-card" method="post" action="/bigjay_controller/users/create">
+  <h3 class="pattern-form-title">کاربر جدید</h3>
+  <label>نام کاربری</label>
+  <input name="username" required>
+  <label>شماره موبایل</label>
+  <input name="mobile" inputmode="tel">
+  <div class="pattern-check-row">
+    <label class="check"><input type="checkbox" name="allow_enrich"> دسترسی Enrich</label>
+    <label class="check"><input type="checkbox" name="allow_stable"> دسترسی Stable</label>
+  </div>
+  <p class="hint">رمز اولیه: <bdi dir="ltr">12345678</bdi> — کاربر در اولین ورود باید عوض کند.</p>
+  <button type="submit" class="btn primary full">ایجاد</button>
+</form>
+
+<ul class="bt-run-list">
+  {% for u in users %}
+  <li class="card" style="margin-bottom:10px;padding:12px;">
+    <div><strong>{{ u.username }}</strong> · {{ u.mobile or '—' }}</div>
+    <div class="muted" style="font-size:0.8rem;margin:6px 0;">
+      Enrich: {{ '✓' if u.allow_enrich else '—' }} ·
+      Stable: {{ '✓' if u.allow_stable else '—' }} ·
+      {% if u.must_change_password %}رمز اولیه{% else %}فعال{% endif %}
+    </div>
+    <form method="post" action="/bigjay_controller/users/{{ u.id }}/reset-password" class="inline-form">
+      <button type="submit" class="btn secondary btn-compact">ریست رمز به 12345678</button>
+    </form>
+  </li>
+  {% else %}
+  <li class="empty">کاربری ثبت نشده.</li>
+  {% endfor %}
+</ul>
+{% endblock %}

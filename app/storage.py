@@ -259,7 +259,9 @@ def get_report(report_id: int) -> dict[str, Any] | None:
         return r
 
 
-def get_latest_report(report_kind: str | None = None) -> dict[str, Any] | None:
+def get_latest_report(
+    report_kind: str | None = None, *, scheduled_only: bool = False
+) -> dict[str, Any] | None:
     """آخرین گزارش هر kind (زمان‌بندی‌شده یا دستی معتبر)."""
     purge_expired_manual_reports()
     now = utc_now_iso()
@@ -267,12 +269,13 @@ def get_latest_report(report_kind: str | None = None) -> dict[str, Any] | None:
         (is_manual IS NULL OR is_manual = 0
          OR (expires_at IS NOT NULL AND expires_at > ?))
     """
+    manual_clause = " AND (is_manual IS NULL OR is_manual = 0)" if scheduled_only else ""
     with connect() as conn:
         if report_kind:
             row = conn.execute(
                 f"""
                 SELECT * FROM reports
-                WHERE report_kind = ? AND {visible}
+                WHERE report_kind = ? AND {visible}{manual_clause}
                 ORDER BY created_at DESC LIMIT 1
                 """,
                 (report_kind, now),
@@ -281,7 +284,7 @@ def get_latest_report(report_kind: str | None = None) -> dict[str, Any] | None:
             row = conn.execute(
                 f"""
                 SELECT * FROM reports
-                WHERE {visible}
+                WHERE {visible}{manual_clause}
                 ORDER BY created_at DESC LIMIT 1
                 """,
                 (now,),
@@ -301,13 +304,16 @@ def list_reports(
     start_iso: str | None = None,
     end_iso: str | None = None,
     limit: int = 200,
+    scheduled_only: bool = False,
 ) -> list[dict[str, Any]]:
     purge_expired_manual_reports()
     now = utc_now_iso()
-    q = """
+    manual_clause = " AND (is_manual IS NULL OR is_manual = 0)" if scheduled_only else ""
+    q = f"""
         SELECT * FROM reports WHERE 1=1
         AND (is_manual IS NULL OR is_manual = 0
              OR (expires_at IS NOT NULL AND expires_at > ?))
+        {manual_clause}
     """
     params: list[Any] = [now]
     if start_iso:

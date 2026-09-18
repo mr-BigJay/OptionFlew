@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import secrets
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -14,6 +15,26 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from starlette.middleware.sessions import SessionMiddleware
+
+from app.auth_middleware import (
+    AuthMiddleware,
+    channel_allowed,
+    current_user,
+    deployment_channel_label,
+    login_session,
+    logout_session,
+)
+from app.auth_store import (
+    MIN_PASSWORD_LEN,
+    admin_reset_user_password,
+    authenticate,
+    bootstrap_admin,
+    clear_must_change,
+    create_user,
+    list_users,
+    set_user_password,
+)
 from app.backtest_jobs import start_backtest_job
 from app.backtest_store import get_backtest_run, list_backtest_runs
 from app.history_jobs import history_download_state, start_history_download
@@ -157,6 +178,22 @@ def _category_fa(category: str) -> str:
     }.get(category, category)
 
 
+def _page_ctx(request: Request, **extra: Any) -> dict[str, Any]:
+    user = current_user(request)
+    return _template_ctx(
+        request=request,
+        auth_user=user,
+        is_admin=bool(user and user.get("is_admin")),
+        channel_label=deployment_channel_label(),
+        **extra,
+    )
+
+
+def _scheduled_only(request: Request) -> bool:
+    user = current_user(request)
+    return not (user and user.get("is_admin"))
+
+
 def _template_ctx(**extra: Any) -> dict[str, Any]:
     return {
         "fmt_dt": _fmt_dt,
@@ -229,6 +266,7 @@ async def lifespan(app: FastAPI):
         os.environ.get("OPTIONFLOW_DATA", "data"),
     )
     init_db()
+    bootstrap_admin()
     scheduler.add_job(
         run_scheduled_4h_report,
         trigger=CronTrigger(
@@ -264,6 +302,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="OptionFlow Dashboard", lifespan=lifespan)
+_session_secret = os.environ.get("OPTIONFLOW_SESSION_SECRET") or secrets.token_hex(32)
+app.add_middleware(AuthMiddleware)
+app.add_middleware(SessionMiddleware, secret_key=_session_secret, same_site="lax")
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 _charts_dir = data_dir() / "charts"
 _charts_dir.mkdir(parents=True, exist_ok=True)
@@ -292,16 +333,162 @@ def _ensure_price_levels(report: dict[str, Any] | None) -> dict[str, Any] | None
     return out
 
 
+    return out
+
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request):
+    if current_user(request):
+        return RedirectResponse("/", status_code=303)
+    return templates.TemplateResponse(
+        request, "login.html", _page_ctx(request, active="home")
+    )
+
+
+@app.post("/login")
+async def login_post(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+    next: str = Form(""),
+):
+    user = authenticate(username, password)
+    if not user or user.get("is_admin"):
+        return RedirectResponse("/login?err=1", status_code=303)
+    if not channel_allowed(user):
+        return RedirectResponse("/login?err=channel", status_code=303)
+    login_session(request, user, admin_panel=False)
+    dest = next if next.startswith("/") and not next.startswith("//") else "/"
+    return RedirectResponse(dest, status_code=303)
+
+
+@app.get("/logout")
+async def logout(request: Request):
+    logout_session(request)
+    return RedirectResponse("/login", status_code=303)
+
+
+@app.get("/change-password", response_class=HTMLResponse)
+async def change_password_page(request: Request, error: str = ""):
+    return templates.TemplateResponse(
+        request,
+        "change_password.html",
+        _page_ctx(request, error=error),
+    )
+
+
+@app.post("/change-password")
+async def change_password_post(
+    request: Request,
+    password: str = Form(...),
+    password2: str = Form(...),
+):
+    user = current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    if password != password2:
+        return RedirectResponse("/change-password?error=mismatch", status_code=303)
+    err = set_user_password(user["id"], password, force_change=False)
+    if err:
+        return templates.TemplateResponse(
+            request,
+            "change_password.html",
+            _page_ctx(request, error=err),
+        )
+    clear_must_change(user["id"])
+    return RedirectResponse("/", status_code=303)
+
+
+@app.get("/bigjay_controller/login", response_class=HTMLResponse)
+async def admin_login_page(request: Request, error: str = ""):
+    return templates.TemplateResponse(
+        request,
+        "admin/login.html",
+        _page_ctx(request, error=error),
+    )
+
+
+@app.post("/bigjay_controller/login")
+async def admin_login_post(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+):
+    user = authenticate(username, password)
+    if not user or not user.get("is_admin"):
+        return RedirectResponse(
+            "/bigjay_controller/login?error=1", status_code=303
+        )
+    login_session(request, user, admin_panel=True)
+    return RedirectResponse("/bigjay_controller", status_code=303)
+
+
+@app.get("/bigjay_controller", response_class=HTMLResponse)
+async def admin_dashboard(request: Request):
+    return templates.TemplateResponse(
+        request,
+        "admin/dashboard.html",
+        _page_ctx(request, active="admin"),
+    )
+
+
+@app.get("/bigjay_controller/users", response_class=HTMLResponse)
+async def admin_users_page(request: Request, msg: str = "", error: str = ""):
+    return templates.TemplateResponse(
+        request,
+        "admin/users.html",
+        _page_ctx(request, users=list_users(), msg=msg, error=error),
+    )
+
+
+@app.post("/bigjay_controller/users/create")
+async def admin_users_create(
+    request: Request,
+    username: str = Form(...),
+    mobile: str = Form(""),
+    allow_enrich: str = Form(""),
+    allow_stable: str = Form(""),
+):
+    uid, err = create_user(
+        username=username,
+        mobile=mobile,
+        allow_enrich=allow_enrich == "on",
+        allow_stable=allow_stable == "on",
+    )
+    if err:
+        return RedirectResponse(
+            f"/bigjay_controller/users?error={quote(err)}", status_code=303
+        )
+    return RedirectResponse(
+        "/bigjay_controller/users?msg=created", status_code=303
+    )
+
+
+@app.post("/bigjay_controller/users/{user_id}/reset-password")
+async def admin_users_reset(user_id: int):
+    admin_reset_user_password(user_id)
+    return RedirectResponse("/bigjay_controller/users?msg=reset", status_code=303)
+
+
+@app.post("/bigjay_controller/run-now")
+async def admin_run_now():
+    run_scheduled_report()
+    return RedirectResponse("/bigjay_controller?msg=run", status_code=303)
+
+
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
-    report_4h = _ensure_price_levels(get_latest_report("4h"))
-    report_daily = _ensure_price_levels(get_latest_report("daily"))
+    sched = _scheduled_only(request)
+    report_4h = _ensure_price_levels(get_latest_report("4h", scheduled_only=sched))
+    report_daily = _ensure_price_levels(
+        get_latest_report("daily", scheduled_only=sched)
+    )
     ensure_report_chart(report_4h)
     ensure_report_chart(report_daily)
     return templates.TemplateResponse(
         request,
         "home.html",
-        _template_ctx(
+        _page_ctx(
             report_4h=report_4h,
             report_daily=report_daily,
             report_4h_has_chart=report_has_chart(
@@ -326,22 +513,28 @@ async def reports_page(
     if period not in ("day", "week", "month", "range"):
         period = "day"
 
+    sched = _scheduled_only(request)
     if period == "range" and from_date and to_date:
         start_iso, end_iso = _range_custom_tehran(from_date, to_date)
-        items = list_reports(start_iso=start_iso, end_iso=end_iso)
+        items = list_reports(
+            start_iso=start_iso, end_iso=end_iso, scheduled_only=sched
+        )
     elif period == "range":
         items = []
     else:
         anchor = date or None
         start_iso, end_iso = _range_for_period(period, anchor)
-        items = list_reports(start_iso=start_iso, end_iso=end_iso)
+        items = list_reports(
+            start_iso=start_iso, end_iso=end_iso, scheduled_only=sched
+        )
 
     grouped = _group_by_date(items)
 
     return templates.TemplateResponse(
         request,
         "reports.html",
-        _template_ctx(
+        _page_ctx(
+            request,
             active="reports",
             period=period,
             date=date,
@@ -358,11 +551,14 @@ async def report_detail(request: Request, report_id: int):
     report = get_report(report_id)
     if not report:
         return RedirectResponse("/reports", status_code=302)
+    if _scheduled_only(request) and report.get("is_manual"):
+        return RedirectResponse("/reports", status_code=302)
     ensure_report_chart(report)
     return templates.TemplateResponse(
         request,
         "report_detail.html",
-        _template_ctx(
+        _page_ctx(
+            request,
             active="reports",
             report=report,
             has_chart=report_has_chart(report.get("report_code")),
@@ -381,7 +577,8 @@ async def patterns_page(request: Request, tab: str = "triangle"):
     return templates.TemplateResponse(
         request,
         "patterns.html",
-        _template_ctx(
+        _page_ctx(
+            request,
             active="patterns",
             tab=tab,
             rows=rows,
@@ -407,7 +604,8 @@ async def backtest_page(
     return templates.TemplateResponse(
         request,
         "backtest.html",
-        _template_ctx(
+        _page_ctx(
+            request,
             active="backtest",
             tab=tab,
             cache_rows=cache_status(data_dir()),
@@ -441,7 +639,9 @@ async def backtest_reports_page(request: Request):
     return templates.TemplateResponse(
         request,
         "backtest_reports.html",
-        _template_ctx(active="backtest", runs=runs, category_labels=labels, bt_tf_labels={
+        _page_ctx(
+            request,
+            active="backtest", runs=runs, category_labels=labels, bt_tf_labels={
                 "5m": "۵ دقیقه", "15m": "۱۵ دقیقه", "1h": "۱ ساعت", "4h": "۴ ساعت", "1d": "روزانه",
             }),
     )
@@ -460,7 +660,7 @@ async def backtest_report_detail(request: Request, run_id: int):
     return templates.TemplateResponse(
         request,
         "backtest_report_detail.html",
-        _template_ctx(active="backtest", run=run, category_labels=labels),
+        _page_ctx(request, active="backtest", run=run, category_labels=labels),
     )
 
 
@@ -539,7 +739,8 @@ async def telegram_page(request: Request, msg: str = "", ok: str = ""):
     return templates.TemplateResponse(
         request,
         "telegram.html",
-        _template_ctx(
+        _page_ctx(
+            request,
             active="telegram",
             bot_token=get_setting("telegram_bot_token", ""),
             chat_id=get_setting("telegram_chat_id", ""),
@@ -579,9 +780,3 @@ async def telegram_test():
         f"/telegram?ok={'1' if ok else '0'}&msg={quote(msg)}",
         status_code=303,
     )
-
-
-@app.post("/admin/run-now")
-async def run_now():
-    run_scheduled_report()
-    return RedirectResponse("/", status_code=303)
