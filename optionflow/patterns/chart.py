@@ -163,18 +163,8 @@ def _mark_signal_and_forward(
     else:
         fill = "#ffffff12"
         edge = "#78909c"
-    ax.axvline(x_sig, color=edge, linewidth=1.2, linestyle=":", alpha=0.9)
-    ax.axvspan(x_sig, x_end, facecolor=fill, edgecolor="none", zorder=0)
-    ax.text(
-        x_sig,
-        ax.get_ylim()[1],
-        " سیگنال → بعد",
-        color=edge,
-        fontsize=7,
-        ha="left",
-        va="top",
-        transform=ax.get_xaxis_transform(),
-    )
+    ax.axvspan(x_sig, x_end, facecolor=fill, edgecolor="none", zorder=0.5, alpha=0.35)
+    ax.axvline(x_sig, color=edge, linewidth=1.2, linestyle=":", alpha=0.9, zorder=4)
 
 
 def _render_price_pattern(
@@ -286,6 +276,7 @@ def _render_price_pattern(
 
     _style_axes(ax, f"BTCUSDT {hit.timeframe} — {hit.title_fa}")
     ax.set_ylabel("USDT", color="#90a4ae", fontsize=8)
+    ax.margins(x=0.02)
 
     buf = io.BytesIO()
     fig.savefig(buf, format="png", facecolor=fig.get_facecolor())
