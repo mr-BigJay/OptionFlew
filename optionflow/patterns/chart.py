@@ -247,6 +247,30 @@ def _render_price_pattern(
             y_l0, y_l1 = sl * i0 + il, sl * i1 + il
             ax.plot([x0, x1], [y_u0, y_u1], color="#ffb74d", linewidth=2, label="مقاومت")
             ax.plot([x0, x1], [y_l0, y_l1], color="#81c784", linewidth=2, label="حمایت")
+            for ti in meta.get("touch_highs") or []:
+                gi = wo + int(ti)
+                if 0 <= gi < len(bars):
+                    ax.scatter(
+                        [mdates.date2num(bars[gi].ts)],
+                        [bars[gi].high],
+                        c="#ffb74d",
+                        s=36,
+                        zorder=6,
+                        edgecolors="#fff",
+                        linewidths=0.4,
+                    )
+            for ti in meta.get("touch_lows") or []:
+                gi = wo + int(ti)
+                if 0 <= gi < len(bars):
+                    ax.scatter(
+                        [mdates.date2num(bars[gi].ts)],
+                        [bars[gi].low],
+                        c="#81c784",
+                        s=36,
+                        zorder=6,
+                        edgecolors="#fff",
+                        linewidths=0.4,
+                    )
             if sig is not None:
                 j = wo + min(i1, max(i0, sig - wo)) if sig >= wo else i1
                 j = min(max(j, i0), i1)
