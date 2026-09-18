@@ -21,6 +21,7 @@ from app.jobs import (
 )
 from app.storage import (
     data_dir,
+    ensure_report_chart,
     get_latest_report,
     get_report,
     get_setting,
@@ -29,7 +30,7 @@ from app.storage import (
     report_has_chart,
     set_setting,
 )
-from app.telegram_notify import send_telegram_message, telegram_enabled
+from app.telegram_notify import send_telegram_message, send_telegram_photo, telegram_enabled
 from optionflow.price_levels import fetch_price_levels
 from optionflow.tehran_time import (
     CRON_4H_HOURS,
@@ -109,6 +110,35 @@ def _clean_paragraph(text: str) -> str:
     return text.strip()
 
 
+def _format_prose_report_html(text: str) -> str:
+    """prose-v3: **تیتر** → section؛ برای داشبورد (نه فقط چارت)."""
+    import html as html_mod
+    import re
+
+    text = _clean_paragraph(text)
+    if "حرکت اول" not in text and "**" not in text:
+        return f'<p class="report-section-body">{html_mod.escape(text)}</p>'
+
+    parts: list[str] = []
+    for block in re.split(r"\n\n+", text.strip()):
+        block = block.strip()
+        if not block:
+            continue
+        m = re.match(r"^\*\*(.+?)\*\*\s*\n?(.*)$", block, re.DOTALL)
+        if m:
+            title = html_mod.escape(m.group(1).strip())
+            body = html_mod.escape(m.group(2).strip())
+            parts.append(f'<section class="report-section"><h3 class="report-section-title">{title}</h3>')
+            if body:
+                parts.append(f'<p class="report-section-body">{body}</p>')
+            parts.append("</section>")
+        else:
+            parts.append(
+                f'<p class="report-section-body">{html_mod.escape(block)}</p>'
+            )
+    return "\n".join(parts)
+
+
 def _template_ctx(**extra: Any) -> dict[str, Any]:
     return {
         "fmt_dt": _fmt_dt,
@@ -117,6 +147,7 @@ def _template_ctx(**extra: Any) -> dict[str, Any]:
         "fmt_date": format_date_tehran,
         "bias_fa": _bias_fa,
         "clean_paragraph": _clean_paragraph,
+        "format_report_html": _format_prose_report_html,
         **extra,
     }
 
@@ -240,12 +271,20 @@ def _ensure_price_levels(report: dict[str, Any] | None) -> dict[str, Any] | None
 async def home(request: Request):
     report_4h = _ensure_price_levels(get_latest_report("4h"))
     report_daily = _ensure_price_levels(get_latest_report("daily"))
+    ensure_report_chart(report_4h)
+    ensure_report_chart(report_daily)
     return templates.TemplateResponse(
         request,
         "home.html",
         _template_ctx(
             report_4h=report_4h,
             report_daily=report_daily,
+            report_4h_has_chart=report_has_chart(
+                report_4h.get("report_code") if report_4h else None
+            ),
+            report_daily_has_chart=report_has_chart(
+                report_daily.get("report_code") if report_daily else None
+            ),
             active="home",
         ),
     )
@@ -294,6 +333,7 @@ async def report_detail(request: Request, report_id: int):
     report = get_report(report_id)
     if not report:
         return RedirectResponse("/reports", status_code=302)
+    ensure_report_chart(report)
     return templates.TemplateResponse(
         request,
         "report_detail.html",
@@ -339,7 +379,12 @@ async def telegram_save(
 @app.post("/telegram/test")
 async def telegram_test():
     latest = get_latest_report()
+    if latest:
+        ensure_report_chart(latest)
     text = latest["paragraph"] if latest else "تست OptionFlow — اتصال تلگرام برقرار است."
+    if latest and latest.get("report_code") and report_has_chart(latest["report_code"]):
+        path = data_dir() / "charts" / f"{latest['report_code']}.png"
+        send_telegram_photo(path.read_bytes(), caption="BTCUSDT — مسیر سناریو")
     ok, msg = send_telegram_message(text)
     return RedirectResponse(
         f"/telegram?ok={'1' if ok else '0'}&msg={quote(msg)}",

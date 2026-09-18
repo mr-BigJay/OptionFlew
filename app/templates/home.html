@@ -7,7 +7,7 @@
 
 {% block content %}
 <div class="home-feed">
-{% macro report_card(report, kind_key, kind_label) %}
+{% macro report_card(report, kind_key, kind_label, has_chart=false) %}
 {% if report %}
 <article class="home-report-card kind-{{ kind_key }}">
   <header class="home-report-head">
@@ -32,13 +32,13 @@
     بازار {{ bias_fa(report.bias) }} — امتیاز {{ report.score }} | اطمینان {{ report.confidence_pct }}٪
   </p>
 
-  <div class="home-report-body">
-    {% if report.get('report_code') %}
+    <div class="home-report-body report-prose">
+    {% if report.get('report_code') and has_chart %}
     <figure class="scenario-chart">
-      <img src="/charts/{{ report.report_code }}.png" alt="BTCUSDT scenario" loading="lazy" onerror="this.closest('figure').style.display='none'" />
+      <img src="/charts/{{ report.report_code }}.png?v={{ report.created_at }}" alt="BTCUSDT scenario" loading="lazy" />
     </figure>
     {% endif %}
-    <p class="home-paragraph paragraph-justify">{{ clean_paragraph(report.paragraph) }}</p>
+    <div class="home-paragraph paragraph-justify">{{ format_report_html(report.paragraph) | safe }}</div>
   </div>
 
   <footer class="home-metrics home-metrics-dense">
@@ -83,8 +83,8 @@
 {% endif %}
 {% endmacro %}
 
-{{ report_card(report_4h, '4h', '۴ ساعته') }}
-{{ report_card(report_daily, 'daily', 'روزانه') }}
+{{ report_card(report_4h, '4h', '۴ ساعته', report_4h_has_chart) }}
+{{ report_card(report_daily, 'daily', 'روزانه', report_daily_has_chart) }}
 </div>
 
 <form method="post" action="/admin/run-now" class="inline-form">

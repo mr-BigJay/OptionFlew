@@ -184,19 +184,28 @@ def _next_manual_index(conn: sqlite3.Connection, date_key: str) -> int:
 
 def save_scheduled_report(snapshot: ReportSnapshot) -> int:
     """Insert or replace scheduled report keyed by report_code (4h slot / daily)."""
+    from optionflow.report_chart import chart_png_for_snapshot
+
     purge_expired_manual_reports()
     kind: ReportKind = snapshot.report_kind  # type: ignore[assignment]
     code = snapshot.report_code or scheduled_report_code(kind)
+    snapshot.report_code = code
     row = snapshot.to_row()
     row["report_code"] = code
     row["is_manual"] = 0
     row["expires_at"] = None
     with connect() as conn:
-        return _upsert_scheduled(conn, row)
+        rid = _upsert_scheduled(conn, row)
+    png = chart_png_for_snapshot(snapshot)
+    if png:
+        save_report_chart(code, png)
+    return rid
 
 
 def save_manual_report(snapshot: ReportSnapshot) -> int:
     """Manual run (تولید الان): YYYYMMDD-jn, expires 24h after creation."""
+    from optionflow.report_chart import chart_png_for_snapshot
+
     purge_expired_manual_reports()
     created = parse_iso(snapshot.created_at)
     expires = (created + timedelta(hours=24)).replace(microsecond=0)
@@ -220,7 +229,12 @@ def save_manual_report(snapshot: ReportSnapshot) -> int:
             """,
             row,
         )
-        return int(cur.lastrowid)
+        rid = int(cur.lastrowid)
+    snapshot.report_code = code
+    png = chart_png_for_snapshot(snapshot)
+    if png:
+        save_report_chart(code, png)
+    return rid
 
 
 def insert_report(snapshot: ReportSnapshot) -> int:
@@ -335,6 +349,20 @@ def report_has_chart(report_code: str | None) -> bool:
     if not report_code:
         return False
     return chart_path_for_code(report_code).is_file()
+
+
+def ensure_report_chart(report: dict[str, Any] | None) -> None:
+    """اگر PNG نیست ولی متن prose-v3 است، چارت را می‌سازد."""
+    if not report:
+        return
+    code = report.get("report_code")
+    if not code or report_has_chart(code):
+        return
+    from optionflow.report_chart import chart_png_for_report_row
+
+    png = chart_png_for_report_row(report)
+    if png:
+        save_report_chart(code, png)
 
 
 def parse_iso(s: str) -> datetime:

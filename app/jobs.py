@@ -5,31 +5,15 @@ import os
 
 from app.storage import get_report, save_manual_report, save_report_chart, save_scheduled_report
 from app.telegram_notify import maybe_send_report
+from optionflow.report_chart import chart_png_for_snapshot
 from optionflow.report_codes import scheduled_report_code
 from optionflow.report_service import ReportKind, produce_report
-from optionflow.scenario_chart import render_btcusdt_scenario_chart
-from optionflow.scenario_narrative import ScenarioPlan
 
 logger = logging.getLogger("optionflow.jobs")
 
 
-def _scenario_chart_png(snapshot) -> bytes | None:
-    if snapshot.scenario_b is None or snapshot.scenario_c is None:
-        return None
-    kind: ReportKind = snapshot.report_kind if snapshot.report_kind in ("4h", "daily") else "4h"
-    plan = ScenarioPlan(
-        spot=float(snapshot.spot),
-        b=int(snapshot.scenario_b),
-        c=int(snapshot.scenario_c),
-        first_dir="up",
-        second_dir="down",
-        two_legs=True,
-    )
-    return render_btcusdt_scenario_chart(plan, report_kind=kind)
-
-
 def _notify_report(snapshot, prefix: str) -> None:
-    chart_png = _scenario_chart_png(snapshot)
+    chart_png = chart_png_for_snapshot(snapshot)
     code = snapshot.report_code
     if chart_png and code:
         save_report_chart(code, chart_png)
