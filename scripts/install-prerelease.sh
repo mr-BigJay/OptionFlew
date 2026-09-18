@@ -93,10 +93,13 @@ pip install -U pip -q
 pip install -r requirements.txt -q
 
 mkdir -p "$INSTALL_DIR/data"
+SHARED_AUTH="/opt/optionflow-shared"
+mkdir -p "$SHARED_AUTH"
 
 ENV_FILE="$INSTALL_DIR/.env"
 cat > "$ENV_FILE" <<EOF
 OPTIONFLOW_DATA=$INSTALL_DIR/data
+OPTIONFLOW_AUTH_DB=$SHARED_AUTH/users.db
 OPTIONFLOW_PORT=$PORT
 OPTIONFLOW_INTERVAL_HOURS=$INTERVAL_HOURS
 OPTIONFLOW_WINDOW_HOURS=$WINDOW_HOURS
@@ -106,6 +109,7 @@ OPTIONFLOW_ENRICHED=1
 OPTIONFLOW_ADMIN_USER=BigJay
 OPTIONFLOW_SESSION_SECRET=$(openssl rand -hex 32 2>/dev/null || python3 -c "import secrets; print(secrets.token_hex(32))")
 # OPTIONFLOW_ADMIN_PASSWORD=your-strong-password-here
+# اگر رمز @ یا # دارد، در .env داخل کوتیشن بگذارید: OPTIONFLOW_ADMIN_PASSWORD='603240@Example'
 EOF
 say "Set OPTIONFLOW_ADMIN_PASSWORD in $ENV_FILE then restart service (creates admin BigJay)."
 

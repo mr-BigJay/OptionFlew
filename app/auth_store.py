@@ -8,12 +8,27 @@ import sqlite3
 from datetime import datetime, timezone
 from typing import Any
 
-from app.storage import connect, init_db
+from app.storage import connect, connect_users, db_path, init_db, users_db_path
 
 logger = logging.getLogger("optionflow.auth")
 
 DEFAULT_USER_PASSWORD = "12345678"
 MIN_PASSWORD_LEN = 8
+
+_USERS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    mobile TEXT NOT NULL DEFAULT '',
+    password_hash TEXT NOT NULL,
+    is_admin INTEGER NOT NULL DEFAULT 0,
+    allow_enrich INTEGER NOT NULL DEFAULT 0,
+    allow_stable INTEGER NOT NULL DEFAULT 0,
+    must_change_password INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+"""
 
 
 def _utc_now() -> str:
@@ -40,29 +55,77 @@ def verify_password(password: str, stored: str) -> bool:
         return False
 
 
+def _legacy_users_table_exists() -> bool:
+    legacy = db_path()
+    if not legacy.is_file():
+        return False
+    if legacy.resolve() == users_db_path().resolve():
+        return False
+    try:
+        conn = sqlite3.connect(legacy)
+        row = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='users'"
+        ).fetchone()
+        conn.close()
+        return row is not None
+    except Exception:
+        return False
+
+
+def _migrate_users_from_legacy_db() -> None:
+    if os.environ.get("OPTIONFLOW_AUTH_DB", "").strip() == "":
+        return
+    legacy = db_path()
+    if not _legacy_users_table_exists():
+        return
+    with connect_users() as auth_conn:
+        n = auth_conn.execute("SELECT COUNT(*) AS c FROM users").fetchone()["c"]
+        if n:
+            return
+        leg = sqlite3.connect(legacy)
+        leg.row_factory = sqlite3.Row
+        rows = leg.execute("SELECT * FROM users").fetchall()
+        leg.close()
+        if not rows:
+            return
+        for r in rows:
+            auth_conn.execute(
+                """
+                INSERT INTO users
+                (id, username, mobile, password_hash, is_admin, allow_enrich,
+                 allow_stable, must_change_password, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    r["id"],
+                    r["username"],
+                    r["mobile"],
+                    r["password_hash"],
+                    r["is_admin"],
+                    r["allow_enrich"],
+                    r["allow_stable"],
+                    r["must_change_password"],
+                    r["created_at"],
+                ),
+            )
+        logger.info(
+            "Migrated %s user(s) from %s to shared auth DB %s",
+            len(rows),
+            legacy,
+            users_db_path(),
+        )
+
+
 def ensure_users_schema() -> None:
     init_db()
-    with connect() as conn:
-        conn.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT NOT NULL UNIQUE COLLATE NOCASE,
-                mobile TEXT NOT NULL DEFAULT '',
-                password_hash TEXT NOT NULL,
-                is_admin INTEGER NOT NULL DEFAULT 0,
-                allow_enrich INTEGER NOT NULL DEFAULT 0,
-                allow_stable INTEGER NOT NULL DEFAULT 0,
-                must_change_password INTEGER NOT NULL DEFAULT 0,
-                created_at TEXT NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
-            """
-        )
+    with connect_users() as conn:
+        conn.executescript(_USERS_SCHEMA)
+    _migrate_users_from_legacy_db()
 
 
 def bootstrap_admin() -> None:
     ensure_users_schema()
+    logger.info("Auth users database: %s", users_db_path())
     admin_user = os.environ.get("OPTIONFLOW_ADMIN_USER", "BigJay").strip()
     admin_pass = os.environ.get("OPTIONFLOW_ADMIN_PASSWORD", "").strip()
     if not admin_pass:
@@ -71,7 +134,7 @@ def bootstrap_admin() -> None:
         )
         return
     pw_hash = _hash_password(admin_pass)
-    with connect() as conn:
+    with connect_users() as conn:
         row = conn.execute(
             """
             SELECT id, is_admin FROM users
@@ -113,7 +176,7 @@ def get_user(user_id: int | None) -> dict[str, Any] | None:
     if not user_id:
         return None
     ensure_users_schema()
-    with connect() as conn:
+    with connect_users() as conn:
         row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
     if not row:
         return None
@@ -122,7 +185,7 @@ def get_user(user_id: int | None) -> dict[str, Any] | None:
 
 def get_user_by_username(username: str) -> dict[str, Any] | None:
     ensure_users_schema()
-    with connect() as conn:
+    with connect_users() as conn:
         row = conn.execute(
             "SELECT * FROM users WHERE username = ? COLLATE NOCASE",
             (username.strip(),),
@@ -141,7 +204,7 @@ def authenticate(username: str, password: str) -> dict[str, Any] | None:
 
 def list_users() -> list[dict[str, Any]]:
     ensure_users_schema()
-    with connect() as conn:
+    with connect_users() as conn:
         rows = conn.execute(
             "SELECT * FROM users WHERE is_admin = 0 ORDER BY id DESC"
         ).fetchall()
@@ -162,7 +225,7 @@ def create_user(
     if get_user_by_username(username):
         return None, "این نام کاربری وجود دارد."
     ensure_users_schema()
-    with connect() as conn:
+    with connect_users() as conn:
         cur = conn.execute(
             """
             INSERT INTO users
@@ -186,7 +249,7 @@ def set_user_password(user_id: int, new_password: str, *, force_change: bool) ->
     if len(new_password) < MIN_PASSWORD_LEN:
         return f"حداقل {MIN_PASSWORD_LEN} کاراکتر."
     ensure_users_schema()
-    with connect() as conn:
+    with connect_users() as conn:
         conn.execute(
             """
             UPDATE users SET password_hash = ?, must_change_password = ?
@@ -202,7 +265,7 @@ def admin_reset_user_password(user_id: int) -> None:
 
 
 def clear_must_change(user_id: int) -> None:
-    with connect() as conn:
+    with connect_users() as conn:
         conn.execute(
             "UPDATE users SET must_change_password = 0 WHERE id = ?",
             (user_id,),

@@ -20,15 +20,16 @@ curl -fsSL https://raw.githubusercontent.com/mr-BigJay/OptionFlew/pre-release/sc
 
 - کاربر عادی: `/login` — فقط گزارش‌های زمان‌بندی‌شده ۴h و روزانه.
 - ادمین: `/bigjay_controller/login` — مدیریت کاربر، بکتست، الگوها، گزارش دستی، تلگرام.
-- در `.env` روی **هر دو** VPS:
+- **یک سرور، دو ربات:** هر دو `.env` باید **همان** مسیر کاربران را داشته باشند:
 
 ```bash
 OPTIONFLOW_ADMIN_USER=BigJay
-OPTIONFLOW_ADMIN_PASSWORD=...   # فقط روی سرور؛ در git نگذارید
-OPTIONFLOW_SESSION_SECRET=...   # install script یک مقدار تصادفی می‌سازد
+OPTIONFLOW_ADMIN_PASSWORD='...'   # فقط روی سرور؛ در git نگذارید
+OPTIONFLOW_SESSION_SECRET=...     # install script یک مقدار تصادفی می‌سازد
+OPTIONFLOW_AUTH_DB=/opt/optionflow-shared/users.db
 ```
 
-پس از restart، ادمین یک‌بار با مسیر بالا وارد شود. کاربران با تیک Enrich/Stable در پنل ادمین ساخته می‌شوند.
+یک‌بار ساخت کاربر در پنل ادمین (روی **هر** دامنه) برای stable و enrich کافی است. گزارش‌ها در `data/` هر نصب جدا می‌مانند.
 
 ## به‌روزرسانی stable (روی VPS)
 
