@@ -17,6 +17,19 @@ sudo .venv/bin/pip install -r requirements.txt -q
 sudo systemctl restart optionflow-dashboard
 ```
 
+### اکانتینگ (یک سرور، دو ربات)
+
+- ادمین: `/bigjay_controller/login` · کاربر: `/login`
+- در **هر دو** `.env` (stable و enrich):
+
+```bash
+OPTIONFLOW_ADMIN_USER=BigJay
+OPTIONFLOW_ADMIN_PASSWORD='...'
+OPTIONFLOW_AUTH_DB=/opt/optionflow-shared/users.db
+```
+
+با `OPTIONFLOW_AUTH_DB` مشترک، یک‌بار ساخت کاربر در پنل ادمین (روی هر دامنه) برای **هر دو** ربات کافی است. گزارش‌ها همچنان در `data/` جدا می‌مانند.
+
 ---
 
 ## Pre-release / dev — `pre-release`

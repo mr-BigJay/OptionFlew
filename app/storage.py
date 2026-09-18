@@ -24,9 +24,30 @@ def db_path() -> Path:
     return data_dir() / "optionflow.db"
 
 
+def users_db_path() -> Path:
+    """Shared user accounts (stable + enrich on one VPS). Default: same as reports DB."""
+    override = os.environ.get("OPTIONFLOW_AUTH_DB", "").strip()
+    if override:
+        return Path(override)
+    return db_path()
+
+
 @contextmanager
 def connect() -> Iterator[sqlite3.Connection]:
     conn = sqlite3.connect(db_path())
+    conn.row_factory = sqlite3.Row
+    try:
+        yield conn
+        conn.commit()
+    finally:
+        conn.close()
+
+
+@contextmanager
+def connect_users() -> Iterator[sqlite3.Connection]:
+    path = users_db_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
     try:
         yield conn
