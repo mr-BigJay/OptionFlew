@@ -23,8 +23,6 @@ RSI_OVERSOLD = 35.0
 # سقف/کف قیمت تقریباً برابر را واگرایی حساب نکن (۰٫۱۲٪)
 MIN_PRICE_PCT = 0.0012
 
-_TF_MINUTES = {"5m": 5, "15m": 15, "1h": 60, "4h": 240, "1d": 1440}
-
 
 def _in_range(prev_pivot: int, pivot: int) -> bool:
     return RANGE_LOWER <= (pivot - prev_pivot) <= RANGE_UPPER
@@ -37,16 +35,6 @@ def _recent_confirm(conf_b: int, n: int, right: int) -> bool:
 def _price_apart(a: float, b: float) -> bool:
     base = max(abs(a), 1e-9)
     return abs(b - a) / base >= MIN_PRICE_PCT
-
-
-def _delay_fa(timeframe: str, bars: int) -> str:
-    mins = _TF_MINUTES.get(timeframe, 5) * bars
-    if mins < 60:
-        return f"{bars} کندل (~{mins} دقیقه)"
-    hours = mins / 60
-    if hours == int(hours):
-        return f"{bars} کندل (~{int(hours)} ساعت)"
-    return f"{bars} کندل (~{hours:.1f} ساعت)"
 
 
 def _forming_pivot(
@@ -102,7 +90,43 @@ def _bullish_ok(
     return float(ra), float(rb)
 
 
+def _bar_close(bars: list[OhlcBar], idx: int) -> float | None:
+    if idx < 0 or idx >= len(bars):
+        return None
+    return float(bars[idx].close)
+
+
+def _price_txt(px: float | None) -> str:
+    if px is None:
+        return "—"
+    return f"{px:,.0f}"
+
+
+def _entry_lines(
+    bars: list[OhlcBar],
+    p_b: int,
+    *,
+    early: bool,
+) -> tuple[int, int | None, float | None, float | None, str]:
+    early_ix = p_b + EARLY_RIGHT
+    final_ix = p_b + LOOKBACK_RIGHT
+    early_px = _bar_close(bars, early_ix)
+    final_px = None if early else _bar_close(bars, final_ix)
+    if early:
+        extra = (
+            f"تأیید اولیه در قیمت {_price_txt(early_px)} داده شد؛ "
+            f"تأیید نهایی هنوز صادر نشده (منتظر کندل ۵ام)."
+        )
+        return early_ix, None, early_px, None, extra
+    extra = (
+        f"تأیید اولیه در قیمت {_price_txt(early_px)} داده شد، "
+        f"تأیید نهایی در قیمت {_price_txt(final_px)}."
+    )
+    return early_ix, final_ix, early_px, final_px, extra
+
+
 def _hit_bearish(
+    bars: list[OhlcBar],
     timeframe: str,
     p_a: int,
     p_b: int,
@@ -116,11 +140,8 @@ def _hit_bearish(
     diff = ra - rb
     delay = EARLY_RIGHT if early else LOOKBACK_RIGHT
     status = "سیگنال اولیه" if early else "تأییدشده"
-    delay_txt = _delay_fa(timeframe, delay)
-    extra = (
-        f"هشدار زودهنگام پس از {delay_txt}؛ اگر تا ۵ کندل سقف RSI نشکند، تأیید نهایی می‌شود."
-        if early
-        else f"تأیید pivot بعد از {delay_txt}."
+    early_ix, final_ix, early_px, final_px, extra = _entry_lines(
+        bars, p_b, early=early
     )
     return PatternHit(
         category="divergence",
@@ -134,9 +155,9 @@ def _hit_bearish(
             f"RSI پایین‌تر ({rb:.1f} < {ra:.1f}، Δ{diff:.1f}). {extra}"
         ),
         forecast_fa=(
-            "پیش‌بینی: احتمال اصلاح نزولی؛ تأیید با شکست کف کوتاه‌مدت."
+            "احتمال اصلاح نزولی؛ تأیید با شکست کف کوتاه‌مدت."
             if not early
-            else "پیش‌بینی اولیه: اگر سقف RSI در ۲–۳ کندل بعد بالاتر نرود، واگرایی نزولی تأیید می‌شود."
+            else "اگر سقف RSI در ۲–۳ کندل بعد بالاتر نرود، واگرایی نزولی تأیید می‌شود."
         ),
         meta={
             "pivot_a": (p_a, highs[p_a]),
@@ -145,6 +166,10 @@ def _hit_bearish(
             "rsi_b": rb,
             "direction": "down",
             "confirm_index": confirm_index,
+            "early_index": early_ix,
+            "final_index": final_ix,
+            "early_price": early_px,
+            "final_price": final_px,
             "tv_pivot": True,
             "stage": "early" if early else "confirmed",
             "delay_bars": delay,
@@ -153,6 +178,7 @@ def _hit_bearish(
 
 
 def _hit_bullish(
+    bars: list[OhlcBar],
     timeframe: str,
     p_a: int,
     p_b: int,
@@ -166,11 +192,8 @@ def _hit_bullish(
     diff = rb - ra
     delay = EARLY_RIGHT if early else LOOKBACK_RIGHT
     status = "سیگنال اولیه" if early else "تأییدشده"
-    delay_txt = _delay_fa(timeframe, delay)
-    extra = (
-        f"هشدار زودهنگام پس از {delay_txt}؛ اگر تا ۵ کندل کف RSI نشکند، تأیید نهایی می‌شود."
-        if early
-        else f"تأیید pivot بعد از {delay_txt}."
+    early_ix, final_ix, early_px, final_px, extra = _entry_lines(
+        bars, p_b, early=early
     )
     return PatternHit(
         category="divergence",
@@ -184,9 +207,9 @@ def _hit_bullish(
             f"RSI بالاتر ({rb:.1f} > {ra:.1f}، Δ{diff:.1f}). {extra}"
         ),
         forecast_fa=(
-            "پیش‌بینی: احتمال اصلاح صعودی؛ تأیید با شکست سقف کوتاه‌مدت."
+            "احتمال اصلاح صعودی؛ تأیید با شکست سقف کوتاه‌مدت."
             if not early
-            else "پیش‌بینی اولیه: اگر کف RSI در ۲–۳ کندل بعد پایین‌تر نرود، واگرایی مثبت تأیید می‌شود."
+            else "اگر کف RSI در ۲–۳ کندل بعد پایین‌تر نرود، واگرایی مثبت تأیید می‌شود."
         ),
         meta={
             "pivot_a": (p_a, lows[p_a]),
@@ -195,6 +218,10 @@ def _hit_bullish(
             "rsi_b": rb,
             "direction": "up",
             "confirm_index": confirm_index,
+            "early_index": early_ix,
+            "final_index": final_ix,
+            "early_price": early_px,
+            "final_price": final_px,
             "tv_pivot": True,
             "stage": "early" if early else "confirmed",
             "delay_bars": delay,
@@ -234,7 +261,7 @@ def detect_rsi_divergence(
                 if pair:
                     ra, rb = pair
                     return _hit_bearish(
-                        timeframe, p_a, p_b, highs, ra, rb, conf_b, early=False
+                        bars, timeframe, p_a, p_b, highs, ra, rb, conf_b, early=False
                     )
 
     if len(pl) >= 2:
@@ -246,7 +273,7 @@ def detect_rsi_divergence(
                 if pair:
                     ra, rb = pair
                     return _hit_bullish(
-                        timeframe, p_a, p_b, lows, ra, rb, conf_b, early=False
+                        bars, timeframe, p_a, p_b, lows, ra, rb, conf_b, early=False
                     )
 
     if not allow_early:
@@ -261,7 +288,7 @@ def detect_rsi_divergence(
             if pair:
                 ra, rb = pair
                 return _hit_bearish(
-                    timeframe, p_a, p_b, highs, ra, rb, p_b + right, early=True
+                    bars, timeframe, p_a, p_b, highs, ra, rb, p_b + right, early=True
                 )
 
     forming_l = _forming_pivot(rs, high=False, n=n)
@@ -273,7 +300,7 @@ def detect_rsi_divergence(
             if pair:
                 ra, rb = pair
                 return _hit_bullish(
-                    timeframe, p_a, p_b, lows, ra, rb, p_b + right, early=True
+                    bars, timeframe, p_a, p_b, lows, ra, rb, p_b + right, early=True
                 )
 
     return None

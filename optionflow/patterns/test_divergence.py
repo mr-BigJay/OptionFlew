@@ -8,6 +8,7 @@ from optionflow.patterns.divergence import (
     MIN_RSI_DIFF,
     RSI_OVERBOUGHT,
     RSI_OVERSOLD,
+    _entry_lines,
     _forming_pivot,
     detect_rsi_divergence,
 )
@@ -80,3 +81,32 @@ def test_forming_pivot_needs_two_bars_right() -> None:
     p, right = found
     assert p == n - 1 - 2
     assert right == 2
+
+
+def test_entry_lines_include_early_and_final_prices() -> None:
+    t0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    bars = [
+        OhlcBar(
+            ts=t0 + timedelta(minutes=5 * i),
+            open=65000 + i,
+            high=65100 + i,
+            low=64900 + i,
+            close=65000 + i,
+            volume=1.0,
+        )
+        for i in range(20)
+    ]
+    p_b = 10
+    early_ix, final_ix, early_px, final_px, extra = _entry_lines(
+        bars, p_b, early=False
+    )
+    assert early_ix == 12
+    assert final_ix == 15
+    assert early_px == 65012
+    assert final_px == 65015
+    assert "65012" in extra.replace(",", "")
+    assert "65015" in extra.replace(",", "")
+    _e, fin, _ep, fp, extra_early = _entry_lines(bars, p_b, early=True)
+    assert fin is None
+    assert fp is None
+    assert "هنوز" in extra_early
