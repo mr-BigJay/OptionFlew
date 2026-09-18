@@ -7,36 +7,6 @@ from datetime import datetime, timezone
 from optionflow.deribit_client import DeribitClient
 from optionflow.flow_analyzer import analyze_trades
 from optionflow.guide import build_guidance, format_report, format_simple_paragraph
-<<<<<<< HEAD
-=======
-from optionflow.report_service import produce_report
-from optionflow.tehran_time import to_utc_ms
-
-REPORT_FORMAT_ID = "prose-v3"
-
-
-def _print_version() -> None:
-    import optionflow.guide as guide_mod
-    import optionflow.scenario_narrative as narrative_mod
-    import subprocess
-    from pathlib import Path
-
-    root = Path(__file__).resolve().parent.parent
-    try:
-        rev = subprocess.check_output(
-            ["git", "rev-parse", "--short", "HEAD"],
-            cwd=root,
-            stderr=subprocess.DEVNULL,
-            text=True,
-        ).strip()
-    except Exception:
-        rev = "unknown"
-    print(
-        f"OptionFlow report_format={REPORT_FORMAT_ID} git={rev}\n"
-        f"  guide={guide_mod.__file__}\n"
-        f"  scenario_narrative={narrative_mod.__file__}"
-    )
->>>>>>> 45f7022 (feat(narrative): unified Spot→B→C path and prose-v3 sections)
 
 
 def main(argv: list[str] | None = None) -> int:
