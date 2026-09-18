@@ -5,6 +5,14 @@ from optionflow.patterns.ohlc import OhlcBar
 from optionflow.patterns.pivots import zigzag_pivots
 from optionflow.patterns.types import PatternHit
 
+# فشردگی واقعی، نه هر کانال باریک‌شوندهٔ نویزی
+_ZIGZAG_PCT = {"5m": 0.006, "15m": 0.01, "1h": 0.016, "4h": 0.02, "1d": 0.026}
+_MIN_SPAN = {"5m": 28, "15m": 22, "1h": 18, "4h": 14, "1d": 12}
+_MAX_LAST_PIVOT_AGE = {"5m": 16, "15m": 12, "1h": 10, "4h": 8, "1d": 6}
+_CONTRACTION = 0.68  # gap_end باید کمتر از ۶۸٪ gap_start باشد
+_TOUCH_ATR = 0.5
+_FLAT_SLOPE = 0.00012  # شیب نسبی به قیمت برای خط «افقی»
+
 
 def _line_fit(indices: list[int], prices: list[float]) -> tuple[float, float]:
     n = len(indices)
@@ -22,6 +30,29 @@ def _line_fit(indices: list[int], prices: list[float]) -> tuple[float, float]:
     return slope, intercept
 
 
+def _y(slope: float, intercept: float, i: int) -> float:
+    return slope * i + intercept
+
+
+def _touches_line(
+    idxs: list[int],
+    px: list[float],
+    slope: float,
+    intercept: float,
+    tol: float,
+) -> bool:
+    if not idxs:
+        return False
+    return all(abs(p - _y(slope, intercept, i)) <= tol for i, p in zip(idxs, px))
+
+
+def _apex_index(su: float, iu: float, sl: float, il: float) -> float | None:
+    den = su - sl
+    if abs(den) < 1e-12:
+        return None
+    return (il - iu) / den
+
+
 def detect_triangle(bars: list[OhlcBar], timeframe: str) -> PatternHit | None:
     if len(bars) < 80:
         return None
@@ -29,59 +60,119 @@ def detect_triangle(bars: list[OhlcBar], timeframe: str) -> PatternHit | None:
     n = len(window)
     highs = [b.high for b in window]
     lows = [b.low for b in window]
-    pct = {"5m": 0.0035, "15m": 0.007, "1h": 0.011, "4h": 0.016, "1d": 0.022}.get(timeframe, 0.008)
+    pct = _ZIGZAG_PCT.get(timeframe, 0.01)
     pivots = zigzag_pivots(highs, lows, pct=pct)
-    ph = [p for p in pivots if p.kind == "high"]
-    pl = [p for p in pivots if p.kind == "low"]
+    if len(pivots) < 4:
+        return None
+
+    seq = pivots[-6:]
+    kinds = [p.kind for p in seq]
+    if all(kinds[i] == kinds[i + 1] for i in range(len(kinds) - 1)):
+        return None
+    # باید H/L یکی‌درمیان باشد (الگوی مثلث، نه دو سقف پشت‌سرهم)
+    alt = seq[:]
+    cleaned = [alt[0]]
+    for p in alt[1:]:
+        if p.kind == cleaned[-1].kind:
+            # نویز zigzag: هم‌نوع را نگه ندار
+            if p.kind == "high" and p.price >= cleaned[-1].price:
+                cleaned[-1] = p
+            elif p.kind == "low" and p.price <= cleaned[-1].price:
+                cleaned[-1] = p
+            continue
+        cleaned.append(p)
+    if len(cleaned) < 4:
+        return None
+    seq = cleaned[-5:]
+
+    ph = [p for p in seq if p.kind == "high"]
+    pl = [p for p in seq if p.kind == "low"]
     if len(ph) < 2 or len(pl) < 2:
         return None
 
-    hi_idx = [p.index for p in ph[-3:]]
-    hi_px = [p.price for p in ph[-3:]]
-    lo_idx = [p.index for p in pl[-3:]]
-    lo_px = [p.price for p in pl[-3:]]
+    hi_idx = [p.index for p in ph]
+    hi_px = [p.price for p in ph]
+    lo_idx = [p.index for p in pl]
+    lo_px = [p.price for p in pl]
 
     su, iu = _line_fit(hi_idx, hi_px)
     sl, il = _line_fit(lo_idx, lo_px)
 
-    start_i, end_i = min(hi_idx + lo_idx), max(hi_idx + lo_idx)
-    if end_i - start_i < 15:
+    start_i = min(hi_idx + lo_idx)
+    end_i = max(hi_idx + lo_idx)
+    min_span = _MIN_SPAN.get(timeframe, 22)
+    if end_i - start_i < min_span:
         return None
 
-    upper_start = su * start_i + iu
-    upper_end = su * end_i + iu
-    lower_start = sl * start_i + il
-    lower_end = sl * end_i + il
+    last_pivot_i = max(p.index for p in seq)
+    max_age = _MAX_LAST_PIVOT_AGE.get(timeframe, 12)
+    if n - 1 - last_pivot_i > max_age:
+        return None
+
+    upper_start = _y(su, iu, start_i)
+    upper_end = _y(su, iu, end_i)
+    lower_start = _y(sl, il, start_i)
+    lower_end = _y(sl, il, end_i)
     gap_start = upper_start - lower_start
     gap_end = upper_end - lower_end
     if gap_start <= 0 or gap_end <= 0:
         return None
-    if gap_end >= gap_start * 0.85:
+    if gap_end >= gap_start * _CONTRACTION:
         return None
 
     atr_vals = atr(window)
-    atr_recent = [v for v in atr_vals[-20:] if v is not None]
-    atr_old = [v for v in atr_vals[-40:-20] if v is not None]
-    if atr_recent and atr_old and sum(atr_recent) / len(atr_recent) > sum(atr_old) / len(atr_old) * 1.05:
+    atr_now = next((v for v in reversed(atr_vals) if v is not None), None)
+    if atr_now is None or atr_now <= 0:
+        return None
+    tol = atr_now * _TOUCH_ATR
+    if not _touches_line(hi_idx, hi_px, su, iu, tol):
+        return None
+    if not _touches_line(lo_idx, lo_px, sl, il, tol):
         return None
 
-    flat = 0.0003 * window[-1].close
-    if abs(su) < flat and sl > 0:
+    last = window[-1]
+    u_now = _y(su, iu, n - 1)
+    l_now = _y(sl, il, n - 1)
+    if u_now <= l_now:
+        return None
+    # قیمت باید داخل مثلث باشد (بدنه از خطوط نگذشته)
+    if last.close > u_now or last.close < l_now:
+        return None
+    if last.high > u_now + tol or last.low < l_now - tol:
+        return None
+
+    apex = _apex_index(su, iu, sl, il)
+    if apex is None:
+        return None
+    # رأس باید جلوتر باشد، نه اینکه الگو تمام شده باشد
+    if apex <= n - 1:
+        return None
+    if apex - (n - 1) > (end_i - start_i) * 2.5:
+        return None
+
+    px = last.close
+    flat = _FLAT_SLOPE * px
+    upper_falling = su < -flat * 0.35
+    lower_rising = sl > flat * 0.35
+    upper_flat = abs(su) <= flat
+    lower_flat = abs(sl) <= flat
+
+    if lower_rising and (upper_flat or abs(su) < abs(sl) * 0.45):
         kind = "ascending"
         title = "مثلث صعودی (فشردگی)"
-        forecast = "پیش‌بینی: شکست بالای مقاومت افقی و حرکت صعودی در صورت تأیید حجم."
-    elif abs(sl) < flat and su < 0:
+        forecast = "احتمال شکست بالای مقاومت افقی و حرکت صعودی در صورت بسته شدن بالای خط."
+    elif upper_falling and (lower_flat or abs(sl) < abs(su) * 0.45):
         kind = "descending"
         title = "مثلث نزولی (فشردگی)"
-        forecast = "پیش‌بینی: شکست پایین حمایت افقی و ادامهٔ نزول در صورت تأیید."
-    else:
+        forecast = "احتمال شکست پایین حمایت افقی و ادامهٔ نزول در صورت بسته شدن زیر خط."
+    elif upper_falling and lower_rising:
         kind = "symmetrical"
         title = "مثلث متقارن (فشردگی)"
-        forecast = "پیش‌بینی: شکست جهت‌دار از محدودهٔ فشرده؛ جهت را کندل تأییدکننده مشخص می‌کند."
+        forecast = "شکست جهت‌دار از محدودهٔ فشرده؛ جهت را کندل تأییدکننده مشخص می‌کند."
+    else:
+        return None
 
-    last_close = window[-1].close
-    mid = (upper_end + lower_end) / 2
-    status = "تأییدشده" if gap_end / gap_start < 0.55 else "در حال شکل‌گیری"
+    status = "تأییدشده" if gap_end / gap_start < 0.5 else "در حال شکل‌گیری"
 
     return PatternHit(
         category="triangle",
@@ -90,8 +181,9 @@ def detect_triangle(bars: list[OhlcBar], timeframe: str) -> PatternHit | None:
         title_fa=title,
         status_fa=status,
         summary_fa=(
-            f"حداقل دو برخورد به خط بالایی و پایینی؛ فاصلهٔ بین خطوط از {gap_start:,.0f} "
-            f"به {gap_end:,.0f} دلار کاهش یافته (ATR در حال فروکش)."
+            f"{len(ph)} برخورد سقف و {len(pl)} برخورد کف به خطوط؛ "
+            f"فاصله از {gap_start:,.0f} به {gap_end:,.0f} دلار رسیده. "
+            f"قیمت داخل الگو ({last.close:,.0f})."
         ),
         forecast_fa=forecast,
         meta={
@@ -103,7 +195,10 @@ def detect_triangle(bars: list[OhlcBar], timeframe: str) -> PatternHit | None:
             "end_i": end_i,
             "window_offset": len(bars) - n,
             "kind": kind,
-            "last_close": last_close,
-            "mid": mid,
+            "last_close": last.close,
+            "mid": (u_now + l_now) / 2,
+            "apex_index": apex,
+            "touches_high": len(ph),
+            "touches_low": len(pl),
         },
     )
