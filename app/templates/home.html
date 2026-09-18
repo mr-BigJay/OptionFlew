@@ -33,6 +33,11 @@
   </p>
 
   <div class="home-report-body">
+    {% if report.get('report_code') %}
+    <figure class="scenario-chart">
+      <img src="/charts/{{ report.report_code }}.png" alt="BTCUSDT scenario" loading="lazy" onerror="this.closest('figure').style.display='none'" />
+    </figure>
+    {% endif %}
     <p class="home-paragraph paragraph-justify">{{ clean_paragraph(report.paragraph) }}</p>
   </div>
 

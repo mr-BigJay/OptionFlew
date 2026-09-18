@@ -20,11 +20,13 @@ from app.jobs import (
     run_scheduled_report,
 )
 from app.storage import (
+    data_dir,
     get_latest_report,
     get_report,
     get_setting,
     init_db,
     list_reports,
+    report_has_chart,
     set_setting,
 )
 from app.telegram_notify import send_telegram_message, telegram_enabled
@@ -213,6 +215,9 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="OptionFlow Dashboard", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
+_charts_dir = data_dir() / "charts"
+_charts_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/charts", StaticFiles(directory=str(_charts_dir)), name="charts")
 
 
 def _ensure_price_levels(report: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -292,7 +297,11 @@ async def report_detail(request: Request, report_id: int):
     return templates.TemplateResponse(
         request,
         "report_detail.html",
-        _template_ctx(active="reports", report=report),
+        _template_ctx(
+            active="reports",
+            report=report,
+            has_chart=report_has_chart(report.get("report_code")),
+        ),
     )
 
 

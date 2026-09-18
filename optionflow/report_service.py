@@ -7,13 +7,10 @@ from typing import Literal
 
 from optionflow.deribit_client import DeribitClient
 from optionflow.flow_analyzer import analyze_trades
-from optionflow.guide import (
-    build_guidance,
-    format_enriched_simple_paragraph,
-    format_simple_paragraph,
-)
+from optionflow.guide import build_guidance, format_enriched_simple_paragraph, format_simple_paragraph
 from optionflow.market_context import collect_market_context
 from optionflow.price_levels import fetch_price_levels
+from optionflow.scenario_narrative import resolve_scenario_plan
 
 from optionflow.tehran_time import (
     candle_window_4h,
@@ -48,6 +45,8 @@ class ReportSnapshot:
     report_code: str = ""
     is_manual: int = 0
     expires_at: str | None = None
+    scenario_b: int | None = None
+    scenario_c: int | None = None
 
     def to_row(self) -> dict:
         return asdict(self)
@@ -89,6 +88,13 @@ def produce_report(
         window_hours=wh,
     )
     guidance = build_guidance(analysis)
+    plan = resolve_scenario_plan(
+        analysis,
+        support=guidance.support_zone,
+        target=guidance.target_zone,
+        path_primary=guidance.path_primary,
+        path_alternate=guidance.path_alternate,
+    )
     if enriched:
         ctx = collect_market_context(analysis.spot)
         paragraph = format_enriched_simple_paragraph(analysis, guidance, ctx)
@@ -119,4 +125,6 @@ def produce_report(
         pdl=levels.pdl,
         pwh=levels.pwh,
         pwl=levels.pwl,
+        scenario_b=plan.b if plan else None,
+        scenario_c=plan.c if plan else None,
     )

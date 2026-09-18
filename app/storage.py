@@ -318,6 +318,25 @@ def set_setting(key: str, value: str) -> None:
         )
 
 
+def chart_path_for_code(report_code: str) -> Path:
+    return data_dir() / "charts" / f"{report_code}.png"
+
+
+def save_report_chart(report_code: str, png: bytes) -> Path | None:
+    if not report_code or not png:
+        return None
+    path = chart_path_for_code(report_code)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(png)
+    return path
+
+
+def report_has_chart(report_code: str | None) -> bool:
+    if not report_code:
+        return False
+    return chart_path_for_code(report_code).is_file()
+
+
 def parse_iso(s: str) -> datetime:
     if s.endswith("Z"):
         s = s.replace("Z", "+00:00")

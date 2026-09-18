@@ -132,6 +132,20 @@ html, body {
   color: #c8d2dc;
 }
 
+.scenario-chart {
+  margin: 0 0 12px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid #263238;
+  background: #0d1117;
+}
+
+.scenario-chart img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
 .header-title {
   display: flex;
   align-items: center;

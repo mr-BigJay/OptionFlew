@@ -12,6 +12,11 @@
     <span class="muted">امتیاز {{ report.score }} · {{ report.confidence_pct }}%</span>
   </div>
   <p class="headline">{{ report.headline }}</p>
+  {% if report.get('report_code') and has_chart %}
+  <figure class="scenario-chart">
+    <img src="/charts/{{ report.report_code }}.png" alt="BTCUSDT scenario path" loading="lazy" />
+  </figure>
+  {% endif %}
   <p class="paragraph paragraph-justify">{{ clean_paragraph(report.paragraph) }}</p>
   <div class="stats">
     <span>{{ report.trade_count }} معامله</span>
