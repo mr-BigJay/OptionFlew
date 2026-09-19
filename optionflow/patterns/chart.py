@@ -77,7 +77,11 @@ def _slice_range(
         early = meta.get("early_index")
         extra0 = early if isinstance(early, int) else i0
         start = max(0, min(i0, extra0, sig) - 8)
-        end = min(n, max(i1, sig) + forward_bars + 1)
+        exit_i = meta.get("exit_index") if hit.category == "trendline" else None
+        if isinstance(exit_i, int):
+            end = min(n, max(i1, sig, exit_i) + 8)
+        else:
+            end = min(n, max(i1, sig) + forward_bars + 1)
     elif hit.category == "flag":
         ps = meta.get("pole_start", max(0, sig - 30))
         start = max(0, ps - 8)
@@ -167,6 +171,60 @@ def _mark_signal_and_forward(
         edge = "#78909c"
     ax.axvspan(x_sig, x_end, facecolor=fill, edgecolor="none", zorder=0.5, alpha=0.35)
     ax.axvline(x_sig, color=edge, linewidth=1.2, linestyle=":", alpha=0.9, zorder=4)
+
+
+def _mark_trendline_path(
+    ax: Any,
+    xs: list[float],
+    start: int,
+    meta: dict[str, Any],
+    outcome_success: bool | None,
+) -> None:
+    """سایه از سیگنال اولیه تا شکست معتبر + درصد مسیر، بدون شلوغی."""
+    entry_i = meta.get("entry_index", meta.get("early_index"))
+    exit_i = meta.get("exit_index")
+    pct = meta.get("path_pct")
+    if not isinstance(entry_i, int) or not isinstance(exit_i, int):
+        return
+    if entry_i < start or exit_i < start:
+        return
+    e_local = entry_i - start
+    x_local = exit_i - start
+    if e_local < 0 or e_local >= len(xs) or x_local < 0 or x_local >= len(xs):
+        return
+    x0, x1 = xs[e_local], xs[x_local]
+    if x1 < x0:
+        x0, x1 = x1, x0
+    if outcome_success is True:
+        fill, edge = "#2ecc7133", "#66bb6a"
+    elif outcome_success is False:
+        fill, edge = "#e74c3c33", "#ef5350"
+    else:
+        fill, edge = "#ffffff12", "#78909c"
+    ax.axvspan(x0, x1, facecolor=fill, edgecolor="none", zorder=0.5, alpha=0.35)
+    ax.axvline(x1, color=edge, linewidth=1.1, linestyle=":", alpha=0.85, zorder=4)
+    if not isinstance(pct, (int, float)):
+        return
+    ymin, ymax = ax.get_ylim()
+    pad = (ymax - ymin) * 0.07
+    ax.set_ylim(ymin, ymax + pad)
+    ax.text(
+        (x0 + x1) / 2,
+        ymax + pad * 0.42,
+        f"{pct * 100:+.1f}%",
+        color=edge,
+        fontsize=9,
+        ha="center",
+        va="center",
+        zorder=12,
+        fontweight="bold",
+        bbox={
+            "boxstyle": "round,pad=0.18",
+            "facecolor": "#0d1117cc",
+            "edgecolor": edge,
+            "linewidth": 0.7,
+        },
+    )
 
 
 def _mark_early_entry(
@@ -322,6 +380,10 @@ def _render_price_pattern(
         wo = meta.get("window_offset", max(0, len(bars) - 120))
         i0, i1 = meta["start_i"], meta["end_i"]
         g0, g1 = wo + i0, wo + i1
+        exit_i = meta.get("exit_index") if hit.category == "trendline" else None
+        if isinstance(exit_i, int) and 0 <= exit_i < len(bars):
+            g1 = max(g1, min(exit_i, end - 1))
+            i1 = g1 - wo
         if 0 <= g0 < len(bars) and 0 <= g1 < len(bars):
             x0 = mdates.date2num(bars[g0].ts)
             x1 = mdates.date2num(bars[g1].ts)
@@ -368,6 +430,8 @@ def _render_price_pattern(
                         linewidths=0.4,
                     )
         _mark_early_entry(ax, bars, meta, start, end)
+        if hit.category == "trendline" and isinstance(meta.get("exit_index"), int):
+            _mark_trendline_path(ax, xs, start, meta, outcome_success)
 
     elif hit.category == "flag":
         ps, pe = meta["pole_start"], meta["pole_end"]
@@ -403,7 +467,10 @@ def _render_price_pattern(
                         arrowprops=dict(arrowstyle="->", color="#ef5350", lw=1.8),
                     )
 
-    if sig is not None:
+    path_drawn = (
+        hit.category == "trendline" and isinstance(hit.meta.get("exit_index"), int)
+    )
+    if sig is not None and not path_drawn:
         _mark_signal_and_forward(ax, xs, slice_bars, sig, start, forward_bars, outcome_success)
 
     _style_axes(ax, f"BTCUSDT {hit.timeframe} — {hit.title_fa}")
