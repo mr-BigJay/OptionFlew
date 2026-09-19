@@ -107,6 +107,30 @@ def test_early_hidden_when_allow_early_false() -> None:
         assert hit.meta["stage"] != "early"
 
 
+def test_falling_support_is_not_trendline() -> None:
+    """حمایت ترندلاین باید کف بالاتر باشد، نه خط نزولی."""
+    bars = _empty(70, 99_200)
+    _set_swing(bars, 22, 100_400, "low")
+    _set_swing(bars, 48, 99_600, "low")
+    _set_swing(bars, 34, 102_200, "high")
+    _set_swing(bars, 60, 101_400, "high")
+    hit = detect_trendline(bars, "15m")
+    if hit is not None:
+        assert hit.meta["side"] != "low"
+
+
+def test_rising_resistance_is_not_trendline() -> None:
+    """مقاومت ترندلاین باید سقف پایین‌تر باشد، نه خط صعودی."""
+    bars = _empty(70, 101_200)
+    _set_swing(bars, 22, 100_200, "high")
+    _set_swing(bars, 48, 101_000, "high")
+    _set_swing(bars, 34, 98_800, "low")
+    _set_swing(bars, 60, 99_400, "low")
+    hit = detect_trendline(bars, "15m")
+    if hit is not None:
+        assert hit.meta["side"] != "high"
+
+
 def test_dump_then_recover_is_not_channel() -> None:
     """اسکرین ۲: ریزش عمیق زیر خط بعداً نباید کانال نزولی شود."""
     bars = _empty(110, 97_000)
