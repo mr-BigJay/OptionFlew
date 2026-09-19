@@ -5,6 +5,7 @@
 <p class="backtest-subnav">
   <a href="/">داشبورد کاربر</a>
   <a href="/bigjay_controller/users">کاربران</a>
+  <a href="/bigjay_controller/telegram">تلگرام</a>
   <a href="/logout">خروج</a>
 </p>
 {% endblock %}
@@ -26,9 +27,13 @@
     <span class="muted">۴h + روزانه الان</span>
     <button type="submit" class="btn secondary full">تولید</button>
   </form>
+  <a class="card admin-tile" href="/bigjay_controller/telegram">
+    <strong>ربات تلگرام</strong>
+    <span class="muted">یک توکن BotFather — کاربران فقط Start می‌زنند</span>
+  </a>
   <a class="card admin-tile" href="/telegram">
-    <strong>تلگرام من</strong>
-    <span class="muted">توکن و Chat ID همین حساب</span>
+    <strong>اتصال تلگرام من</strong>
+    <span class="muted">وصل کردن همین حساب به ربات پلتفرم</span>
   </a>
 </div>
 {% endblock %}

@@ -9,29 +9,35 @@
 <p class="flash ok">تنظیمات ذخیره شد.</p>
 {% endif %}
 
-<p class="hint">ربات تلگرام <strong>مخصوص حساب شما</strong> است. توکن را از ‎@BotFather‎ بگیرید و Chat ID را از ‎@userinfobot‎.</p>
+{% if not bot_ready %}
+<div class="card">
+  <p>ربات پلتفرم هنوز توسط ادمین راه‌اندازی نشده. توکن BotFather و Chat ID لازم نیست؛ بعد از تنظیم ربات توسط ادمین، از همین صفحه با یک دکمه وصل می‌شوید.</p>
+</div>
+{% elif connected %}
+<div class="card tg-status-card">
+  <p class="tg-status ok">حساب شما به ربات <strong dir="ltr">@{{ bot_username }}</strong> وصل است.</p>
+  <p class="hint" style="margin-top:8px;">گزارش‌های زمان‌بندی‌شده همین ربات برایتان فرستاده می‌شود. نیازی به توکن یا Chat ID نیست.</p>
+</div>
 
 <form class="card form" method="post" action="/telegram">
-  <label for="bot_token">Bot Token</label>
-  <input id="bot_token" name="bot_token" type="password" value="{{ bot_token }}" placeholder="123456:ABC..." autocomplete="off">
-
-  <label for="chat_id">Chat ID</label>
-  <input id="chat_id" name="chat_id" value="{{ chat_id }}" placeholder="-100... یا شناسه عددی شما" inputmode="numeric">
-
-  <label class="check">
-    <input type="checkbox" name="enabled" {% if enabled %}checked{% endif %}>
-    فعال‌سازی ارسال تلگرام
-  </label>
-
   <label class="check">
     <input type="checkbox" name="on_schedule" {% if on_schedule %}checked{% endif %}>
     ارسال خودکار گزارش‌های ۴ساعته و روزانه
   </label>
-
   <button type="submit" class="btn primary full">ذخیره</button>
 </form>
 
 <form method="post" action="/telegram/test">
   <button type="submit" class="btn secondary full">ارسال تست (آخرین گزارش)</button>
 </form>
+<form method="post" action="/telegram/disconnect">
+  <button type="submit" class="btn secondary full">قطع اتصال</button>
+</form>
+{% else %}
+<div class="card">
+  <p>نیازی به توکن ‎@BotFather‎ یا Chat ID نیست. روی دکمه بزنید، ربات <strong dir="ltr">@{{ bot_username }}</strong> باز می‌شود و <strong>Start</strong> را بزنید تا حساب‌تان وصل شود.</p>
+  <a class="btn primary full" href="{{ deep_link }}" target="_blank" rel="noopener">اتصال به ربات @{{ bot_username }}</a>
+  <p class="hint">اگر ربات باز شد ولی وصل نشد، همین صفحه را یک‌بار تازه‌سازی کنید.</p>
+</div>
+{% endif %}
 {% endblock %}

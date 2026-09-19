@@ -130,10 +130,23 @@ def ensure_users_schema() -> None:
             "telegram_chat_id": "TEXT NOT NULL DEFAULT ''",
             "telegram_enabled": "INTEGER NOT NULL DEFAULT 0",
             "telegram_on_schedule": "INTEGER NOT NULL DEFAULT 1",
+            "telegram_link_code": "TEXT NOT NULL DEFAULT ''",
         }
         for name, ddl in alters.items():
             if name not in cols:
                 conn.execute(f"ALTER TABLE users ADD COLUMN {name} {ddl}")
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS telegram_bot (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                bot_token TEXT NOT NULL DEFAULT '',
+                bot_username TEXT NOT NULL DEFAULT '',
+                webhook_secret TEXT NOT NULL DEFAULT ''
+            );
+            INSERT OR IGNORE INTO telegram_bot (id, bot_token, bot_username, webhook_secret)
+            VALUES (1, '', '', '');
+            """
+        )
     _migrate_users_from_legacy_db()
 
 
@@ -286,60 +299,136 @@ def clear_must_change(user_id: int) -> None:
         )
 
 
-def set_user_telegram(
-    user_id: int,
-    *,
-    bot_token: str,
-    chat_id: str,
-    enabled: bool,
-    on_schedule: bool,
-) -> None:
+def set_user_telegram_prefs(user_id: int, *, on_schedule: bool) -> None:
+    ensure_users_schema()
+    with connect_users() as conn:
+        conn.execute(
+            "UPDATE users SET telegram_on_schedule = ? WHERE id = ?",
+            (1 if on_schedule else 0, user_id),
+        )
+
+
+def issue_telegram_link_code(user_id: int) -> str:
+    ensure_users_schema()
+    code = secrets.token_urlsafe(8).replace("-", "").replace("_", "")[:10]
+    with connect_users() as conn:
+        conn.execute(
+            "UPDATE users SET telegram_link_code = ? WHERE id = ?",
+            (code, user_id),
+        )
+    return code
+
+
+def get_or_issue_telegram_link_code(user_id: int) -> str:
+    user = get_user(user_id)
+    if not user:
+        return ""
+    existing = str(user.get("telegram_link_code") or "").strip()
+    if existing:
+        return existing
+    return issue_telegram_link_code(user_id)
+
+
+def connect_telegram_chat(code: str, chat_id: str) -> dict[str, Any] | None:
+    code = (code or "").strip()
+    chat_id = str(chat_id or "").strip()
+    if not code or not chat_id:
+        return None
+    ensure_users_schema()
+    with connect_users() as conn:
+        row = conn.execute(
+            "SELECT * FROM users WHERE telegram_link_code = ?",
+            (code,),
+        ).fetchone()
+        if not row:
+            return None
+        conn.execute(
+            """
+            UPDATE users SET telegram_chat_id = '', telegram_enabled = 0
+            WHERE telegram_chat_id = ? AND id != ?
+            """,
+            (chat_id, row["id"]),
+        )
+        conn.execute(
+            """
+            UPDATE users SET
+                telegram_chat_id = ?,
+                telegram_enabled = 1,
+                telegram_link_code = ''
+            WHERE id = ?
+            """,
+            (chat_id, row["id"]),
+        )
+    return get_user(int(row["id"]))
+
+
+def disconnect_telegram(user_id: int) -> None:
     ensure_users_schema()
     with connect_users() as conn:
         conn.execute(
             """
             UPDATE users SET
-                telegram_bot_token = ?,
-                telegram_chat_id = ?,
-                telegram_enabled = ?,
-                telegram_on_schedule = ?
+                telegram_chat_id = '',
+                telegram_enabled = 0,
+                telegram_link_code = ''
             WHERE id = ?
             """,
-            (
-                bot_token.strip(),
-                chat_id.strip(),
-                1 if enabled else 0,
-                1 if on_schedule else 0,
-                user_id,
-            ),
+            (user_id,),
+        )
+
+
+def get_platform_bot() -> dict[str, str]:
+    ensure_users_schema()
+    with connect_users() as conn:
+        row = conn.execute("SELECT * FROM telegram_bot WHERE id = 1").fetchone()
+    if not row:
+        return {"bot_token": "", "bot_username": "", "webhook_secret": ""}
+    return {
+        "bot_token": row["bot_token"] or "",
+        "bot_username": row["bot_username"] or "",
+        "webhook_secret": row["webhook_secret"] or "",
+    }
+
+
+def save_platform_bot(
+    *,
+    bot_token: str,
+    bot_username: str = "",
+    webhook_secret: str = "",
+) -> None:
+    ensure_users_schema()
+    current = get_platform_bot()
+    token = bot_token.strip()
+    username = (bot_username or current["bot_username"]).strip().lstrip("@")
+    secret = (webhook_secret or current["webhook_secret"] or secrets.token_urlsafe(24)).strip()
+    with connect_users() as conn:
+        conn.execute(
+            """
+            INSERT INTO telegram_bot (id, bot_token, bot_username, webhook_secret)
+            VALUES (1, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                bot_token = excluded.bot_token,
+                bot_username = excluded.bot_username,
+                webhook_secret = excluded.webhook_secret
+            """,
+            (token, username, secret),
         )
 
 
 def list_telegram_subscribers(*, scheduled_only: bool = True) -> list[dict[str, Any]]:
-    """کاربرانی که تلگرام فعال دارند (برای ارسال گزارش زمان‌بندی)."""
+    """کاربرانی که به ربات ادمین وصل شده‌اند."""
     ensure_users_schema()
+    extra = " AND telegram_on_schedule = 1" if scheduled_only else ""
     with connect_users() as conn:
-        if scheduled_only:
-            rows = conn.execute(
-                """
-                SELECT id, username, telegram_bot_token, telegram_chat_id
-                FROM users
-                WHERE telegram_enabled = 1
-                  AND telegram_on_schedule = 1
-                  AND telegram_bot_token != ''
-                  AND telegram_chat_id != ''
-                """
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                """
-                SELECT id, username, telegram_bot_token, telegram_chat_id
-                FROM users
-                WHERE telegram_enabled = 1
-                  AND telegram_bot_token != ''
-                  AND telegram_chat_id != ''
-                """
-            ).fetchall()
+        rows = conn.execute(
+            f"""
+            SELECT id, username, telegram_chat_id, telegram_on_schedule
+            FROM users
+            WHERE telegram_enabled = 1
+              AND telegram_chat_id != ''
+              {extra}
+            """
+        ).fetchall()
     return [_row_to_dict(r) for r in rows]
 
 
