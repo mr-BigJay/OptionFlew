@@ -17,6 +17,7 @@ from optionflow.patterns.history import (
     slice_with_warmup,
 )
 from optionflow.patterns.ohlc import OhlcBar
+from optionflow.patterns.ema50 import detect_ema50, evaluate_ema50_path
 from optionflow.patterns.trendline import (
     detect_channel,
     detect_trendline,
@@ -27,7 +28,7 @@ from optionflow.patterns.types import PatternHit
 
 logger = logging.getLogger("optionflow.patterns.backtest")
 
-CATEGORIES = ("triangle", "flag", "divergence", "trendline", "channel")
+CATEGORIES = ("triangle", "flag", "divergence", "trendline", "channel", "ema50")
 STRIDE_BY_TF = {"5m": 6, "15m": 2, "1h": 1, "4h": 1, "1d": 1}
 DEDUPE_BARS = {"5m": 48, "15m": 20, "1h": 16, "4h": 8, "1d": 4}
 FORWARD_BARS = {"5m": 36, "15m": 24, "1h": 18, "4h": 12, "1d": 8}
@@ -121,6 +122,9 @@ def _detector(category: str):
         "channel": lambda bars, tf: detect_channel(
             bars, tf, allow_early=False
         ),
+        "ema50": lambda bars, tf: detect_ema50(
+            bars, tf, allow_early=False
+        ),
     }[category]
 
 
@@ -134,7 +138,7 @@ def expected_direction(hit: PatternHit) -> str | None:
         if explicit in ("up", "down"):
             return explicit
         return None
-    if hit.category in ("trendline", "channel"):
+    if hit.category in ("trendline", "channel", "ema50"):
         explicit = hit.meta.get("direction")
         if explicit in ("up", "down"):
             return explicit
@@ -150,6 +154,8 @@ def evaluate_outcome(
 ) -> tuple[bool | None, str]:
     if hit.category == "trendline":
         return evaluate_trendline_path(bars, idx, hit)
+    if hit.category == "ema50":
+        return evaluate_ema50_path(bars, idx, hit)
     direction = expected_direction(hit)
     if not direction:
         return None, "جهت پیش‌بینی مشخص نشد."
@@ -270,7 +276,7 @@ def run_backtest(
         elif success is False:
             result.fail_count += 1
         if n < max_charts:
-            if hit.category == "trendline":
+            if hit.category in ("trendline", "ema50"):
                 sig_ix = hit.meta.get("entry_index", hit.meta.get("early_index", idx))
                 exit_i = hit.meta.get("exit_index")
                 if isinstance(exit_i, int) and isinstance(sig_ix, int):

@@ -176,10 +176,11 @@ def _category_fa(category: str) -> str:
         "divergence": "واگرایی RSI",
         "trendline": "ترندلاین",
         "channel": "کانال",
+        "ema50": "EMA50",
     }.get(category, category)
 
 
-PATTERN_TABS = ("triangle", "flag", "divergence", "trendline", "channel")
+PATTERN_TABS = ("triangle", "flag", "divergence", "trendline", "channel", "ema50")
 
 
 def _page_ctx(request: Request, **extra: Any) -> dict[str, Any]:
@@ -622,6 +623,7 @@ async def backtest_page(
                 "divergence": "واگرایی RSI",
                 "trendline": "ترندلاین",
                 "channel": "کانال",
+                "ema50": "EMA50",
             },
             bt_tf_labels={
                 "5m": "۵ دقیقه",
@@ -643,6 +645,7 @@ async def backtest_reports_page(request: Request):
         "divergence": "واگرایی RSI",
         "trendline": "ترندلاین",
         "channel": "کانال",
+        "ema50": "EMA50",
     }
     return templates.TemplateResponse(
         request,
@@ -666,6 +669,7 @@ async def backtest_report_detail(request: Request, run_id: int):
         "divergence": "واگرایی RSI",
         "trendline": "ترندلاین",
         "channel": "کانال",
+        "ema50": "EMA50",
     }
     return templates.TemplateResponse(
         request,
