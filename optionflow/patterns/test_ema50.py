@@ -235,3 +235,22 @@ def test_ema50_chart_renders() -> None:
     png = render_pattern_chart(bars, hit)
     assert png is not None
     assert png[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+def test_ema50_slice_after_is_double_before() -> None:
+    from optionflow.patterns.chart import _slice_range
+
+    base = _uptrend_then_long(True)
+    hit = detect_ema50(base, "15m")
+    assert hit is not None
+    sig = hit.meta["entry_index"]
+    assert isinstance(sig, int)
+    bars = list(base)
+    last = bars[-1].close
+    for _ in range(120):
+        _append(bars, last, last + 20, last - 20, last)
+    start, end, _ = _slice_range(bars, hit, sig, 8)
+    before = sig - start
+    after = end - 1 - sig
+    assert before > 0
+    assert after == 2 * before

@@ -15,6 +15,7 @@ CONFIRM_WINDOW = 6
 EARLY_AGE = {"5m": 8, "15m": 6, "1h": 5, "4h": 4, "1d": 3}
 BREAK_AGE = {"5m": 4, "15m": 3, "1h": 3, "4h": 2, "1d": 2}
 SEARCH_BACK = {"5m": 48, "15m": 40, "1h": 32, "4h": 24, "1d": 18}
+LEFT_PAD = 24
 STRETCH_BARS = {"5m": 5, "15m": 4, "1h": 3, "4h": 3, "1d": 3}
 STRETCH_MIN_ATR = 0.7
 RR = 2.0
@@ -335,19 +336,33 @@ def _mild_revert_setup(
     }
 
 
+def _before_signal(setup: dict, sig_i: int) -> int:
+    pb = int(setup.get("pullback_index") or sig_i)
+    early = int(setup.get("confirm_index") or pb)
+    start = max(0, min(pb, early, sig_i) - LEFT_PAD)
+    return max(1, sig_i - start)
+
+
+def ema50_slice(n: int, sig: int, pullback: int, early: int) -> tuple[int, int]:
+    """قبل از سیگنال مثل حالا؛ بعد از سیگنال دو برابر همان تعداد."""
+    start = max(0, min(int(pullback), int(early), sig) - LEFT_PAD)
+    before = max(1, sig - start)
+    end = min(n, sig + 2 * before + 1)
+    return start, end
+
+
 def _pick_stage(setup: dict, n: int, timeframe: str) -> str | None:
     cf = setup["confirm_index"]
     br = setup["break_index"]
     early_lim = EARLY_AGE.get(timeframe, 6)
-    br_lim = BREAK_AGE.get(timeframe, 3)
     if setup.get("mode") == "revert" and br is None and cf == n - 1:
         # فاصله گرفته؛ کندل برگشت هنوز نیامده
         if n - 1 - int(setup["pullback_index"]) <= early_lim + 2:
             return "early"
         return None
-    if br is not None and n - 1 - br <= br_lim:
+    if br is not None and n - 1 - br <= 2 * _before_signal(setup, br):
         return "confirmed"
-    if br is None and n - 1 - cf <= early_lim:
+    if br is None and n - 1 - cf <= 2 * _before_signal(setup, cf):
         return "early"
     return None
 

@@ -87,14 +87,11 @@ def _slice_range(
         start = max(0, ps - 8)
         end = min(n, sig + forward_bars + 1)
     elif hit.category == "ema50":
+        from optionflow.patterns.ema50 import ema50_slice
+
         pb = meta.get("pullback_index", sig)
         early = meta.get("early_index", pb)
-        start = max(0, min(int(pb), int(early), sig) - 24)
-        exit_i = meta.get("exit_index")
-        if isinstance(exit_i, int):
-            end = min(n, max(sig, exit_i) + 6)
-        else:
-            end = min(n, max(sig, int(pb)) + max(forward_bars, 8) + 1)
+        start, end = ema50_slice(n, sig, int(pb), int(early))
     else:
         start = max(0, sig - 60)
         end = min(n, sig + forward_bars + 1)

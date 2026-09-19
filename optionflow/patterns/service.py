@@ -47,7 +47,10 @@ def _scan_tf(tf: str, chart_dir: Path) -> dict[str, PatternHit | None]:
     for hit in (tri, flg, div, trl, chn, e50):
         if hit is None:
             continue
-        png = render_pattern_chart(bars, hit)
+        sig_ix = None
+        if hit.category == "ema50":
+            sig_ix = hit.meta.get("entry_index", hit.meta.get("early_index"))
+        png = render_pattern_chart(bars, hit, signal_index=sig_ix)
         if not png:
             continue
         fname = f"{hit.category}_{hit.timeframe}_{hit.pattern_id}.png"

@@ -48,9 +48,6 @@ if [[ -f .env ]]; then
   set +a
 fi
 
-say "Tolid gozaresh jadid ..."
-.venv/bin/python -c "from app.jobs import run_scheduled_report; run_scheduled_report()"
-
 say "Preview (--simple --enriched):"
 OUT=$(.venv/bin/python -m optionflow --simple --enriched)
 echo "$OUT" | head -25
