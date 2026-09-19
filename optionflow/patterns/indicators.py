@@ -1,6 +1,21 @@
 from __future__ import annotations
 
 
+def ema(values: list[float], length: int) -> list[float | None]:
+    """TradingView `ta.ema`: بذر SMA سپس alpha=2/(len+1)."""
+    n = len(values)
+    out: list[float | None] = [None] * n
+    if length < 1 or n < length:
+        return out
+    alpha = 2.0 / (length + 1)
+    prev = sum(values[:length]) / length
+    out[length - 1] = prev
+    for i in range(length, n):
+        prev = alpha * values[i] + (1.0 - alpha) * prev
+        out[i] = prev
+    return out
+
+
 def rma(values: list[float], period: int) -> list[float | None]:
     """RMA / SMMA (همان ta.rma در TradingView)."""
     n = len(values)

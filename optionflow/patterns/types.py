@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 
 @dataclass
 class PatternHit:
-    category: str  # triangle | flag | divergence | trendline | channel
+    category: str  # triangle | flag | divergence | trendline | channel | ema50
     timeframe: str
     pattern_id: str
     title_fa: str
