@@ -84,12 +84,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return RedirectResponse("/change-password", status_code=303)
 
         if not user.get("is_admin"):
-            blocked_prefixes = (
-                "/backtest",
-                "/patterns",
-                "/telegram",
-            )
-            if path.startswith(blocked_prefixes) or path == "/admin/run-now":
+            if path.startswith("/backtest") or path == "/admin/run-now":
                 return RedirectResponse("/", status_code=303)
 
         return await call_next(request)

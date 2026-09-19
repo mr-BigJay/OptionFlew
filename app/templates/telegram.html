@@ -9,12 +9,14 @@
 <p class="flash ok">تنظیمات ذخیره شد.</p>
 {% endif %}
 
+<p class="hint">ربات تلگرام <strong>مخصوص حساب شما</strong> است. توکن را از ‎@BotFather‎ بگیرید و Chat ID را از ‎@userinfobot‎.</p>
+
 <form class="card form" method="post" action="/telegram">
   <label for="bot_token">Bot Token</label>
   <input id="bot_token" name="bot_token" type="password" value="{{ bot_token }}" placeholder="123456:ABC..." autocomplete="off">
 
   <label for="chat_id">Chat ID</label>
-  <input id="chat_id" name="chat_id" value="{{ chat_id }}" placeholder="-100..." inputmode="numeric">
+  <input id="chat_id" name="chat_id" value="{{ chat_id }}" placeholder="-100... یا شناسه عددی شما" inputmode="numeric">
 
   <label class="check">
     <input type="checkbox" name="enabled" {% if enabled %}checked{% endif %}>
@@ -23,7 +25,7 @@
 
   <label class="check">
     <input type="checkbox" name="on_schedule" {% if on_schedule %}checked{% endif %}>
-    ارسال خودکار با هر گزارش زمان‌بندی‌شده
+    ارسال خودکار گزارش‌های ۴ساعته و روزانه
   </label>
 
   <button type="submit" class="btn primary full">ذخیره</button>
@@ -32,6 +34,4 @@
 <form method="post" action="/telegram/test">
   <button type="submit" class="btn secondary full">ارسال تست (آخرین گزارش)</button>
 </form>
-
-<p class="hint">از @BotFather توکن بگیرید؛ Chat ID را از @userinfobot یا گروه خودتان.</p>
 {% endblock %}
