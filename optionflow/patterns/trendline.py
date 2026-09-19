@@ -161,6 +161,7 @@ def _fit_line(
     min_span: int,
     max_age: int,
     min_gap: int,
+    classic_trend: bool = False,
 ) -> dict | None:
     pts = _spaced(points, min_gap)
     if len(pts) < 2:
@@ -184,6 +185,11 @@ def _fit_line(
             move = p1 - p0
             if abs(move) < atr_now * 0.45:
                 continue
+            if classic_trend:
+                if side == "low" and move <= 0:
+                    continue
+                if side == "high" and move >= 0:
+                    continue
             ok = True
             for i, p in window:
                 if abs(p - _y(slope, intercept, i)) > tol:
@@ -260,7 +266,9 @@ def _fit_line(
     return best
 
 
-def _prep(bars: list[OhlcBar], timeframe: str) -> tuple | None:
+def _prep(
+    bars: list[OhlcBar], timeframe: str, *, classic_trend: bool = False
+) -> tuple | None:
     if len(bars) < 50:
         return None
     win_n = WINDOW.get(timeframe, 120)
@@ -282,6 +290,7 @@ def _prep(bars: list[OhlcBar], timeframe: str) -> tuple | None:
         min_span=MIN_SPAN.get(timeframe, 12),
         max_age=MAX_PIVOT_AGE.get(timeframe, 12),
         min_gap=MIN_TOUCH_GAP.get(timeframe, 5),
+        classic_trend=classic_trend,
     )
     support = _fit_line(lo_pts, window, side="low", **kwargs)
     resist = _fit_line(hi_pts, window, side="high", **kwargs)
@@ -317,7 +326,7 @@ def detect_trendline(
     *,
     allow_early: bool = True,
 ) -> PatternHit | None:
-    prep = _prep(bars, timeframe)
+    prep = _prep(bars, timeframe, classic_trend=True)
     if prep is None:
         return None
     window, n, atr_now, support, resist, wo = prep
