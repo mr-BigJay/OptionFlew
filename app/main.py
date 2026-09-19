@@ -174,7 +174,11 @@ def _category_fa(category: str) -> str:
         "triangle": "مثلث فشرده",
         "flag": "الگوی پرچم",
         "divergence": "واگرایی RSI",
+        "trendline": "ترندلاین و کانال",
     }.get(category, category)
+
+
+PATTERN_TABS = ("triangle", "flag", "divergence", "trendline")
 
 
 def _page_ctx(request: Request, **extra: Any) -> dict[str, Any]:
@@ -567,7 +571,7 @@ async def report_detail(request: Request, report_id: int):
 
 @app.get("/patterns", response_class=HTMLResponse)
 async def patterns_page(request: Request, tab: str = "triangle"):
-    if tab not in ("triangle", "flag", "divergence"):
+    if tab not in PATTERN_TABS:
         tab = "triangle"
     scan = get_cached_scan(_patterns_dir)
     hits = scan.get(tab, {})
@@ -597,7 +601,7 @@ async def backtest_page(
     tab: str = "triangle",
     run_id: int = 0,
 ):
-    if tab not in ("triangle", "flag", "divergence"):
+    if tab not in PATTERN_TABS:
         tab = "triangle"
     active_run = get_backtest_run(run_id) if run_id else None
     return templates.TemplateResponse(
@@ -615,6 +619,7 @@ async def backtest_page(
                 "triangle": "مثلث فشرده",
                 "flag": "الگوی پرچم",
                 "divergence": "واگرایی RSI",
+                "trendline": "ترندلاین و کانال",
             },
             bt_tf_labels={
                 "5m": "۵ دقیقه",
@@ -634,6 +639,7 @@ async def backtest_reports_page(request: Request):
         "triangle": "مثلث فشرده",
         "flag": "الگوی پرچم",
         "divergence": "واگرایی RSI",
+        "trendline": "ترندلاین و کانال",
     }
     return templates.TemplateResponse(
         request,
@@ -655,6 +661,7 @@ async def backtest_report_detail(request: Request, run_id: int):
         "triangle": "مثلث فشرده",
         "flag": "الگوی پرچم",
         "divergence": "واگرایی RSI",
+        "trendline": "ترندلاین و کانال",
     }
     return templates.TemplateResponse(
         request,
@@ -711,7 +718,7 @@ async def backtest_start(
     date_to: str = Form(...),
     timeframe: str = Form("1h"),
 ):
-    if tab not in ("triangle", "flag", "divergence"):
+    if tab not in PATTERN_TABS:
         tab = "triangle"
     if timeframe not in ("5m", "15m", "1h", "4h", "1d"):
         timeframe = "1h"
@@ -726,7 +733,7 @@ async def backtest_start(
 
 @app.post("/patterns/refresh")
 async def patterns_refresh(tab: str = Form("triangle")):
-    if tab not in ("triangle", "flag", "divergence"):
+    if tab not in PATTERN_TABS:
         tab = "triangle"
     invalidate_pattern_cache()
     get_cached_scan(_patterns_dir)

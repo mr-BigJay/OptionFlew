@@ -8,6 +8,7 @@ from optionflow.patterns.chart import render_pattern_chart
 from optionflow.patterns.divergence import detect_rsi_divergence
 from optionflow.patterns.flag import detect_flag
 from optionflow.patterns.ohlc import load_btcusdt
+from optionflow.patterns.trendline import detect_trendline
 from optionflow.patterns.triangle import detect_triangle
 from optionflow.patterns.types import PatternHit
 
@@ -31,12 +32,14 @@ def _scan_tf(tf: str, chart_dir: Path) -> dict[str, PatternHit | None]:
     tri = detect_triangle(bars, tf)
     flg = detect_flag(bars, tf)
     div = detect_rsi_divergence(bars, tf)
+    trl = detect_trendline(bars, tf)
     out: dict[str, PatternHit | None] = {
         "triangle": tri,
         "flag": flg,
         "divergence": div,
+        "trendline": trl,
     }
-    for hit in (tri, flg, div):
+    for hit in (tri, flg, div, trl):
         if hit is None:
             continue
         png = render_pattern_chart(bars, hit)
@@ -55,6 +58,7 @@ def scan_all_patterns(chart_dir: Path) -> dict[str, dict[str, PatternHit | None]
         "triangle": {},
         "flag": {},
         "divergence": {},
+        "trendline": {},
     }
     for tf in TIMEFRAMES:
         try:
