@@ -666,6 +666,9 @@ body.chart-lightbox-open {
 }
 
 .tabs-patterns {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
   margin-bottom: 10px;
 }
 
@@ -673,6 +676,7 @@ body.chart-lightbox-open {
   font-size: 0.72rem;
   padding: 10px 3px;
   line-height: 1.25;
+  flex: unset;
 }
 
 .patterns-sub {

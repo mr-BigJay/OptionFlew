@@ -17,13 +17,13 @@ from optionflow.patterns.history import (
     slice_with_warmup,
 )
 from optionflow.patterns.ohlc import OhlcBar
-from optionflow.patterns.trendline import detect_trendline
+from optionflow.patterns.trendline import detect_channel, detect_trendline
 from optionflow.patterns.triangle import detect_triangle
 from optionflow.patterns.types import PatternHit
 
 logger = logging.getLogger("optionflow.patterns.backtest")
 
-CATEGORIES = ("triangle", "flag", "divergence", "trendline")
+CATEGORIES = ("triangle", "flag", "divergence", "trendline", "channel")
 STRIDE_BY_TF = {"5m": 6, "15m": 2, "1h": 1, "4h": 1, "1d": 1}
 DEDUPE_BARS = {"5m": 48, "15m": 20, "1h": 16, "4h": 8, "1d": 4}
 FORWARD_BARS = {"5m": 36, "15m": 24, "1h": 18, "4h": 12, "1d": 8}
@@ -114,6 +114,9 @@ def _detector(category: str):
         "trendline": lambda bars, tf: detect_trendline(
             bars, tf, allow_early=False
         ),
+        "channel": lambda bars, tf: detect_channel(
+            bars, tf, allow_early=False
+        ),
     }[category]
 
 
@@ -127,7 +130,7 @@ def expected_direction(hit: PatternHit) -> str | None:
         if explicit in ("up", "down"):
             return explicit
         return None
-    if hit.category == "trendline":
+    if hit.category in ("trendline", "channel"):
         explicit = hit.meta.get("direction")
         if explicit in ("up", "down"):
             return explicit

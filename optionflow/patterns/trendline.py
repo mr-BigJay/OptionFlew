@@ -5,9 +5,11 @@ from optionflow.patterns.ohlc import OhlcBar
 from optionflow.patterns.types import PatternHit
 
 SWING_LEFT = 3
-SWING_RIGHT_EARLY = 2
-MIN_SPAN = {"5m": 12, "15m": 10, "1h": 14, "4h": 10, "1d": 8}
-MAX_PIVOT_AGE = {"5m": 18, "15m": 14, "1h": 16, "4h": 10, "1d": 8}
+SWING_RIGHT = 2
+MIN_SPAN = {"5m": 16, "15m": 12, "1h": 16, "4h": 12, "1d": 8}
+MAX_PIVOT_AGE = {"5m": 14, "15m": 12, "1h": 12, "4h": 8, "1d": 6}
+MIN_TOUCH_GAP = {"5m": 6, "15m": 5, "1h": 5, "4h": 4, "1d": 3}
+WINDOW = {"5m": 120, "15m": 120, "1h": 140, "4h": 120, "1d": 90}
 
 
 def _y(slope: float, intercept: float, i: float) -> float:
@@ -39,14 +41,14 @@ def _strict_swing(
 
 
 def _price_swings(
-    highs: list[float], lows: list[float], *, right: int
+    highs: list[float], lows: list[float]
 ) -> list[tuple[int, float, str]]:
     n = len(highs)
     raw: list[tuple[int, float, str]] = []
-    for i in range(SWING_LEFT, n - right):
-        if _strict_swing(highs, i, SWING_LEFT, right, high=True):
+    for i in range(SWING_LEFT, n - SWING_RIGHT):
+        if _strict_swing(highs, i, SWING_LEFT, SWING_RIGHT, high=True):
             raw.append((i, highs[i], "high"))
-        if _strict_swing(lows, i, SWING_LEFT, right, high=False):
+        if _strict_swing(lows, i, SWING_LEFT, SWING_RIGHT, high=False):
             raw.append((i, lows[i], "low"))
     raw.sort(key=lambda x: (x[0], 0 if x[2] == "high" else 1))
     alt: list[tuple[int, float, str]] = []
@@ -64,20 +66,68 @@ def _price_swings(
     return alt
 
 
-def _touches(
-    points: list[tuple[int, float]],
-    slope: float,
-    intercept: float,
-    tol: float,
+def _spaced(
+    pts: list[tuple[int, float]], gap: int
 ) -> list[tuple[int, float]]:
-    out: list[tuple[int, float]] = []
-    for i, p in points:
-        if abs(p - _y(slope, intercept, i)) <= tol:
+    if not pts:
+        return []
+    out = [pts[0]]
+    for i, p in pts[1:]:
+        if i - out[-1][0] >= gap:
             out.append((i, p))
+        elif abs(p) >= abs(out[-1][1]):
+            # keep the more extreme of a cluster
+            out[-1] = (i, p)
     return out
 
 
-def _broken(
+def _closes_beyond(
+    bars: list[OhlcBar],
+    *,
+    start_i: int,
+    end_i: int,
+    slope: float,
+    intercept: float,
+    side: str,
+    buf: float,
+) -> int:
+    n = 0
+    last = min(end_i, len(bars) - 1)
+    for i in range(start_i, last + 1):
+        line = _y(slope, intercept, i)
+        if side == "low" and bars[i].close < line - buf:
+            n += 1
+        if side == "high" and bars[i].close > line + buf:
+            n += 1
+    return n
+
+
+def _consecutive_break(
+    bars: list[OhlcBar],
+    *,
+    start_i: int,
+    end_i: int,
+    slope: float,
+    intercept: float,
+    side: str,
+    buf: float,
+) -> bool:
+    run = 0
+    last = min(end_i, len(bars) - 2)
+    for i in range(start_i, last + 1):
+        line = _y(slope, intercept, i)
+        hit = (
+            bars[i].close < line - buf
+            if side == "low"
+            else bars[i].close > line + buf
+        )
+        run = run + 1 if hit else 0
+        if run >= 2:
+            return True
+    return False
+
+
+def _deep_pierce(
     bars: list[OhlcBar],
     *,
     start_i: int,
@@ -87,18 +137,22 @@ def _broken(
     side: str,
     atr_now: float,
 ) -> bool:
-    buf = atr_now * 0.55
-    last = min(end_i, len(bars) - 2)
-    for i in range(start_i + 1, last + 1):
+    """ویک یا کلوز خیلی آن‌طرف خط = خط باطل است (اسکرین ریزش زیر کانال)."""
+    last = min(end_i, len(bars) - 1)
+    wick_lim = atr_now * 1.15
+    close_lim = atr_now * 0.85
+    for i in range(start_i, last + 1):
         line = _y(slope, intercept, i)
-        if side == "low" and bars[i].close < line - buf:
-            return True
-        if side == "high" and bars[i].close > line + buf:
-            return True
+        if side == "low":
+            if bars[i].low < line - wick_lim or bars[i].close < line - close_lim:
+                return True
+        else:
+            if bars[i].high > line + wick_lim or bars[i].close > line + close_lim:
+                return True
     return False
 
 
-def _line_candidate(
+def _fit_line(
     points: list[tuple[int, float]],
     bars: list[OhlcBar],
     *,
@@ -106,38 +160,50 @@ def _line_candidate(
     atr_now: float,
     min_span: int,
     max_age: int,
+    min_gap: int,
 ) -> dict | None:
-    if len(points) < 2:
+    pts = _spaced(points, min_gap)
+    if len(pts) < 2:
         return None
     n = len(bars)
     last = bars[-1]
-    tol = atr_now * 0.7
-    near_lim = atr_now * 1.45
+    tol = atr_now * 0.38
+    break_buf = atr_now * 0.5
     best: dict | None = None
-    pool = points[-8:]
-    for a in range(len(pool)):
-        for b in range(a + 1, len(pool)):
-            i0, p0 = pool[a]
-            i1, p1 = pool[b]
-            span = i1 - i0
-            if span < min_span:
+    # only consecutive swing windows — not every pair of last 8
+    for length in (2, 3, 4):
+        if len(pts) < length:
+            continue
+        for start in range(0, len(pts) - length + 1):
+            window = pts[start : start + length]
+            i0, p0 = window[0]
+            i1, p1 = window[-1]
+            if i1 - i0 < min_span:
                 continue
             slope, intercept = _line_through(i0, p0, i1, p1)
-            move = abs(p1 - p0)
-            if move < atr_now * 0.35:
+            move = p1 - p0
+            if abs(move) < atr_now * 0.45:
                 continue
-            if move > atr_now * 9:
+            ok = True
+            for i, p in window:
+                if abs(p - _y(slope, intercept, i)) > tol:
+                    ok = False
+                    break
+            if not ok:
                 continue
-            if side == "low" and (p1 - p0) < -atr_now * 1.8:
-                continue
-            if side == "high" and (p1 - p0) > atr_now * 1.8:
-                continue
-            hits = _touches(points, slope, intercept, tol)
-            if len(hits) < 2:
-                continue
-            if _broken(
+            if _consecutive_break(
                 bars,
-                start_i=hits[0][0],
+                start_i=i0,
+                end_i=n - 1,
+                slope=slope,
+                intercept=intercept,
+                side=side,
+                buf=break_buf,
+            ):
+                continue
+            if _deep_pierce(
+                bars,
+                start_i=i0,
                 end_i=n - 1,
                 slope=slope,
                 intercept=intercept,
@@ -145,32 +211,43 @@ def _line_candidate(
                 atr_now=atr_now,
             ):
                 continue
-            last_touch_i = hits[-1][0]
-            last_age = n - 1 - last_touch_i
+            bars_n = max(1, (n - 1) - i0)
+            outside = _closes_beyond(
+                bars,
+                start_i=i0,
+                end_i=n - 1,
+                slope=slope,
+                intercept=intercept,
+                side=side,
+                buf=break_buf,
+            )
+            if outside / bars_n > 0.08:
+                continue
             y_now = _y(slope, intercept, n - 1)
             dist = abs(last.close - y_now)
             if side == "low":
-                testing = last.low <= y_now + tol and last.close >= y_now - buf_safe(atr_now)
+                testing = last.low <= y_now + tol and last.close >= y_now - break_buf
             else:
-                testing = last.high >= y_now - tol and last.close <= y_now + buf_safe(atr_now)
+                testing = last.high >= y_now - tol and last.close <= y_now + break_buf
+            last_age = n - 1 - i1
+            near_lim = atr_now * (2.1 if length >= 3 else 1.35)
             near = dist <= near_lim or testing
-            if len(hits) < 3:
-                if last_age > max_age and not near:
-                    continue
-            elif last_age > max_age * 3 and not near:
+            if last_age > max_age * (2 if length >= 3 else 1) and not near:
                 continue
-            forming = last_age <= SWING_RIGHT_EARLY
-            stage = "confirmed" if len(hits) >= 3 and not forming else "early"
-            score = len(hits) * 3.0 + (2.0 if testing or dist <= near_lim else 0.0)
-            score += 2.0 if stage == "confirmed" else 1.0
-            score -= dist / max(atr_now, 1.0) * 0.15
+            if length == 2 and last_age > max_age and not testing:
+                continue
+            forming = last_age <= SWING_RIGHT
+            stage = "confirmed" if length >= 3 and not forming else "early"
+            score = length * 4.0 + (3.0 if testing else 0.0) + (2.0 if stage == "confirmed" else 0.0)
+            score -= dist / max(atr_now, 1.0) * 0.25
+            score -= outside / bars_n * 4.0
             cand = {
                 "side": side,
                 "slope": slope,
                 "intercept": intercept,
-                "touches": hits,
-                "start_i": hits[0][0],
-                "end_i": hits[-1][0],
+                "touches": window,
+                "start_i": i0,
+                "end_i": i1,
                 "y_now": y_now,
                 "dist": dist,
                 "testing": testing,
@@ -183,54 +260,55 @@ def _line_candidate(
     return best
 
 
-def buf_safe(atr_now: float) -> float:
-    return atr_now * 0.35
-
-
-def _parallel_channel(
-    primary: dict,
-    opp_points: list[tuple[int, float]],
-    atr_now: float,
-) -> dict | None:
-    if len(opp_points) < 1:
+def _prep(bars: list[OhlcBar], timeframe: str) -> tuple | None:
+    if len(bars) < 50:
         return None
-    slope = primary["slope"]
-    tol = atr_now * 0.85
-    best_hits: list[tuple[int, float]] = []
-    best_intercept = 0.0
-    for i, p in opp_points:
-        intercept = p - slope * i
-        hits = _touches(opp_points, slope, intercept, tol)
-        if len(hits) > len(best_hits):
-            best_hits = hits
-            best_intercept = intercept
-        elif len(hits) == len(best_hits) and hits:
-            # closer to the other line = tighter channel
-            width = abs(
-                _y(slope, intercept, primary["start_i"])
-                - _y(slope, primary["intercept"], primary["start_i"])
-            )
-            prev_w = abs(
-                _y(slope, best_intercept, primary["start_i"])
-                - _y(slope, primary["intercept"], primary["start_i"])
-            )
-            if width < prev_w:
-                best_hits = hits
-                best_intercept = intercept
-    if not best_hits:
+    win_n = WINDOW.get(timeframe, 120)
+    window = bars[-win_n:] if len(bars) >= win_n else bars[:]
+    n = len(window)
+    highs = [b.high for b in window]
+    lows = [b.low for b in window]
+    swings = _price_swings(highs, lows)
+    if len(swings) < 4:
         return None
-    width = abs(
-        _y(slope, best_intercept, primary["end_i"])
-        - _y(slope, primary["intercept"], primary["end_i"])
+    atr_vals = atr(window)
+    atr_now = next((v for v in reversed(atr_vals) if v is not None), None)
+    if atr_now is None or atr_now <= 0:
+        return None
+    lo_pts = [(i, p) for i, p, k in swings if k == "low"]
+    hi_pts = [(i, p) for i, p, k in swings if k == "high"]
+    kwargs = dict(
+        atr_now=atr_now,
+        min_span=MIN_SPAN.get(timeframe, 12),
+        max_age=MAX_PIVOT_AGE.get(timeframe, 12),
+        min_gap=MIN_TOUCH_GAP.get(timeframe, 5),
     )
-    if width < atr_now * 0.8 or width > atr_now * 12:
-        return None
-    return {
-        "slope": slope,
-        "intercept": best_intercept,
-        "touches": best_hits,
-        "width": width,
-    }
+    support = _fit_line(lo_pts, window, side="low", **kwargs)
+    resist = _fit_line(hi_pts, window, side="high", **kwargs)
+    return window, n, atr_now, support, resist, len(bars) - n
+
+
+def _hit(
+    *,
+    category: str,
+    timeframe: str,
+    title: str,
+    status: str,
+    summary: str,
+    forecast: str,
+    pattern_id: str,
+    meta: dict,
+) -> PatternHit:
+    return PatternHit(
+        category=category,
+        timeframe=timeframe,
+        pattern_id=pattern_id,
+        title_fa=title,
+        status_fa=status,
+        summary_fa=summary,
+        forecast_fa=forecast,
+        meta=meta,
+    )
 
 
 def detect_trendline(
@@ -239,159 +317,213 @@ def detect_trendline(
     *,
     allow_early: bool = True,
 ) -> PatternHit | None:
-    if len(bars) < 50:
+    prep = _prep(bars, timeframe)
+    if prep is None:
         return None
-    window = bars[-180:] if len(bars) >= 180 else bars[:]
-    n = len(window)
-    highs = [b.high for b in window]
-    lows = [b.low for b in window]
-    swings = _price_swings(highs, lows, right=SWING_RIGHT_EARLY)
-    if len(swings) < 4:
-        return None
-    atr_vals = atr(window)
-    atr_now = next((v for v in reversed(atr_vals) if v is not None), None)
-    if atr_now is None or atr_now <= 0:
-        return None
-
-    lo_pts = [(i, p) for i, p, k in swings if k == "low"]
-    hi_pts = [(i, p) for i, p, k in swings if k == "high"]
-    min_span = MIN_SPAN.get(timeframe, 12)
-    max_age = MAX_PIVOT_AGE.get(timeframe, 14)
-    support = _line_candidate(
-        lo_pts, window, side="low", atr_now=atr_now, min_span=min_span, max_age=max_age
-    )
-    resist = _line_candidate(
-        hi_pts, window, side="high", atr_now=atr_now, min_span=min_span, max_age=max_age
-    )
+    window, n, atr_now, support, resist, wo = prep
     if support is None and resist is None:
         return None
-
-    primary = support if resist is None or (support and support["score"] >= resist["score"]) else resist
-    opposite = resist if primary is support else support
-    opp_pts = hi_pts if primary["side"] == "low" else lo_pts
-    ch = _parallel_channel(primary, opp_pts, atr_now)
-    is_channel = False
-    if ch and (opposite is None or abs(ch["slope"] - opposite["slope"]) <= abs(primary["slope"]) * 0.35 + 1e-9):
-        is_channel = True
-    elif opposite is not None:
-        slope_gap = abs(primary["slope"] - opposite["slope"])
-        if slope_gap <= atr_now * 0.02 / max(primary["end_i"] - primary["start_i"], 1):
-            is_channel = True
-            ch = {
-                "slope": opposite["slope"],
-                "intercept": opposite["intercept"],
-                "touches": opposite["touches"],
-                "width": abs(primary["y_now"] - opposite["y_now"]),
-            }
-
+    primary = (
+        support
+        if resist is None or (support and support["score"] >= resist["score"])
+        else resist
+    )
+    if primary["stage"] == "early" and not allow_early:
+        return None
     last = window[-1]
     n_pri = len(primary["touches"])
-    n_opp = len(ch["touches"]) if is_channel and ch else 0
-    if is_channel:
-        stage = "confirmed" if (n_pri >= 2 and n_opp >= 2) or n_pri >= 3 else "early"
-        kind = "channel"
-    else:
-        stage = primary["stage"]
-        kind = "trendline"
-        ch = None
-        n_opp = 0
-
-    if stage == "early" and not allow_early:
-        return None
-
-    slope = primary["slope"]
     if primary["side"] == "low":
         direction = "up"
         role = "حمایت"
+        lower = (primary["slope"], primary["intercept"])
+        upper = (None, None)
+        touch_lows = [i for i, _ in primary["touches"]]
+        touch_highs: list[int] = []
     else:
         direction = "down"
         role = "مقاومت"
-
-    if is_channel:
-        if slope > atr_now * 0.02 / 20:
-            title = "کانال صعودی"
-            direction = "up"
-        elif slope < -atr_now * 0.02 / 20:
-            title = "کانال نزولی"
-            direction = "down"
-        else:
-            title = "کانال افقی"
-        summary = (
-            f"{n_pri} برخورد {role} و {n_opp} برخورد ضلع مخالف. "
-            f"عرض کانال حدود {ch['width']:,.0f} دلار. قیمت {last.close:,.0f}."
+        upper = (primary["slope"], primary["intercept"])
+        lower = (None, None)
+        touch_highs = [i for i, _ in primary["touches"]]
+        touch_lows = []
+    stage = primary["stage"]
+    title = f"ترندلاین {role}"
+    if stage == "early":
+        status = "سیگنال اولیه"
+        forecast = (
+            f"خط با دو برخورد شناسایی شد. اگر قیمت نزدیک {primary['y_now']:,.0f} "
+            f"نگه دارد، برخورد سوم تأیید می‌کند."
         )
-        if stage == "early":
-            forecast = (
-                "کانال تازه در حال شکل‌گیری است؛ تا برخورد سوم یا ضلع دوم، "
-                "فقط به‌عنوان محدودهٔ اولیه در نظر بگیرید."
-            )
-            status = "سیگنال اولیه"
-        else:
-            forecast = (
-                f"حرکت داخل کانال؛ واکنش محتمل روی {role} "
-                f"نزدیک {primary['y_now']:,.0f}."
-            )
-            status = "تأییدشده"
     else:
-        title = f"ترندلاین {role}"
-        summary = (
-            f"{n_pri} برخورد روی خط {role}. "
-            f"خط در قیمت فعلی حدود {primary['y_now']:,.0f} — قیمت {last.close:,.0f}."
+        status = "تأییدشده"
+        forecast = (
+            f"خط با {n_pri} برخورد؛ واکنش روی {primary['y_now']:,.0f} "
+            f"{'صعودی' if direction == 'up' else 'نزولی'} محتمل‌تر است."
         )
-        if stage == "early":
-            forecast = (
-                f"خط با دو برخورد شناسایی شد (اولیه). اگر قیمت به {primary['y_now']:,.0f} برسد "
-                f"و نگهدارد، برخورد سوم تأیید می‌کند."
-            )
-            status = "سیگنال اولیه"
-        else:
-            forecast = (
-                f"خط با {n_pri} برخورد تأیید شده؛ واکنش روی {primary['y_now']:,.0f} "
-                f"{'صعودی' if direction == 'up' else 'نزولی'} محتمل‌تر است."
-            )
-            status = "تأییدشده"
-
+    summary = (
+        f"{n_pri} برخورد روی خط {role}. "
+        f"خط حدود {primary['y_now']:,.0f} — قیمت {last.close:,.0f}."
+    )
     if primary.get("testing"):
         summary += " کندل جاری خط را لمس کرده."
-
-    wo = len(bars) - n
-    early_ix = wo + primary["touches"][1][0] if len(primary["touches"]) >= 2 else wo + primary["end_i"]
-    upper = lower = None
-    if is_channel and ch:
-        if primary["side"] == "low":
-            lower = (primary["slope"], primary["intercept"])
-            upper = (ch["slope"], ch["intercept"])
-        else:
-            upper = (primary["slope"], primary["intercept"])
-            lower = (ch["slope"], ch["intercept"])
-    elif primary["side"] == "low":
-        lower = (primary["slope"], primary["intercept"])
-    else:
-        upper = (primary["slope"], primary["intercept"])
-
-    return PatternHit(
+    early_ix = wo + primary["touches"][min(1, n_pri - 1)][0]
+    return _hit(
         category="trendline",
         timeframe=timeframe,
-        pattern_id=f"{kind}_{primary['side']}_{stage}",
-        title_fa=title,
-        status_fa=status,
-        summary_fa=summary,
-        forecast_fa=forecast,
+        title=title,
+        status=status,
+        summary=summary,
+        forecast=forecast,
+        pattern_id=f"trendline_{primary['side']}_{stage}",
         meta={
-            "kind": kind,
+            "kind": "trendline",
             "stage": stage,
             "direction": direction,
             "side": primary["side"],
-            "upper_slope": upper[0] if upper else None,
-            "upper_intercept": upper[1] if upper else None,
-            "lower_slope": lower[0] if lower else None,
-            "lower_intercept": lower[1] if lower else None,
+            "early_side": primary["side"],
+            "upper_slope": upper[0],
+            "upper_intercept": upper[1],
+            "lower_slope": lower[0],
+            "lower_intercept": lower[1],
             "start_i": primary["start_i"],
             "end_i": n - 1,
             "window_offset": wo,
-            "touch_highs": [i for i, _ in (ch["touches"] if is_channel and ch and primary["side"] == "low" else (primary["touches"] if primary["side"] == "high" else []))],
-            "touch_lows": [i for i, _ in (primary["touches"] if primary["side"] == "low" else (ch["touches"] if is_channel and ch else []))],
+            "touch_highs": touch_highs,
+            "touch_lows": touch_lows,
             "y_now": primary["y_now"],
+            "early_index": early_ix,
+            "last_close": last.close,
+        },
+    )
+
+
+def detect_channel(
+    bars: list[OhlcBar],
+    timeframe: str,
+    *,
+    allow_early: bool = True,
+) -> PatternHit | None:
+    prep = _prep(bars, timeframe)
+    if prep is None:
+        return None
+    window, n, atr_now, support, resist, wo = prep
+    if support is None or resist is None:
+        return None
+    su, iu = resist["slope"], resist["intercept"]
+    sl, il = support["slope"], support["intercept"]
+    start_i = max(support["start_i"], resist["start_i"])
+    end_i = min(support["end_i"], resist["end_i"])
+    if end_i - start_i < MIN_SPAN.get(timeframe, 12):
+        return None
+    mag = max(abs(su), abs(sl), 1e-9)
+    if abs(su - sl) / mag > 0.22:
+        return None
+    if su * sl < 0 and min(abs(su), abs(sl)) > atr_now * 0.008 / 20:
+        return None
+    end_draw = n - 1
+    width = abs(_y(su, iu, end_draw) - _y(sl, il, end_draw))
+    if width < atr_now * 1.4 or width > atr_now * 5.0:
+        return None
+    inside = 0
+    total = 0
+    buf = atr_now * 0.35
+    pierce_lim = atr_now * 1.15
+    for i in range(start_i, end_draw + 1):
+        up = _y(su, iu, i)
+        lo = _y(sl, il, i)
+        if up < lo:
+            up, lo = lo, up
+        total += 1
+        bar = window[i]
+        if bar.low < lo - pierce_lim or bar.high > up + pierce_lim:
+            return None
+        if lo - buf <= bar.close <= up + buf:
+            inside += 1
+    if total == 0 or inside / total < 0.90:
+        return None
+    if _deep_pierce(
+        window,
+        start_i=start_i,
+        end_i=end_draw,
+        slope=sl,
+        intercept=il,
+        side="low",
+        atr_now=atr_now,
+    ) or _deep_pierce(
+        window,
+        start_i=start_i,
+        end_i=end_draw,
+        slope=su,
+        intercept=iu,
+        side="high",
+        atr_now=atr_now,
+    ):
+        return None
+    n_hi = len(resist["touches"])
+    n_lo = len(support["touches"])
+    if n_hi < 2 or n_lo < 2:
+        return None
+    forming = support["forming"] or resist["forming"]
+    stage = "confirmed" if (n_hi >= 3 and n_lo >= 2) or (n_lo >= 3 and n_hi >= 2) else "early"
+    if forming and n_hi < 3 and n_lo < 3:
+        stage = "early"
+    if stage == "early" and not allow_early:
+        return None
+    last = window[-1]
+    slope = (su + sl) / 2.0
+    if slope > atr_now * 0.015 / 20:
+        title = "کانال صعودی"
+        direction = "up"
+    elif slope < -atr_now * 0.015 / 20:
+        title = "کانال نزولی"
+        direction = "down"
+    else:
+        title = "کانال افقی"
+        direction = "up" if last.close >= (support["y_now"] + resist["y_now"]) / 2 else "down"
+    if stage == "early":
+        status = "سیگنال اولیه"
+        forecast = "کانال تازه است؛ تا برخورد سوم روی یکی از اضلاع فقط محدودهٔ اولیه است."
+    else:
+        status = "تأییدشده"
+        role = "حمایت" if support["dist"] <= resist["dist"] else "مقاومت"
+        y = support["y_now"] if role == "حمایت" else resist["y_now"]
+        forecast = f"حرکت داخل کانال؛ واکنش محتمل روی {role} نزدیک {y:,.0f}."
+    summary = (
+        f"{n_hi} برخورد سقف و {n_lo} برخورد کف. "
+        f"عرض حدود {width:,.0f} دلار. قیمت {last.close:,.0f}."
+    )
+    lo2 = support["touches"][min(1, n_lo - 1)][0]
+    hi2 = resist["touches"][min(1, n_hi - 1)][0]
+    if lo2 <= hi2:
+        early_ix = wo + lo2
+        early_side = "low"
+    else:
+        early_ix = wo + hi2
+        early_side = "high"
+    return _hit(
+        category="channel",
+        timeframe=timeframe,
+        title=title,
+        status=status,
+        summary=summary,
+        forecast=forecast,
+        pattern_id=f"channel_{direction}_{stage}",
+        meta={
+            "kind": "channel",
+            "stage": stage,
+            "direction": direction,
+            "side": "low" if support["dist"] <= resist["dist"] else "high",
+            "early_side": early_side,
+            "upper_slope": su,
+            "upper_intercept": iu,
+            "lower_slope": sl,
+            "lower_intercept": il,
+            "start_i": start_i,
+            "end_i": end_draw,
+            "window_offset": wo,
+            "touch_highs": [i for i, _ in resist["touches"] if i >= start_i],
+            "touch_lows": [i for i, _ in support["touches"] if i >= start_i],
+            "y_now": support["y_now"] if support["dist"] <= resist["dist"] else resist["y_now"],
             "early_index": early_ix,
             "last_close": last.close,
         },
