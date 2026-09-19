@@ -70,11 +70,13 @@ def _slice_range(
     sig = max(0, min(sig, n - 1))
     meta = hit.meta
 
-    if hit.category in ("triangle", "trendline"):
+    if hit.category in ("triangle", "trendline", "channel"):
         wo = meta.get("window_offset", max(0, n - 120))
         i0 = wo + meta.get("start_i", 0)
         i1 = wo + meta.get("end_i", sig)
-        start = max(0, min(i0, sig) - 15)
+        early = meta.get("early_index")
+        extra0 = early if isinstance(early, int) else i0
+        start = max(0, min(i0, extra0, sig) - 8)
         end = min(n, max(i1, sig) + forward_bars + 1)
     elif hit.category == "flag":
         ps = meta.get("pole_start", max(0, sig - 30))
@@ -173,8 +175,10 @@ def _mark_early_entry(
     meta: dict[str, Any],
     start: int,
     end: int,
+    *,
+    color: str | None = None,
 ) -> None:
-    """نقطه/فلش طلایی بالای کندل تأیید اولیه."""
+    """فلش تأیید اولیه؛ برای ترندلاین/کانال همرنگ نقطهٔ برخورد."""
     early_ix = meta.get("early_index")
     if not isinstance(early_ix, int) or early_ix < start or early_ix >= min(end, len(bars)):
         return
@@ -185,15 +189,27 @@ def _mark_early_entry(
     window = bars[start:end]
     span = max(b.high for b in window) - min(b.low for b in window)
     pad = max(span * 0.012, bar.high * 0.0004)
-    y_tip = bar.high + pad
-    y_head = bar.high + pad * 2.4
+    side = meta.get("early_side") or meta.get("side")
+    if color is None:
+        if side == "low":
+            color = "#81c784"
+        elif side == "high":
+            color = "#ffb74d"
+        else:
+            color = "#fbbf24"
+    if side == "low":
+        y_tip = bar.low - pad
+        y_head = bar.low - pad * 2.4
+    else:
+        y_tip = bar.high + pad
+        y_head = bar.high + pad * 2.4
     ax.annotate(
         "",
         xy=(x, y_tip),
         xytext=(x, y_head),
         arrowprops=dict(
             arrowstyle="-|>",
-            color="#fbbf24",
+            color=color,
             lw=1.6,
             mutation_scale=12,
         ),
@@ -203,7 +219,7 @@ def _mark_early_entry(
         [x],
         [y_head],
         s=42,
-        c="#fbbf24",
+        c=color,
         zorder=10,
         edgecolors="#fff8e1",
         linewidths=0.5,
@@ -302,7 +318,7 @@ def _render_price_pattern(
                         arrowprops=dict(arrowstyle="->", color="#ef5350", lw=1.8),
                     )
 
-    elif hit.category == "trendline":
+    elif hit.category in ("trendline", "channel"):
         wo = meta.get("window_offset", max(0, len(bars) - 120))
         i0, i1 = meta["start_i"], meta["end_i"]
         g0, g1 = wo + i0, wo + i1
@@ -329,7 +345,7 @@ def _render_price_pattern(
                 )
             for ti in meta.get("touch_highs") or []:
                 gi = wo + int(ti)
-                if 0 <= gi < len(bars):
+                if start <= gi < end:
                     ax.scatter(
                         [mdates.date2num(bars[gi].ts)],
                         [bars[gi].high],
@@ -341,7 +357,7 @@ def _render_price_pattern(
                     )
             for ti in meta.get("touch_lows") or []:
                 gi = wo + int(ti)
-                if 0 <= gi < len(bars):
+                if start <= gi < end:
                     ax.scatter(
                         [mdates.date2num(bars[gi].ts)],
                         [bars[gi].low],
