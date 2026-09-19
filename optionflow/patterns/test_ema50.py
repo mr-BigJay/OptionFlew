@@ -11,8 +11,8 @@ def _bars_from_closes(closes: list[float], minutes: int = 15) -> list[OhlcBar]:
     prev = closes[0]
     for i, c in enumerate(closes):
         o = prev
-        hi = max(o, c) + 30
-        lo = min(o, c) - 30
+        hi = max(o, c) + 4
+        lo = min(o, c) - 4
         out.append(
             OhlcBar(
                 ts=t0 + timedelta(minutes=minutes * i),
@@ -38,79 +38,50 @@ def _ema_now(bars: list[OhlcBar]) -> float:
     return e
 
 
-def _stretch_above(*, signal: bool) -> list[OhlcBar]:
+def _flat_away_above(*, wick: bool) -> list[OhlcBar]:
     bars = _bars_from_closes([100_000.0 + 8.0 * i for i in range(80)])
     last = bars[-1].close
-    if signal:
-        _append(bars, last + 5, last + 95, last - 12, last - 8)
+    if wick:
+        # ویک بالا > بادی
+        _append(bars, last + 10, last + 90, last + 2, last + 18)
     return bars
 
 
-def _stretch_below(*, signal: bool) -> list[OhlcBar]:
+def _flat_away_below(*, wick: bool) -> list[OhlcBar]:
     bars = _bars_from_closes([108_000.0 - 8.0 * i for i in range(80)])
     last = bars[-1].close
-    if signal:
-        _append(bars, last - 5, last + 12, last - 95, last + 8)
+    if wick:
+        _append(bars, last - 10, last - 2, last - 90, last - 18)
     return bars
 
 
-def _pierce_from_above(*, reject: bool) -> list[OhlcBar]:
-    bars = _bars_from_closes([100_000.0 + 8.0 * i for i in range(80)])
-    e = _ema_now(bars)
-    last = bars[-1].close
-    for k in range(1, 5):
-        px = last + (e + 55 - last) * k / 4
-        _append(bars, bars[-1].close, px + 25, px - 12, px)
-    e2 = _ema_now(bars)
-    if reject:
-        _append(bars, e2 + 45, e2 + 60, e2 - 80, e2 + 40)
-    else:
-        _append(bars, e2 + 40, e2 + 52, e2 - 8, e2 + 12)
-    return bars
-
-
-def _pierce_from_below(*, reject: bool) -> list[OhlcBar]:
-    bars = _bars_from_closes([108_000.0 - 8.0 * i for i in range(80)])
-    e = _ema_now(bars)
-    last = bars[-1].close
-    for k in range(1, 5):
-        px = last + (e - 55 - last) * k / 4
-        _append(bars, bars[-1].close, px + 12, px - 25, px)
-    e2 = _ema_now(bars)
-    if reject:
-        _append(bars, e2 - 45, e2 + 80, e2 - 60, e2 - 40)
-    else:
-        _append(bars, e2 - 40, e2 + 8, e2 - 52, e2 - 12)
-    return bars
-
-
-def _steep_trend_long(*, signal: bool) -> list[OhlcBar]:
+def _steep_trend_long(*, bullish: bool) -> list[OhlcBar]:
     bars = _bars_from_closes([100_000.0 + 140.0 * i for i in range(80)])
     e = _ema_now(bars)
     last = bars[-1].close
     for k in range(1, 4):
-        px = last + (e + 25 - last) * k / 3
-        _append(bars, bars[-1].close, max(bars[-1].close, px) + 18, min(bars[-1].close, px) - 18, px)
+        px = last + (e + 20 - last) * k / 3
+        _append(bars, bars[-1].close, px + 8, px - 8, px)
     e2 = _ema_now(bars)
-    if signal:
-        _append(bars, e2 + 35, e2 + 70, e2 - 90, e2 + 50)
+    if bullish:
+        _append(bars, e2 + 10, e2 + 70, e2 + 4, e2 + 55)
     else:
-        _append(bars, e2 + 30, e2 + 55, e2 + 18, e2 + 48)
+        _append(bars, e2 + 50, e2 + 58, e2 + 20, e2 + 28)
     return bars
 
 
-def _steep_trend_short(*, signal: bool) -> list[OhlcBar]:
+def _steep_trend_short(*, bearish: bool) -> list[OhlcBar]:
     bars = _bars_from_closes([112_000.0 - 140.0 * i for i in range(80)])
     e = _ema_now(bars)
     last = bars[-1].close
     for k in range(1, 4):
-        px = last + (e - 25 - last) * k / 3
-        _append(bars, bars[-1].close, max(bars[-1].close, px) + 18, min(bars[-1].close, px) - 18, px)
+        px = last + (e - 20 - last) * k / 3
+        _append(bars, bars[-1].close, px + 8, px - 8, px)
     e2 = _ema_now(bars)
-    if signal:
-        _append(bars, e2 - 35, e2 + 90, e2 - 70, e2 - 50)
+    if bearish:
+        _append(bars, e2 - 10, e2 - 4, e2 - 70, e2 - 55)
     else:
-        _append(bars, e2 - 30, e2 - 8, e2 - 48, e2 - 40)
+        _append(bars, e2 - 50, e2 - 20, e2 - 58, e2 - 28)
     return bars
 
 
@@ -122,65 +93,35 @@ def test_tv_ema_seeds_with_sma() -> None:
     assert out[3] is not None and abs(out[3] - 3.0) < 1e-9
 
 
-def test_stretch_fade_short_early_then_confirmed() -> None:
-    early_bars = _stretch_above(signal=False)
+def test_flat_stretch_short_early_then_wick_entry() -> None:
+    early_bars = _flat_away_above(wick=False)
     early = detect_ema50(early_bars, "15m")
     assert early is not None
-    assert early.meta["mode"] == "stretch_fade"
+    assert early.meta["mode"] == "flat"
     assert early.meta["direction"] == "down"
     assert early.meta["stage"] == "early"
     assert early.meta["exit_style"] == "ema_touch"
-    assert "اولیه" in early.status_fa
     assert detect_ema50(early_bars, "15m", allow_early=False) is None
 
-    hit = detect_ema50(_stretch_above(signal=True), "15m")
+    hit = detect_ema50(_flat_away_above(wick=True), "15m")
     assert hit is not None
-    assert hit.category == "ema50"
-    assert hit.meta["mode"] == "stretch_fade"
+    assert hit.meta["mode"] == "flat"
     assert hit.meta["stage"] == "confirmed"
     assert hit.meta["direction"] == "down"
     assert hit.meta["exit_style"] == "ema_touch"
     assert "فاصله" in hit.title_fa
-    assert hit.meta["sl_px"] > hit.meta["entry_px"]
 
 
-def test_stretch_fade_long_confirmed() -> None:
-    hit = detect_ema50(_stretch_below(signal=True), "15m")
+def test_flat_stretch_long_wick_entry() -> None:
+    hit = detect_ema50(_flat_away_below(wick=True), "15m")
     assert hit is not None
-    assert hit.meta["mode"] == "stretch_fade"
+    assert hit.meta["mode"] == "flat"
     assert hit.meta["direction"] == "up"
-    assert hit.meta["stage"] == "confirmed"
-    assert hit.meta["entry_px"] > hit.meta["sl_px"]
-
-
-def test_pierce_reject_long_early_then_confirmed() -> None:
-    early_bars = _pierce_from_above(reject=False)
-    early = detect_ema50(early_bars, "15m")
-    assert early is not None
-    assert early.meta["mode"] == "pierce_reject"
-    assert early.meta["direction"] == "up"
-    assert early.meta["stage"] == "early"
-    assert detect_ema50(early_bars, "15m", allow_early=False) is None
-
-    hit = detect_ema50(_pierce_from_above(reject=True), "15m")
-    assert hit is not None
-    assert hit.meta["mode"] == "pierce_reject"
-    assert hit.meta["direction"] == "up"
-    assert hit.meta["stage"] == "confirmed"
-    assert hit.meta["exit_style"] == "stretch_away"
-    assert "نفوذ" in hit.title_fa
-
-
-def test_pierce_reject_short_confirmed() -> None:
-    hit = detect_ema50(_pierce_from_below(reject=True), "15m")
-    assert hit is not None
-    assert hit.meta["mode"] == "pierce_reject"
-    assert hit.meta["direction"] == "down"
     assert hit.meta["stage"] == "confirmed"
 
 
 def test_steep_trend_long_early_then_confirmed() -> None:
-    early_bars = _steep_trend_long(signal=False)
+    early_bars = _steep_trend_long(bullish=False)
     early = detect_ema50(early_bars, "15m")
     assert early is not None
     assert early.meta["mode"] == "trend"
@@ -188,43 +129,40 @@ def test_steep_trend_long_early_then_confirmed() -> None:
     assert early.meta["stage"] == "early"
     assert detect_ema50(early_bars, "15m", allow_early=False) is None
 
-    hit = detect_ema50(_steep_trend_long(signal=True), "15m")
+    hit = detect_ema50(_steep_trend_long(bullish=True), "15m")
     assert hit is not None
     assert hit.meta["mode"] == "trend"
     assert hit.meta["direction"] == "up"
     assert hit.meta["stage"] == "confirmed"
-    assert hit.meta["exit_style"] == "ema_break"
+    assert hit.meta["exit_style"] == "three_closes"
     assert "روند" in hit.title_fa
 
 
 def test_steep_trend_short_confirmed() -> None:
-    hit = detect_ema50(_steep_trend_short(signal=True), "15m")
+    hit = detect_ema50(_steep_trend_short(bearish=True), "15m")
     assert hit is not None
     assert hit.meta["mode"] == "trend"
     assert hit.meta["direction"] == "down"
     assert hit.meta["stage"] == "confirmed"
+    assert hit.meta["exit_style"] == "three_closes"
 
 
 def test_flat_chop_is_ignored() -> None:
     closes = []
-    px = 100_000.0
     for i in range(90):
-        px = 100_000.0 + (80 if i % 2 == 0 else -80)
-        closes.append(px)
+        closes.append(100_000.0 + (80 if i % 2 == 0 else -80))
     assert detect_ema50(_bars_from_closes(closes), "15m") is None
 
 
-def test_stretch_fade_ema_touch_is_success() -> None:
-    bars = _stretch_above(signal=True)
+def test_flat_exit_on_first_ema_touch() -> None:
+    bars = _flat_away_above(wick=True)
     hit = detect_ema50(bars, "15m")
     assert hit is not None
-    assert hit.meta["exit_style"] == "ema_touch"
     idx = len(bars) - 1
     e = _ema_now(bars)
-    t0 = bars[-1].ts
     extra = [
         OhlcBar(
-            ts=t0 + timedelta(minutes=15),
+            ts=bars[-1].ts + timedelta(minutes=15),
             open=hit.meta["entry_px"],
             high=hit.meta["entry_px"] + 20,
             low=e - 30,
@@ -234,67 +172,17 @@ def test_stretch_fade_ema_touch_is_success() -> None:
     ]
     ok, note = evaluate_ema50_path(bars + extra, idx, hit)
     assert ok is True
-    assert hit.meta["path_pct"] > 0
     assert "لمس" in note
 
 
-def test_stretch_fade_sl_is_fail() -> None:
-    bars = _stretch_above(signal=True)
-    hit = detect_ema50(bars, "15m")
-    assert hit is not None
-    idx = len(bars) - 1
-    entry = hit.meta["entry_px"]
-    sl = hit.meta["sl_px"]
-    t0 = bars[-1].ts
-    extra = [
-        OhlcBar(
-            ts=t0 + timedelta(minutes=15),
-            open=entry,
-            high=sl + 20,
-            low=entry - 10,
-            close=sl,
-            volume=1.0,
-        )
-    ]
-    ok, note = evaluate_ema50_path(bars + extra, idx, hit)
-    assert ok is False
-    assert "حد ضرر" in note
-
-
-def test_pierce_reject_stretch_away_is_success() -> None:
-    bars = _pierce_from_above(reject=True)
+def test_trend_exit_needs_three_closes_against() -> None:
+    bars = _steep_trend_long(bullish=True)
     hit = detect_ema50(bars, "15m")
     assert hit is not None
     idx = len(bars) - 1
     e = _ema_now(bars)
     t0 = bars[-1].ts
-    extra = []
-    px = e + 80
-    for k in range(1, 6):
-        px += 40
-        extra.append(
-            OhlcBar(
-                ts=t0 + timedelta(minutes=15 * k),
-                open=px - 10,
-                high=px + 25,
-                low=px - 20,
-                close=px,
-                volume=1.0,
-            )
-        )
-    ok, note = evaluate_ema50_path(bars + extra, idx, hit)
-    assert ok is True
-    assert "فاصله" in note
-
-
-def test_trend_ema_break_closes_trade() -> None:
-    bars = _steep_trend_long(signal=True)
-    hit = detect_ema50(bars, "15m")
-    assert hit is not None
-    idx = len(bars) - 1
-    e = _ema_now(bars)
-    t0 = bars[-1].ts
-    extra = [
+    one = [
         OhlcBar(
             ts=t0 + timedelta(minutes=15),
             open=hit.meta["entry_px"],
@@ -304,15 +192,30 @@ def test_trend_ema_break_closes_trade() -> None:
             volume=1.0,
         )
     ]
+    ok_one, _ = evaluate_ema50_path(bars + one, idx, hit)
+    assert ok_one is None
+
+    extra = []
+    for k in range(1, 4):
+        extra.append(
+            OhlcBar(
+                ts=t0 + timedelta(minutes=15 * k),
+                open=e - 20,
+                high=e - 10,
+                low=e - 90,
+                close=e - 40,
+                volume=1.0,
+            )
+        )
     ok, note = evaluate_ema50_path(bars + extra, idx, hit)
     assert ok is False
-    assert "شکست" in note
+    assert "سه کلوز" in note
 
 
 def test_ema50_chart_renders() -> None:
     from optionflow.patterns.chart import render_pattern_chart
 
-    bars = _stretch_above(signal=True)
+    bars = _flat_away_above(wick=True)
     hit = detect_ema50(bars, "15m")
     assert hit is not None
     png = render_pattern_chart(bars, hit)
@@ -323,7 +226,7 @@ def test_ema50_chart_renders() -> None:
 def test_ema50_slice_after_is_double_before() -> None:
     from optionflow.patterns.chart import _slice_range
 
-    base = _stretch_above(signal=True)
+    base = _flat_away_above(wick=True)
     hit = detect_ema50(base, "15m")
     assert hit is not None
     sig = hit.meta["entry_index"]
