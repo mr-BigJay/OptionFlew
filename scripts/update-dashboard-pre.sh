@@ -14,18 +14,22 @@ die() { say "ERROR: $*"; exit 1; }
 
 cd "$INSTALL_DIR"
 
-say "Remote ref ro check kon (bayad ba GitHub yeki bashe):"
-git ls-remote "$REMOTE" "refs/heads/$BRANCH" | head -1 || true
+if [[ "${OPTIONFLOW_UPDATED:-}" != "1" ]]; then
+  say "Remote ref ro check kon (bayad ba GitHub yeki bashe):"
+  git ls-remote "$REMOTE" "refs/heads/$BRANCH" | head -1 || true
 
-say "Fetch $REMOTE $BRANCH ..."
-git fetch "$REMOTE" "$BRANCH"
+  say "Fetch $REMOTE $BRANCH ..."
+  git fetch "$REMOTE" "$BRANCH"
 
-LOCAL_REF="refs/remotes/$REMOTE/$BRANCH"
-git rev-parse "$LOCAL_REF" >/dev/null 2>&1 || die "Branch $BRANCH roye $REMOTE nist."
+  LOCAL_REF="refs/remotes/$REMOTE/$BRANCH"
+  git rev-parse "$LOCAL_REF" >/dev/null 2>&1 || die "Branch $BRANCH roye $REMOTE nist."
 
-git checkout -B "$BRANCH" "$LOCAL_REF"
-git reset --hard "$LOCAL_REF"
-say "HEAD: $(git log -1 --oneline)"
+  git checkout -B "$BRANCH" "$LOCAL_REF"
+  git reset --hard "$LOCAL_REF"
+  say "HEAD: $(git log -1 --oneline)"
+  # از اینجا اسکریپت جدید روی دیسک اجرا شود (نه دم اسکریپت قدیمی)
+  exec env OPTIONFLOW_UPDATED=1 bash "$INSTALL_DIR/scripts/update-dashboard-pre.sh"
+fi
 
 if [[ ! -d .venv ]]; then
   say "Sakhtan .venv ..."
@@ -41,17 +45,4 @@ if command -v systemctl >/dev/null 2>&1; then
   say "Service $SERVICE restart shod."
 fi
 
-if [[ -f .env ]]; then
-  set -a
-  # shellcheck disable=SC1091
-  source .env
-  set +a
-fi
-
-say "Preview (--simple --enriched):"
-OUT=$(.venv/bin/python -m optionflow --simple --enriched)
-echo "$OUT" | head -25
-echo "$OUT" | grep -qE "جمع‌بندی|نتیجه‌گیری" || die "Gozaresh format jadid nist — git log -1 ro check kon."
-echo "$OUT" | grep -q "حرکت اول" || die "Format prose-v3 (bakhsh-band) nist."
-echo "$OUT" | grep -q "زمینهٔ بازار" && die "Block zamane bazar (code ghadimi)."
-echo "$OUT" | grep -qE "مرحله اول|→" && die "Format titr-dar ya flsh — bayad prose-v3 bashe."
+say "OK — update tamam. HEAD: $(git log -1 --oneline)"
