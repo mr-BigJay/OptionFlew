@@ -70,7 +70,7 @@ def _slice_range(
     sig = max(0, min(sig, n - 1))
     meta = hit.meta
 
-    if hit.category == "triangle":
+    if hit.category in ("triangle", "trendline"):
         wo = meta.get("window_offset", max(0, n - 120))
         i0 = wo + meta.get("start_i", 0)
         i1 = wo + meta.get("end_i", sig)
@@ -301,6 +301,57 @@ def _render_price_pattern(
                         xytext=(last_x, last_y),
                         arrowprops=dict(arrowstyle="->", color="#ef5350", lw=1.8),
                     )
+
+    elif hit.category == "trendline":
+        wo = meta.get("window_offset", max(0, len(bars) - 120))
+        i0, i1 = meta["start_i"], meta["end_i"]
+        g0, g1 = wo + i0, wo + i1
+        if 0 <= g0 < len(bars) and 0 <= g1 < len(bars):
+            x0 = mdates.date2num(bars[g0].ts)
+            x1 = mdates.date2num(bars[g1].ts)
+            su, iu = meta.get("upper_slope"), meta.get("upper_intercept")
+            sl, il = meta.get("lower_slope"), meta.get("lower_intercept")
+            if su is not None and iu is not None:
+                ax.plot(
+                    [x0, x1],
+                    [su * i0 + iu, su * i1 + iu],
+                    color="#ffb74d",
+                    linewidth=2,
+                    label="مقاومت",
+                )
+            if sl is not None and il is not None:
+                ax.plot(
+                    [x0, x1],
+                    [sl * i0 + il, sl * i1 + il],
+                    color="#81c784",
+                    linewidth=2,
+                    label="حمایت",
+                )
+            for ti in meta.get("touch_highs") or []:
+                gi = wo + int(ti)
+                if 0 <= gi < len(bars):
+                    ax.scatter(
+                        [mdates.date2num(bars[gi].ts)],
+                        [bars[gi].high],
+                        c="#ffb74d",
+                        s=36,
+                        zorder=6,
+                        edgecolors="#fff",
+                        linewidths=0.4,
+                    )
+            for ti in meta.get("touch_lows") or []:
+                gi = wo + int(ti)
+                if 0 <= gi < len(bars):
+                    ax.scatter(
+                        [mdates.date2num(bars[gi].ts)],
+                        [bars[gi].low],
+                        c="#81c784",
+                        s=36,
+                        zorder=6,
+                        edgecolors="#fff",
+                        linewidths=0.4,
+                    )
+        _mark_early_entry(ax, bars, meta, start, end)
 
     elif hit.category == "flag":
         ps, pe = meta["pole_start"], meta["pole_end"]
