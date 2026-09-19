@@ -186,7 +186,7 @@ def _mark_trendline_path(
     meta: dict[str, Any],
     outcome_success: bool | None,
 ) -> None:
-    """سایه از سیگنال اولیه تا شکست معتبر + درصد مسیر، بدون شلوغی."""
+    """سایه از ورود تا خروج (۰.۵٪ سود یا شکست معتبر) + درصد مسیر."""
     entry_i = meta.get("entry_index", meta.get("early_index"))
     exit_i = meta.get("exit_index")
     pct = meta.get("path_pct")

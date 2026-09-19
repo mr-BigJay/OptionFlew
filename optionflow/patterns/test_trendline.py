@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from optionflow.patterns.backtest import evaluate_outcome
 from optionflow.patterns.chart import render_pattern_chart
 from optionflow.patterns.ohlc import OhlcBar
@@ -233,7 +235,7 @@ def test_first_valid_break_needs_two_closes() -> None:
 
 
 def test_support_path_profit_from_early_to_break() -> None:
-    """ورود روی سیگنال اولیه؛ خروج روی شکست؛ اگر قیمت بالاتر بسته شود موفق است."""
+    """ورود روی سیگنال اولیه؛ خروج در ۰.۵٪ سود قبل از شکست."""
     slope, intercept = 40.0, 97_200.0
     bars = _empty(110, 102_000)
     for i, b in enumerate(bars):
@@ -247,10 +249,27 @@ def test_support_path_profit_from_early_to_break() -> None:
     ok, note = evaluate_outcome(bars, 70, hit, "15m")
     assert ok is True
     assert hit.meta["entry_index"] == 40
-    assert hit.meta["exit_index"] == 93
-    assert hit.meta["path_pct"] > 0
-    assert "سیگنال اولیه" in note
-    assert "شکست معتبر" in note
+    assert hit.meta["exit_index"] == 44
+    assert hit.meta["path_pct"] == pytest.approx(0.005, rel=1e-4)
+    assert "۰.۵٪" in note
+
+
+def test_take_profit_wins_before_valid_break() -> None:
+    slope, intercept = 40.0, 97_200.0
+    bars = _empty(110, 102_000)
+    for i, b in enumerate(bars):
+        y = slope * i + intercept
+        px = y + 400
+        bars[i] = OhlcBar(b.ts, px, px + 50, px - 50, px, 1.0)
+    _set_close(bars, 40, slope * 40 + intercept + 80)
+    _set_close(bars, 92, 99_800)
+    _set_close(bars, 93, 99_800)
+    hit = _support_hit(early=40, slope=slope, intercept=intercept)
+    ok, note = evaluate_trendline_path(bars, 70, hit)
+    assert ok is True
+    assert hit.meta["exit_index"] == 44
+    assert hit.meta.get("exit_reason") == "بستن در سود ۰.۵٪"
+    assert "۰.۵٪" in note
 
 
 def test_support_path_loss_when_break_is_below_entry() -> None:
@@ -270,16 +289,13 @@ def test_support_path_loss_when_break_is_below_entry() -> None:
 
 
 def test_no_valid_break_is_unknown() -> None:
-    slope, intercept = 40.0, 97_200.0
-    bars = _empty(90, 102_000)
-    for i, b in enumerate(bars):
-        y = slope * i + intercept
-        px = y + 400
-        bars[i] = OhlcBar(b.ts, px, px + 50, px - 50, px, 1.0)
-    hit = _support_hit(early=40, slope=slope, intercept=intercept)
+    bars = _empty(90, 98_200)
+    for i in range(len(bars)):
+        _set_close(bars, i, 98_200)
+    hit = _support_hit(early=40, slope=0.0, intercept=98_000.0)
     ok, note = evaluate_trendline_path(bars, 70, hit)
     assert ok is None
-    assert "شکست معتبر" in note
+    assert "۰.۵٪" in note
     assert "exit_index" not in hit.meta
 
 
@@ -319,8 +335,8 @@ def test_resistance_short_path_profit() -> None:
     )
     ok, _note = evaluate_trendline_path(bars, 70, hit)
     assert ok is True
-    assert hit.meta["exit_index"] == 93
-    assert hit.meta["path_pct"] > 0
+    assert hit.meta["exit_index"] == 45
+    assert hit.meta["path_pct"] == pytest.approx(0.005, rel=1e-4)
 
 
 def test_trendline_chart_shows_path_without_error() -> None:
