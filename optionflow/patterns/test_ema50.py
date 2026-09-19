@@ -169,6 +169,63 @@ def test_ema50_sl_is_fail() -> None:
     assert "حد ضرر" in note
 
 
+def _mild_stretch_short(*, confirm: bool, broken: bool) -> list[OhlcBar]:
+    closes = [100_000.0 + 10.0 * i for i in range(80)]
+    bars = _bars_from_closes(closes)
+    e = ema([b.close for b in bars], 50)[-1]
+    assert e is not None
+    px = e + 200
+    for _ in range(4):
+        _append(bars, px - 15, px + 35, px - 25, px)
+        px += 25
+    if confirm:
+        _append(bars, px, px + 12, px - 90, px - 80)
+    if broken:
+        _append(bars, px - 80, px - 70, px - 170, px - 150)
+    return bars
+
+
+def _mild_stretch_long(*, confirm: bool, broken: bool) -> list[OhlcBar]:
+    closes = [100_000.0 + 10.0 * i for i in range(80)]
+    bars = _bars_from_closes(closes)
+    e = ema([b.close for b in bars], 50)[-1]
+    assert e is not None
+    px = e - 200
+    for _ in range(4):
+        _append(bars, px + 15, px + 25, px - 35, px)
+        px -= 25
+    if confirm:
+        _append(bars, px, px + 90, px - 12, px + 80)
+    if broken:
+        _append(bars, px + 80, px + 170, px + 70, px + 150)
+    return bars
+
+
+def test_mild_slope_short_reverts_to_ema() -> None:
+    early = detect_ema50(_mild_stretch_short(confirm=False, broken=False), "15m")
+    assert early is not None
+    assert early.meta["mode"] == "revert"
+    assert early.meta["direction"] == "down"
+    assert early.meta["stage"] == "early"
+    assert "برگشت" in early.title_fa
+
+    hit = detect_ema50(_mild_stretch_short(confirm=True, broken=True), "15m")
+    assert hit is not None
+    assert hit.meta["mode"] == "revert"
+    assert hit.meta["direction"] == "down"
+    assert hit.meta["stage"] == "confirmed"
+    assert hit.meta["tp_px"] < hit.meta["entry_px"]
+
+
+def test_mild_slope_long_reverts_to_ema() -> None:
+    hit = detect_ema50(_mild_stretch_long(confirm=True, broken=True), "15m")
+    assert hit is not None
+    assert hit.meta["mode"] == "revert"
+    assert hit.meta["direction"] == "up"
+    assert hit.meta["stage"] == "confirmed"
+    assert hit.meta["tp_px"] > hit.meta["entry_px"]
+
+
 def test_ema50_chart_renders() -> None:
     from optionflow.patterns.chart import render_pattern_chart
 
