@@ -4,18 +4,17 @@ import logging
 
 import httpx
 
-from app.storage import get_setting
-
 logger = logging.getLogger("optionflow.telegram")
 
 
-def telegram_enabled() -> bool:
-    return get_setting("telegram_enabled", "0") == "1"
-
-
-def send_telegram_message(text: str) -> tuple[bool, str]:
-    token = get_setting("telegram_bot_token", "").strip()
-    chat_id = get_setting("telegram_chat_id", "").strip()
+def send_telegram_message(
+    text: str,
+    *,
+    token: str = "",
+    chat_id: str = "",
+) -> tuple[bool, str]:
+    token = (token or "").strip()
+    chat_id = (chat_id or "").strip()
     if not token or not chat_id:
         return False, "توکن ربات یا Chat ID تنظیم نشده است."
     url = f"https://api.telegram.org/bot{token}/sendMessage"
@@ -33,9 +32,15 @@ def send_telegram_message(text: str) -> tuple[bool, str]:
         return False, str(e)
 
 
-def send_telegram_photo(png: bytes, *, caption: str = "") -> tuple[bool, str]:
-    token = get_setting("telegram_bot_token", "").strip()
-    chat_id = get_setting("telegram_chat_id", "").strip()
+def send_telegram_photo(
+    png: bytes,
+    *,
+    caption: str = "",
+    token: str = "",
+    chat_id: str = "",
+) -> tuple[bool, str]:
+    token = (token or "").strip()
+    chat_id = (chat_id or "").strip()
     if not token or not chat_id:
         return False, "توکن ربات یا Chat ID تنظیم نشده است."
     url = f"https://api.telegram.org/bot{token}/sendPhoto"
@@ -55,15 +60,31 @@ def send_telegram_photo(png: bytes, *, caption: str = "") -> tuple[bool, str]:
 
 
 def maybe_send_report(paragraph: str, chart_png: bytes | None = None) -> None:
-    if not telegram_enabled():
+    from app.auth_store import list_telegram_subscribers
+
+    subs = list_telegram_subscribers(scheduled_only=True)
+    if not subs:
         return
-    if get_setting("telegram_on_schedule", "1") != "1":
-        return
-    if chart_png:
-        ok, msg = send_telegram_photo(
-            chart_png,
-            caption="BTCUSDT — مسیر سناریو (Spot → B → C)",
-        )
+    for sub in subs:
+        token = sub.get("telegram_bot_token") or ""
+        chat_id = sub.get("telegram_chat_id") or ""
+        if chart_png:
+            ok, msg = send_telegram_photo(
+                chart_png,
+                caption="BTCUSDT — مسیر سناریو (Spot → B → C)",
+                token=token,
+                chat_id=chat_id,
+            )
+            if not ok:
+                logger.warning(
+                    "Telegram photo failed user=%s: %s",
+                    sub.get("username"),
+                    msg,
+                )
+        ok, msg = send_telegram_message(paragraph, token=token, chat_id=chat_id)
         if not ok:
-            logger.warning("Telegram photo failed: %s", msg)
-    send_telegram_message(paragraph)
+            logger.warning(
+                "Telegram text failed user=%s: %s",
+                sub.get("username"),
+                msg,
+            )

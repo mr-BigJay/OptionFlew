@@ -34,6 +34,7 @@ from app.auth_store import (
     create_user,
     list_users,
     set_user_password,
+    set_user_telegram,
 )
 from app.backtest_jobs import start_backtest_job
 from app.backtest_store import get_backtest_run, list_backtest_runs
@@ -48,13 +49,11 @@ from app.storage import (
     ensure_report_chart,
     get_latest_report,
     get_report,
-    get_setting,
     init_db,
     list_reports,
     report_has_chart,
-    set_setting,
 )
-from app.telegram_notify import send_telegram_message, send_telegram_photo, telegram_enabled
+from app.telegram_notify import send_telegram_message, send_telegram_photo
 from optionflow.patterns.history import cache_status
 from optionflow.patterns.service import (
     get_cached_scan,
@@ -736,16 +735,17 @@ async def patterns_refresh(tab: str = Form("triangle")):
 
 @app.get("/telegram", response_class=HTMLResponse)
 async def telegram_page(request: Request, msg: str = "", ok: str = ""):
+    user = current_user(request)
     return templates.TemplateResponse(
         request,
         "telegram.html",
         _page_ctx(
             request,
             active="telegram",
-            bot_token=get_setting("telegram_bot_token", ""),
-            chat_id=get_setting("telegram_chat_id", ""),
-            enabled=telegram_enabled(),
-            on_schedule=get_setting("telegram_on_schedule", "1") == "1",
+            bot_token=(user or {}).get("telegram_bot_token") or "",
+            chat_id=(user or {}).get("telegram_chat_id") or "",
+            enabled=bool((user or {}).get("telegram_enabled")),
+            on_schedule=bool((user or {}).get("telegram_on_schedule", True)),
             message=msg,
             success=ok == "1",
         ),
@@ -754,28 +754,45 @@ async def telegram_page(request: Request, msg: str = "", ok: str = ""):
 
 @app.post("/telegram")
 async def telegram_save(
+    request: Request,
     bot_token: str = Form(""),
     chat_id: str = Form(""),
     enabled: str = Form(""),
     on_schedule: str = Form(""),
 ):
-    set_setting("telegram_bot_token", bot_token.strip())
-    set_setting("telegram_chat_id", chat_id.strip())
-    set_setting("telegram_enabled", "1" if enabled == "on" else "0")
-    set_setting("telegram_on_schedule", "1" if on_schedule == "on" else "0")
+    user = current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    set_user_telegram(
+        user["id"],
+        bot_token=bot_token,
+        chat_id=chat_id,
+        enabled=enabled == "on",
+        on_schedule=on_schedule == "on",
+    )
     return RedirectResponse("/telegram?ok=1", status_code=303)
 
 
 @app.post("/telegram/test")
-async def telegram_test():
-    latest = get_latest_report()
+async def telegram_test(request: Request):
+    user = current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    token = user.get("telegram_bot_token") or ""
+    chat_id = user.get("telegram_chat_id") or ""
+    latest = get_latest_report(scheduled_only=_scheduled_only(request))
     if latest:
         ensure_report_chart(latest)
     text = latest["paragraph"] if latest else "تست OptionFlow — اتصال تلگرام برقرار است."
     if latest and latest.get("report_code") and report_has_chart(latest["report_code"]):
         path = data_dir() / "charts" / f"{latest['report_code']}.png"
-        send_telegram_photo(path.read_bytes(), caption="BTCUSDT — مسیر سناریو")
-    ok, msg = send_telegram_message(text)
+        send_telegram_photo(
+            path.read_bytes(),
+            caption="BTCUSDT — مسیر سناریو",
+            token=token,
+            chat_id=chat_id,
+        )
+    ok, msg = send_telegram_message(text, token=token, chat_id=chat_id)
     return RedirectResponse(
         f"/telegram?ok={'1' if ok else '0'}&msg={quote(msg)}",
         status_code=303,

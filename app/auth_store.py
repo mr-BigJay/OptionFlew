@@ -25,7 +25,11 @@ CREATE TABLE IF NOT EXISTS users (
     allow_enrich INTEGER NOT NULL DEFAULT 0,
     allow_stable INTEGER NOT NULL DEFAULT 0,
     must_change_password INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    telegram_bot_token TEXT NOT NULL DEFAULT '',
+    telegram_chat_id TEXT NOT NULL DEFAULT '',
+    telegram_enabled INTEGER NOT NULL DEFAULT 0,
+    telegram_on_schedule INTEGER NOT NULL DEFAULT 1
 );
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 """
@@ -120,6 +124,16 @@ def ensure_users_schema() -> None:
     init_db()
     with connect_users() as conn:
         conn.executescript(_USERS_SCHEMA)
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
+        alters = {
+            "telegram_bot_token": "TEXT NOT NULL DEFAULT ''",
+            "telegram_chat_id": "TEXT NOT NULL DEFAULT ''",
+            "telegram_enabled": "INTEGER NOT NULL DEFAULT 0",
+            "telegram_on_schedule": "INTEGER NOT NULL DEFAULT 1",
+        }
+        for name, ddl in alters.items():
+            if name not in cols:
+                conn.execute(f"ALTER TABLE users ADD COLUMN {name} {ddl}")
     _migrate_users_from_legacy_db()
 
 
@@ -272,10 +286,70 @@ def clear_must_change(user_id: int) -> None:
         )
 
 
+def set_user_telegram(
+    user_id: int,
+    *,
+    bot_token: str,
+    chat_id: str,
+    enabled: bool,
+    on_schedule: bool,
+) -> None:
+    ensure_users_schema()
+    with connect_users() as conn:
+        conn.execute(
+            """
+            UPDATE users SET
+                telegram_bot_token = ?,
+                telegram_chat_id = ?,
+                telegram_enabled = ?,
+                telegram_on_schedule = ?
+            WHERE id = ?
+            """,
+            (
+                bot_token.strip(),
+                chat_id.strip(),
+                1 if enabled else 0,
+                1 if on_schedule else 0,
+                user_id,
+            ),
+        )
+
+
+def list_telegram_subscribers(*, scheduled_only: bool = True) -> list[dict[str, Any]]:
+    """کاربرانی که تلگرام فعال دارند (برای ارسال گزارش زمان‌بندی)."""
+    ensure_users_schema()
+    with connect_users() as conn:
+        if scheduled_only:
+            rows = conn.execute(
+                """
+                SELECT id, username, telegram_bot_token, telegram_chat_id
+                FROM users
+                WHERE telegram_enabled = 1
+                  AND telegram_on_schedule = 1
+                  AND telegram_bot_token != ''
+                  AND telegram_chat_id != ''
+                """
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT id, username, telegram_bot_token, telegram_chat_id
+                FROM users
+                WHERE telegram_enabled = 1
+                  AND telegram_bot_token != ''
+                  AND telegram_chat_id != ''
+                """
+            ).fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
 def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
     d = dict(row)
     d["is_admin"] = bool(d.get("is_admin"))
     d["allow_enrich"] = bool(d.get("allow_enrich"))
     d["allow_stable"] = bool(d.get("allow_stable"))
     d["must_change_password"] = bool(d.get("must_change_password"))
+    d["telegram_enabled"] = bool(d.get("telegram_enabled"))
+    if "telegram_on_schedule" in d:
+        d["telegram_on_schedule"] = bool(d.get("telegram_on_schedule"))
     return d
