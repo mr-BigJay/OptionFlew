@@ -17,7 +17,11 @@ from optionflow.patterns.history import (
     slice_with_warmup,
 )
 from optionflow.patterns.ohlc import OhlcBar
-from optionflow.patterns.trendline import detect_channel, detect_trendline
+from optionflow.patterns.trendline import (
+    detect_channel,
+    detect_trendline,
+    evaluate_trendline_path,
+)
 from optionflow.patterns.triangle import detect_triangle
 from optionflow.patterns.types import PatternHit
 
@@ -144,6 +148,8 @@ def evaluate_outcome(
     hit: PatternHit,
     timeframe: str,
 ) -> tuple[bool | None, str]:
+    if hit.category == "trendline":
+        return evaluate_trendline_path(bars, idx, hit)
     direction = expected_direction(hit)
     if not direction:
         return None, "جهت پیش‌بینی مشخص نشد."
@@ -264,12 +270,21 @@ def run_backtest(
         elif success is False:
             result.fail_count += 1
         if n < max_charts:
-            sig_ix = hit.meta.get("confirm_index", idx)
+            if hit.category == "trendline":
+                sig_ix = hit.meta.get("entry_index", hit.meta.get("early_index", idx))
+                exit_i = hit.meta.get("exit_index")
+                if isinstance(exit_i, int) and isinstance(sig_ix, int):
+                    fwd = max(6, exit_i - sig_ix + 8)
+                else:
+                    fwd = FORWARD_BARS.get(timeframe, 18)
+            else:
+                sig_ix = hit.meta.get("confirm_index", idx)
+                fwd = FORWARD_BARS.get(timeframe, 18)
             png = render_pattern_chart(
                 full,
                 hit,
                 signal_index=sig_ix,
-                forward_bars=FORWARD_BARS.get(timeframe, 18),
+                forward_bars=fwd,
                 outcome_success=success,
             )
             if png:

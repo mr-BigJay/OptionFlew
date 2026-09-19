@@ -102,6 +102,14 @@ def _closes_beyond(
     return n
 
 
+def _beyond_line(
+    bar: OhlcBar, *, line: float, side: str, buf: float
+) -> bool:
+    if side == "low":
+        return bar.close < line - buf
+    return bar.close > line + buf
+
+
 def _consecutive_break(
     bars: list[OhlcBar],
     *,
@@ -116,15 +124,96 @@ def _consecutive_break(
     last = min(end_i, len(bars) - 2)
     for i in range(start_i, last + 1):
         line = _y(slope, intercept, i)
-        hit = (
-            bars[i].close < line - buf
-            if side == "low"
-            else bars[i].close > line + buf
-        )
+        hit = _beyond_line(bar=bars[i], line=line, side=side, buf=buf)
         run = run + 1 if hit else 0
         if run >= 2:
             return True
     return False
+
+
+def first_valid_break(
+    bars: list[OhlcBar],
+    *,
+    from_i: int,
+    window_offset: int,
+    slope: float,
+    intercept: float,
+    side: str,
+    buf: float,
+    run_need: int = 2,
+) -> int | None:
+    """اولین کندلی که شکست معتبر را کامل می‌کند (دو کلوز متوالی آن‌طرف خط)."""
+    run = 0
+    start = max(0, from_i)
+    for i in range(start, len(bars)):
+        line = _y(slope, intercept, i - window_offset)
+        hit = _beyond_line(bar=bars[i], line=line, side=side, buf=buf)
+        run = run + 1 if hit else 0
+        if run >= run_need:
+            return i
+    return None
+
+
+def evaluate_trendline_path(
+    bars: list[OhlcBar],
+    idx: int,
+    hit: PatternHit,
+) -> tuple[bool | None, str]:
+    """ورود = سیگنال اولیه؛ خروج = شکست معتبر. بازده مسیر را در meta می‌نویسد."""
+    meta = hit.meta
+    side = meta.get("side")
+    if side == "low":
+        slope, intercept = meta.get("lower_slope"), meta.get("lower_intercept")
+    elif side == "high":
+        slope, intercept = meta.get("upper_slope"), meta.get("upper_intercept")
+    else:
+        slope = intercept = None
+    if slope is None or intercept is None or side not in ("low", "high"):
+        return None, "خط ترندلاین برای ارزیابی مسیر ناقص است."
+
+    wo = int(meta.get("window_offset") or 0)
+    early = meta.get("early_index")
+    entry_i = early if isinstance(early, int) else idx
+    entry_i = max(0, min(entry_i, idx, len(bars) - 1))
+    if idx + 1 >= len(bars):
+        return None, "کندل کافی بعد از سیگنال برای شکست معتبر نبود."
+
+    atr_vals = atr(bars[: idx + 1])
+    atr_now = next((v for v in reversed(atr_vals) if v is not None), None)
+    if atr_now is None or atr_now <= 0:
+        atr_now = max(abs(bars[idx].close) * 0.004, 1.0)
+    buf = atr_now * 0.5
+
+    exit_i = first_valid_break(
+        bars,
+        from_i=idx + 1,
+        window_offset=wo,
+        slope=float(slope),
+        intercept=float(intercept),
+        side=side,
+        buf=buf,
+    )
+    if exit_i is None:
+        return None, "شکست معتبر بعد از سیگنال اولیه دیده نشد."
+
+    entry_px = bars[entry_i].close
+    exit_px = bars[exit_i].close
+    if entry_px <= 0:
+        return None, "قیمت ورود نامعتبر است."
+    if side == "low":
+        pct = (exit_px - entry_px) / entry_px
+    else:
+        pct = (entry_px - exit_px) / entry_px
+
+    meta["entry_index"] = entry_i
+    meta["exit_index"] = exit_i
+    meta["path_pct"] = pct
+    ok = pct > 0
+    note = (
+        f"بازده مسیر سیگنال اولیه تا شکست معتبر: {pct*100:+.2f}٪ "
+        f"({entry_px:,.0f} → {exit_px:,.0f})"
+    )
+    return ok, note
 
 
 def _deep_pierce(
