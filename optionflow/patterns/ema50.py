@@ -11,7 +11,7 @@ STEEP_SLOPE = {"5m": 0.0022, "15m": 0.003, "1h": 0.0045, "4h": 0.006, "1d": 0.00
 CHOP_BARS = {"5m": 30, "15m": 24, "1h": 20, "4h": 16, "1d": 12}
 MAX_CROSSES = {"5m": 5, "15m": 4, "1h": 4, "4h": 3, "1d": 3}
 STRETCH_MIN = 6  # بیشتر از ۵ کندل فاصله
-AWAY_EXIT = 5  # بیش از ۴ کندل فاصله → بستن نوع ۲
+TREND_EXIT_CLOSES = 3
 NEAR = 0.15
 
 
@@ -45,38 +45,18 @@ def _is_chop(
     return crosses >= MAX_CROSSES.get(timeframe, 4)
 
 
-def _shadows(bar: OhlcBar) -> tuple[float, float, float, float]:
-    rng = max(bar.high - bar.low, 1e-9)
+def _wick_and_body(bar: OhlcBar) -> tuple[float, float, float]:
     body = abs(bar.close - bar.open)
     upper = bar.high - max(bar.open, bar.close)
     lower = min(bar.open, bar.close) - bar.low
-    return rng, body, upper, lower
+    return body, upper, lower
 
 
-def _large_upper_shadow(bar: OhlcBar) -> bool:
-    rng, body, upper, _lower = _shadows(bar)
-    return upper >= rng * 0.45 and upper >= body
-
-
-def _large_lower_shadow(bar: OhlcBar) -> bool:
-    rng, body, _upper, lower = _shadows(bar)
-    return lower >= rng * 0.45 and lower >= body
-
-
-def _bullish_engulf(prev: OhlcBar, curr: OhlcBar) -> bool:
-    if curr.close <= curr.open or prev.close >= prev.open:
-        return False
-    return curr.close >= max(prev.open, prev.close) and curr.open <= min(
-        prev.open, prev.close
-    )
-
-
-def _bearish_engulf(prev: OhlcBar, curr: OhlcBar) -> bool:
-    if curr.close >= curr.open or prev.close <= prev.open:
-        return False
-    return curr.close <= min(prev.open, prev.close) and curr.open >= max(
-        prev.open, prev.close
-    )
+def _rejection_wick(bar: OhlcBar, *, above: bool) -> bool:
+    """ویک بیرونی (دور از EMA) از بادی بزرگ‌تر است."""
+    body, upper, lower = _wick_and_body(bar)
+    wick = upper if above else lower
+    return wick > body and wick > 0
 
 
 def _side_of(close: float, ema_v: float, atr_now: float) -> str | None:
@@ -109,12 +89,6 @@ def _away_run(
 
 def _touches_ema(bar: OhlcBar, ema_v: float) -> bool:
     return bar.low <= ema_v <= bar.high
-
-
-def _pierces_from(bar: OhlcBar, ema_v: float, side: str) -> bool:
-    if side == "above":
-        return bar.low < ema_v and bar.close > ema_v - (bar.high - bar.low) * 0.05
-    return bar.high > ema_v and bar.close < ema_v + (bar.high - bar.low) * 0.05
 
 
 def ema50_slice(n: int, sig: int, pullback: int, early: int) -> tuple[int, int]:
@@ -157,19 +131,13 @@ def _setup(
     }
 
 
-def _reversal_against(side: str, prev: OhlcBar, last: OhlcBar) -> bool:
-    if side == "above":
-        return _large_upper_shadow(last) or _bearish_engulf(prev, last)
-    return _large_lower_shadow(last) or _bullish_engulf(prev, last)
-
-
-def _stretch_fade(
+def _flat_stretch(
     bars: list[OhlcBar],
     ema_vals: list[float | None],
     atr_now: float,
     n: int,
 ) -> dict | None:
-    """نوع ۱: بیش از ۵ کندل فاصله + شدو بزرگ/اینگالف → ورود با کلوز، خروج با لمس EMA."""
+    """شیب خیلی کم: بیش از ۵ کندل فاصله + ویک > بادی → ورود با کلوز، خروج با لمس EMA."""
     e = ema_vals[n - 1]
     if e is None:
         return None
@@ -180,140 +148,44 @@ def _stretch_fade(
     run = _away_run(bars, ema_vals, end_i=n - 1, atr_now=atr_now, side=side)
     if run < STRETCH_MIN:
         return None
-    prev = bars[n - 2]
     direction = "down" if side == "above" else "up"
-    sl = (
-        last.high + atr_now * 0.08
-        if direction == "down"
-        else last.low - atr_now * 0.08
-    )
-    signal = _reversal_against(side, prev, last)
+    sl = last.high + atr_now * 0.08 if direction == "down" else last.low - atr_now * 0.08
+    wick_ok = _rejection_wick(last, above=(side == "above"))
     return _setup(
-        mode="stretch_fade",
+        mode="flat",
         direction=direction,
         entry_i=n - 1,
         pullback_i=max(EMA_LEN, n - run),
         entry_px=last.close,
         sl_px=sl,
         exit_style="ema_touch",
-        stage="confirmed" if signal else "early",
+        stage="confirmed" if wick_ok else "early",
     )
 
 
-def _pierce_reject(
+def _steep_trend(
     bars: list[OhlcBar],
     ema_vals: list[float | None],
     atr_now: float,
     n: int,
-) -> dict | None:
-    """نوع ۲: نفوذ به EMA بعد از چند کندل، جمع‌شدن با شدو/اینگالف؛ خروج با بیش از ۴ کندل فاصله."""
-    if n < EMA_LEN + 4:
-        return None
-    last = bars[n - 1]
-    e = ema_vals[n - 1]
-    if e is None:
-        return None
-    prev = bars[n - 2]
-    # چند کندل یک‌طرف خط، بعد نفوذ، بعد جمع‌شدن با شدو/اینگالف
-    for side, direction, reject in (
-        (
-            "above",
-            "up",
-            _large_lower_shadow(last) or _bullish_engulf(prev, last),
-        ),
-        (
-            "below",
-            "down",
-            _large_upper_shadow(last) or _bearish_engulf(prev, last),
-        ),
-    ):
-        pre = _away_run(bars, ema_vals, end_i=n - 2, atr_now=atr_now, side=side)
-        if pre < 3:
-            continue
-        pierced = False
-        for j in range(n - 1, max(EMA_LEN, n - 4) - 1, -1):
-            ej = ema_vals[j]
-            if ej is not None and _pierces_from(bars[j], ej, side):
-                pierced = True
-                break
-        if not pierced:
-            continue
-        if not reject:
-            return _setup(
-                mode="pierce_reject",
-                direction=direction,
-                entry_i=n - 1,
-                pullback_i=n - 1 - pre,
-                entry_px=last.close,
-                sl_px=(
-                    last.low - atr_now * 0.08
-                    if direction == "up"
-                    else last.high + atr_now * 0.08
-                ),
-                exit_style="stretch_away",
-                stage="early",
-            )
-        # جمع شد: کلوز باید سمت اولیه بماند
-        last_side = _side_of(last.close, e, atr_now)
-        if last_side not in (side, None):
-            continue
-        return _setup(
-            mode="pierce_reject",
-            direction=direction,
-            entry_i=n - 1,
-            pullback_i=n - 1 - pre,
-            entry_px=last.close,
-            sl_px=(
-                min(last.low, prev.low) - atr_now * 0.08
-                if direction == "up"
-                else max(last.high, prev.high) + atr_now * 0.08
-            ),
-            exit_style="stretch_away",
-            stage="confirmed",
-        )
-    return None
-
-
-def _trend_follow(
-    bars: list[OhlcBar],
-    ema_vals: list[float | None],
-    atr_now: float,
-    n: int,
-    timeframe: str,
     slope: float,
 ) -> dict | None:
-    """نوع ۳: شیب شدید → ورود همگام با ترند روی شدو/اینگالف نزدیک خط."""
-    steep = STEEP_SLOPE.get(timeframe, 0.003)
-    if abs(slope) < steep:
-        return None
+    """شیب شدید: ورود همگام با ترند (نزدیک خط)، خروج با ۳ کلوز آن‌طرف EMA."""
     e = ema_vals[n - 1]
     if e is None:
         return None
     last = bars[n - 1]
-    prev = bars[n - 2]
     near = atr_now * 1.15
     if slope > 0:
         if last.close < e - atr_now * 0.35:
             return None
         touched = any(
-            ema_vals[i] is not None
-            and _touches_ema(bars[i], float(ema_vals[i]))
+            ema_vals[i] is not None and _touches_ema(bars[i], float(ema_vals[i]))
             for i in range(max(EMA_LEN, n - 6), n)
         )
         if not touched and abs(last.low - e) > near:
             return None
-        signal = _large_lower_shadow(last) or _bullish_engulf(prev, last)
-        if not signal:
-            return _setup(
-                mode="trend",
-                direction="up",
-                entry_i=n - 1,
-                pullback_i=n - 4,
-                entry_px=last.close,
-                sl_px=min(last.low, e) - atr_now * 0.08,
-                exit_style="ema_break",
-                stage="early",
-            )
+        with_trend = last.close > last.open
         return _setup(
             mode="trend",
             direction="up",
@@ -321,8 +193,8 @@ def _trend_follow(
             pullback_i=n - 4,
             entry_px=last.close,
             sl_px=min(last.low, e) - atr_now * 0.08,
-            exit_style="ema_break",
-            stage="confirmed",
+            exit_style="three_closes",
+            stage="confirmed" if with_trend else "early",
         )
     if last.close > e + atr_now * 0.35:
         return None
@@ -332,18 +204,7 @@ def _trend_follow(
     )
     if not touched and abs(last.high - e) > near:
         return None
-    signal = _large_upper_shadow(last) or _bearish_engulf(prev, last)
-    if not signal:
-        return _setup(
-            mode="trend",
-            direction="down",
-            entry_i=n - 1,
-            pullback_i=n - 4,
-            entry_px=last.close,
-            sl_px=max(last.high, e) + atr_now * 0.08,
-            exit_style="ema_break",
-            stage="early",
-        )
+    with_trend = last.close < last.open
     return _setup(
         mode="trend",
         direction="down",
@@ -351,8 +212,8 @@ def _trend_follow(
         pullback_i=n - 4,
         entry_px=last.close,
         sl_px=max(last.high, e) + atr_now * 0.08,
-        exit_style="ema_break",
-        stage="confirmed",
+        exit_style="three_closes",
+        stage="confirmed" if with_trend else "early",
     )
 
 
@@ -369,24 +230,25 @@ def _to_hit(
     stage = setup["stage"]
     role = "لانگ" if direction == "up" else "شورت"
     titles = {
-        "stretch_fade": f"EMA50 فاصله {role}",
-        "pierce_reject": f"EMA50 رد نفوذ {role}",
+        "flat": f"EMA50 فاصله {role}",
         "trend": f"EMA50 روند {role}",
     }
     exits = {
         "ema_touch": "خروج با اولین لمس EMA50",
-        "stretch_away": "خروج وقتی بیش از ۴ کندل از EMA50 فاصله بگیرد",
-        "ema_break": "خروج با بسته شدن آن‌طرف EMA50",
+        "three_closes": "خروج با سه کلوز آن‌طرف EMA50",
     }
     last = bars[-1]
     if stage == "early":
         status = "سیگنال اولیه"
-        forecast = f"منتظر شدو بزرگ یا اینگالف برای ورود {role}."
+        if mode == "flat":
+            forecast = "منتظر کندل با ویک بزرگ‌تر از بادی برای ورود روی بسته شدن."
+        else:
+            forecast = f"شیب شدید است؛ منتظر کندل همگام با ترند برای ورود {role}."
     else:
         status = "تأییدشده"
         forecast = (
             f"ورود با بسته شدن {setup['entry_px']:,.0f}. "
-            f"{exits[setup['exit_style']]}. حد ضرر {setup['sl_px']:,.0f}."
+            f"{exits[setup['exit_style']]}."
         )
     summary = f"{titles[mode]}. قیمت {last.close:,.0f}."
     return PatternHit(
@@ -442,38 +304,19 @@ def detect_ema50(
     if slope is None:
         return None
 
-    candidates = [
-        _trend_follow(bars, ema_vals, atr_now, n, timeframe, slope),
-        _pierce_reject(bars, ema_vals, atr_now, n),
-        _stretch_fade(bars, ema_vals, atr_now, n),
-    ]
-    best = None
-    for setup in candidates:
-        if setup is None:
-            continue
-        if setup["stage"] == "early" and not allow_early:
-            continue
-        if not _visible(setup["entry_index"], n, int(setup["pullback_index"])):
-            continue
-        if best is None:
-            best = setup
-            continue
-        # تأییدشده بر اولیه؛ بین دو تأیید، ترند اولویت دارد
-        rank = {"trend": 3, "pierce_reject": 2, "stretch_fade": 1}
-        if setup["stage"] == "confirmed" and best["stage"] != "confirmed":
-            best = setup
-        elif setup["stage"] == best["stage"] and rank[setup["mode"]] > rank[best["mode"]]:
-            best = setup
+    steep = STEEP_SLOPE.get(timeframe, 0.003)
+    if abs(slope) >= steep:
+        setup = _steep_trend(bars, ema_vals, atr_now, n, slope)
+    else:
+        setup = _flat_stretch(bars, ema_vals, atr_now, n)
 
-    if best is None:
+    if setup is None:
         return None
-    return _to_hit(
-        bars,
-        timeframe,
-        best,
-        ema_now=ema_vals[-1],
-        slope=slope,
-    )
+    if setup["stage"] == "early" and not allow_early:
+        return None
+    if not _visible(setup["entry_index"], n, int(setup["pullback_index"])):
+        return None
+    return _to_hit(bars, timeframe, setup, ema_now=ema_vals[-1], slope=slope)
 
 
 def evaluate_ema50_path(
@@ -484,50 +327,30 @@ def evaluate_ema50_path(
     meta = hit.meta
     direction = meta.get("direction")
     entry = meta.get("entry_px")
-    sl = meta.get("sl_px")
     style = meta.get("exit_style") or "ema_touch"
-    if direction not in ("up", "down") or not entry or not sl:
+    if direction not in ("up", "down") or not entry:
         return None, "سطوح ورود/خروج EMA50 ناقص است."
     if idx + 1 >= len(bars):
         return None, "کندل کافی بعد از ورود برای ارزیابی نبود."
 
     ema_vals = ema([b.close for b in bars], EMA_LEN)
-    atr_vals = atr(bars)
-    atr_now = next((v for v in reversed(atr_vals) if v is not None), 1.0)
     exit_i = None
     exit_px = None
     reason = ""
-    away = 0
+    against = 0
     for i in range(idx + 1, len(bars)):
         b = bars[i]
         e = ema_vals[i]
-        hit_sl = b.low <= sl if direction == "up" else b.high >= sl
-        if hit_sl:
-            exit_i, exit_px, reason = i, sl, "حد ضرر"
-            break
         if e is None:
             continue
         if style == "ema_touch" and _touches_ema(b, e):
-            exit_i, exit_px, reason = i, e, "لمس EMA50"
+            exit_i, exit_px, reason = i, float(e), "لمس EMA50"
             break
-        if style == "ema_break":
-            crossed = (
-                b.close < e - abs(e) * 1e-6
-                if direction == "up"
-                else b.close > e + abs(e) * 1e-6
-            )
-            if crossed:
-                exit_i, exit_px, reason = i, b.close, "شکست EMA50"
-                break
-        if style == "stretch_away":
-            side = "above" if direction == "up" else "below"
-            pad = atr_vals[i] if atr_vals[i] is not None else atr_now
-            if _side_of(b.close, e, float(pad)) == side:
-                away += 1
-            else:
-                away = 0
-            if away >= AWAY_EXIT:
-                exit_i, exit_px, reason = i, b.close, "فاصله بیش از ۴ کندل"
+        if style == "three_closes":
+            wrong = b.close < e if direction == "up" else b.close > e
+            against = against + 1 if wrong else 0
+            if against >= TREND_EXIT_CLOSES:
+                exit_i, exit_px, reason = i, b.close, "سه کلوز آن‌طرف EMA50"
                 break
     if exit_i is None or exit_px is None:
         return None, "شرط خروج هنوز دیده نشد."
