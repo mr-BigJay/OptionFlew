@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}ربات تلگرام — OptionFlow{% endblock %}
+{% block header %}ربات تلگرام پلتفرم{% endblock %}
+{% block subheader %}
+<p class="backtest-subnav">
+  <a href="/bigjay_controller">پنل ادمین</a>
+  <a href="/bigjay_controller/users">کاربران</a>
+  <a href="/telegram">اتصال حساب من</a>
+</p>
+{% endblock %}
+
+{% block content %}
+{% if message %}
+<p class="flash {% if success %}ok{% else %}err{% endif %}">{{ message }}</p>
+{% endif %}
+
+<p class="hint" style="margin-top:0;">فقط ادمین یک‌بار توکن را از ‎@BotFather‎ می‌گذارد. کاربران توکن و Chat ID وارد نمی‌کنند؛ از صفحهٔ تلگرام روی اتصال می‌زنند و Start را در همین ربات می‌زنند.</p>
+<p class="hint">روی یک VPS با دو دامنه، توکن در دیتابیس مشترک ذخیره می‌شود. وب‌هوک روی <strong>همین</strong> دامنه ثبت می‌شود — ربات را از پنلی ذخیره کنید که دامنهٔ عمومی دارد.</p>
+
+<form class="card form" method="post" action="/bigjay_controller/telegram">
+  {% if bot_username %}
+  <p class="tg-status ok">ربات فعال: <strong dir="ltr">@{{ bot_username }}</strong></p>
+  {% elif has_token %}
+  <p class="tg-status">توکن ذخیره شده ولی نام ربات نامشخص است.</p>
+  {% else %}
+  <p class="muted">هنوز رباتی تنظیم نشده.</p>
+  {% endif %}
+
+  <label for="bot_token">Bot Token از ‎@BotFather‎</label>
+  <input id="bot_token" name="bot_token" type="password" value="" placeholder="{% if has_token %}خالی بگذارید تا توکن فعلی بماند{% else %}123456:ABC...{% endif %}" autocomplete="off">
+
+  {% if public_url %}
+  <p class="hint" dir="ltr">PUBLIC_URL: {{ public_url }}</p>
+  {% else %}
+  <p class="flash err">OPTIONFLOW_PUBLIC_URL در .env خالی است؛ بدون آن وب‌هوک ثبت نمی‌شود و کاربران نمی‌توانند وصل شوند.</p>
+  {% endif %}
+  {% if hook_url %}
+  <p class="hint" dir="ltr">Webhook: {{ hook_url }}</p>
+  {% endif %}
+
+  <button type="submit" class="btn primary full">{% if has_token %}به‌روزرسانی ربات و وب‌هوک{% else %}ذخیره و ثبت وب‌هوک{% endif %}</button>
+</form>
+
+<h3 class="bt-section-title">کاربران وصل‌شده</h3>
+<ul class="bt-run-list">
+  {% for u in subscribers %}
+  <li class="card" style="margin-bottom:10px;padding:12px;">
+    <div><strong>{{ u.username }}</strong></div>
+    <div class="muted" style="font-size:0.8rem;margin:6px 0;">
+      Chat ID: <bdi dir="ltr">{{ u.telegram_chat_id }}</bdi>
+      · زمان‌بندی: {{ '✓' if u.telegram_on_schedule else '—' }}
+    </div>
+  </li>
+  {% else %}
+  <li class="empty">هنوز کسی به ربات وصل نشده.</li>
+  {% endfor %}
+</ul>
+{% endblock %}

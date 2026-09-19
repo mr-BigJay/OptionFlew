@@ -23,6 +23,49 @@ class _LegPlan:
     second_dir: str
 
 
+@dataclass
+class ScenarioPlan:
+    """مسیر واحد گزارش (همان B/C متن سناریو)."""
+
+    spot: float
+    b: int
+    c: int
+    first_dir: str
+    second_dir: str
+    two_legs: bool
+
+
+def resolve_scenario_plan(
+    main: FlowAnalysis,
+    *,
+    support: int,
+    target: int,
+    path_primary: MovementPath | None,
+    path_alternate: MovementPath | None,
+) -> ScenarioPlan | None:
+    spot = round(main.spot, 2)
+    path = _resolve_path_for_narrative(
+        main,
+        support=support,
+        target=target,
+        spot=spot,
+        path_primary=path_primary,
+        path_alternate=path_alternate,
+        ctx=None,
+    )
+    if not path.legs:
+        return None
+    plan = _normalize_bc(path, support=support, target=target)
+    return ScenarioPlan(
+        spot=spot,
+        b=plan.b,
+        c=plan.c,
+        first_dir=plan.first_dir,
+        second_dir=plan.second_dir,
+        two_legs=len(path.legs) >= 2,
+    )
+
+
 def _normalize_bc(
     path: MovementPath,
     *,
