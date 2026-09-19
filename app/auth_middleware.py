@@ -46,7 +46,7 @@ def logout_session(request: Request) -> None:
 
 
 def _is_public(path: str) -> bool:
-    if path.startswith("/static"):
+    if path.startswith("/static") or path.startswith("/telegram/hook"):
         return True
     return path in (
         "/login",

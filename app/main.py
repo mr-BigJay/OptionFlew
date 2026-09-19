@@ -32,9 +32,14 @@ from app.auth_store import (
     bootstrap_admin,
     clear_must_change,
     create_user,
+    disconnect_telegram,
+    get_or_issue_telegram_link_code,
+    get_platform_bot,
+    list_telegram_subscribers,
     list_users,
+    save_platform_bot,
     set_user_password,
-    set_user_telegram,
+    set_user_telegram_prefs,
 )
 from app.backtest_jobs import start_backtest_job
 from app.backtest_store import get_backtest_run, list_backtest_runs
@@ -53,7 +58,14 @@ from app.storage import (
     list_reports,
     report_has_chart,
 )
-from app.telegram_notify import send_telegram_message, send_telegram_photo
+from app.telegram_notify import (
+    handle_bot_update,
+    send_telegram_message,
+    send_telegram_photo,
+    telegram_get_me,
+    telegram_set_webhook,
+    webhook_url,
+)
 from optionflow.patterns.history import cache_status
 from optionflow.patterns.service import (
     get_cached_scan,
@@ -474,6 +486,63 @@ async def admin_run_now():
     return RedirectResponse("/bigjay_controller?msg=run", status_code=303)
 
 
+@app.get("/bigjay_controller/telegram", response_class=HTMLResponse)
+async def admin_telegram_page(request: Request, msg: str = "", ok: str = ""):
+    bot = get_platform_bot()
+    return templates.TemplateResponse(
+        request,
+        "admin/telegram.html",
+        _page_ctx(
+            request,
+            active="admin",
+            bot_username=bot.get("bot_username") or "",
+            has_token=bool(bot.get("bot_token")),
+            hook_url=webhook_url(bot.get("webhook_secret") or ""),
+            public_url=os.environ.get("OPTIONFLOW_PUBLIC_URL", "").strip(),
+            subscribers=list_telegram_subscribers(scheduled_only=False),
+            message=msg,
+            success=ok == "1",
+        ),
+    )
+
+
+@app.post("/bigjay_controller/telegram")
+async def admin_telegram_save(bot_token: str = Form("")):
+    token = bot_token.strip()
+    current = get_platform_bot()
+    if not token:
+        token = current.get("bot_token") or ""
+    if not token:
+        return RedirectResponse(
+            f"/bigjay_controller/telegram?ok=0&msg={quote('توکن ربات را وارد کنید.')}",
+            status_code=303,
+        )
+    ok, username_or_err = telegram_get_me(token)
+    if not ok:
+        return RedirectResponse(
+            f"/bigjay_controller/telegram?ok=0&msg={quote(str(username_or_err))}",
+            status_code=303,
+        )
+    save_platform_bot(bot_token=token, bot_username=str(username_or_err))
+    bot = get_platform_bot()
+    hook = webhook_url(bot.get("webhook_secret") or "")
+    if not hook:
+        return RedirectResponse(
+            f"/bigjay_controller/telegram?ok=0&msg={quote('توکن ذخیره شد ولی OPTIONFLOW_PUBLIC_URL خالی است؛ وب‌هوک ثبت نشد.')}",
+            status_code=303,
+        )
+    ok_hook, hook_msg = telegram_set_webhook(token, hook)
+    if not ok_hook:
+        return RedirectResponse(
+            f"/bigjay_controller/telegram?ok=0&msg={quote(str(hook_msg))}",
+            status_code=303,
+        )
+    return RedirectResponse(
+        f"/bigjay_controller/telegram?ok=1&msg={quote('ربات @' + str(username_or_err) + ' ذخیره و وب‌هوک ثبت شد.')}",
+        status_code=303,
+    )
+
+
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
     sched = _scheduled_only(request)
@@ -733,18 +802,49 @@ async def patterns_refresh(tab: str = Form("triangle")):
     return RedirectResponse(f"/patterns?tab={tab}", status_code=303)
 
 
+@app.post("/telegram/hook/{secret}")
+async def telegram_hook(secret: str, request: Request):
+    bot = get_platform_bot()
+    expected = bot.get("webhook_secret") or ""
+    if (
+        not expected
+        or len(secret) != len(expected)
+        or not secrets.compare_digest(secret, expected)
+    ):
+        return JSONResponse({"ok": False}, status_code=404)
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    if isinstance(payload, dict):
+        handle_bot_update(payload)
+    return {"ok": True}
+
+
 @app.get("/telegram", response_class=HTMLResponse)
 async def telegram_page(request: Request, msg: str = "", ok: str = ""):
     user = current_user(request)
+    bot = get_platform_bot()
+    bot_username = bot.get("bot_username") or ""
+    connected = bool(
+        user
+        and user.get("telegram_enabled")
+        and user.get("telegram_chat_id")
+    )
+    deep_link = ""
+    if user and bot_username and not connected:
+        code = get_or_issue_telegram_link_code(user["id"])
+        deep_link = f"https://t.me/{bot_username}?start={code}"
     return templates.TemplateResponse(
         request,
         "telegram.html",
         _page_ctx(
             request,
             active="telegram",
-            bot_token=(user or {}).get("telegram_bot_token") or "",
-            chat_id=(user or {}).get("telegram_chat_id") or "",
-            enabled=bool((user or {}).get("telegram_enabled")),
+            bot_username=bot_username,
+            bot_ready=bool(bot.get("bot_token") and bot_username),
+            connected=connected,
+            deep_link=deep_link,
             on_schedule=bool((user or {}).get("telegram_on_schedule", True)),
             message=msg,
             success=ok == "1",
@@ -755,22 +855,22 @@ async def telegram_page(request: Request, msg: str = "", ok: str = ""):
 @app.post("/telegram")
 async def telegram_save(
     request: Request,
-    bot_token: str = Form(""),
-    chat_id: str = Form(""),
-    enabled: str = Form(""),
     on_schedule: str = Form(""),
 ):
     user = current_user(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
-    set_user_telegram(
-        user["id"],
-        bot_token=bot_token,
-        chat_id=chat_id,
-        enabled=enabled == "on",
-        on_schedule=on_schedule == "on",
-    )
+    set_user_telegram_prefs(user["id"], on_schedule=on_schedule == "on")
     return RedirectResponse("/telegram?ok=1", status_code=303)
+
+
+@app.post("/telegram/disconnect")
+async def telegram_disconnect(request: Request):
+    user = current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    disconnect_telegram(user["id"])
+    return RedirectResponse("/telegram?ok=1&msg=" + quote("اتصال تلگرام قطع شد."), status_code=303)
 
 
 @app.post("/telegram/test")
@@ -778,8 +878,18 @@ async def telegram_test(request: Request):
     user = current_user(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
-    token = user.get("telegram_bot_token") or ""
+    token = get_platform_bot().get("bot_token") or ""
     chat_id = user.get("telegram_chat_id") or ""
+    if not token:
+        return RedirectResponse(
+            f"/telegram?ok=0&msg={quote('ربات پلتفرم هنوز راه‌اندازی نشده است.')}",
+            status_code=303,
+        )
+    if not user.get("telegram_enabled") or not chat_id:
+        return RedirectResponse(
+            f"/telegram?ok=0&msg={quote('اول با دکمهٔ اتصال به ربات وصل شوید.')}",
+            status_code=303,
+        )
     latest = get_latest_report(scheduled_only=_scheduled_only(request))
     if latest:
         ensure_report_chart(latest)
