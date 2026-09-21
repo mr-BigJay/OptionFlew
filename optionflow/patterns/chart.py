@@ -105,20 +105,6 @@ def _slice_range(
         pb = meta.get("pullback_index", sig)
         early = meta.get("early_index", pb)
         start, end = ema50_slice(n, sig, int(pb), int(early))
-<<<<<<< Updated upstream
-=======
-    elif hit.category == "divergence":
-        ia = meta.get("pivot_a", (sig, 0))[0]
-        ib = meta.get("pivot_b", (sig, 0))[0]
-        entry = meta.get("entry_index", meta.get("early_index", sig))
-        if not isinstance(entry, int):
-            entry = sig
-        exit_i = meta.get("exit_index")
-        start = max(0, min(ia, ib, entry) - 24)
-        if isinstance(exit_i, int):
-            end = min(n, max(chart_window_end(n, entry, start), exit_i + 8))
-        else:
-            end = chart_window_end(n, entry, start)
     elif hit.category == "meaningful_behavior":
         entry = meta.get("entry_index", sig)
         if not isinstance(entry, int):
@@ -129,7 +115,6 @@ def _slice_range(
             end = min(n, max(chart_window_end(n, entry, start), exit_i + 8))
         else:
             end = chart_window_end(n, entry, start)
->>>>>>> Stashed changes
     else:
         start = max(0, sig - 60)
         end = chart_window_end(n, sig, start)
