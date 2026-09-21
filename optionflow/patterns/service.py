@@ -16,7 +16,7 @@ from optionflow.patterns.types import PatternHit
 logger = logging.getLogger("optionflow.patterns")
 
 TIMEFRAMES = ("5m", "15m", "1h")
-LIMITS = {"5m": 200, "15m": 200, "1h": 168}
+LIMITS = {"5m": 432, "15m": 288, "1h": 168}
 
 _cache: dict = {"ts": 0.0, "hits": None}
 CACHE_TTL = 180

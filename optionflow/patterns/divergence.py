@@ -16,13 +16,57 @@ LOOKBACK_LEFT = 10
 LOOKBACK_RIGHT = 10
 EARLY_RIGHT = 2
 RANGE_LOWER = 5
-RANGE_UPPER = 60
+RANGE_UPPER = 60  # فاصله pivot متوالی (دوم ↔ سوم)
+RANGE_UPPER_WIDE = 288  # pivot اول ↔ سوم روی 5m (~۲۴h)
 ENTRY_LEG1_WEIGHT = 0.35
 ENTRY_LEG2_WEIGHT = 0.65
 
 
 def _in_range(p_a: int, p_b: int) -> bool:
     return RANGE_LOWER <= (p_b - p_a) <= RANGE_UPPER
+
+
+def _gap_ok(p_a: int, p_c: int, *, adjacent: bool) -> bool:
+    gap = p_c - p_a
+    if gap < RANGE_LOWER:
+        return False
+    cap = RANGE_UPPER if adjacent else RANGE_UPPER_WIDE
+    return gap <= cap
+
+
+def _pivot_bars(pivots: list[tuple[int, int]], p_c: int) -> list[int]:
+    return sorted({p for _, p in pivots if p < p_c})
+
+
+def _compare_order(pivots: list[tuple[int, int]], p_c: int) -> list[int]:
+    """با pivot سوم: اول pivot اول، بعد pivot قبلی (دوم)."""
+    bars = _pivot_bars(pivots, p_c)
+    if not bars:
+        return []
+    immediate = bars[-1]
+    if len(bars) >= 2:
+        first = bars[0]
+        mid = list(reversed(bars[1:-1]))
+        return [first, immediate] + mid
+    return [immediate]
+
+
+def _forming_after_last(
+    rs: list[float | None],
+    pivots: list[tuple[int, int]],
+    *,
+    high: bool,
+    n: int,
+) -> tuple[int, int] | None:
+    """Pivot در حال شکل‌گیری بعد از آخرین pivot تأییدشده (مثلاً سوم)."""
+    fp = _forming_pivot(rs, high=high, n=n)
+    if fp is None or not pivots:
+        return None
+    p_f, _right = fp
+    _, p_last = pivots[-1]
+    if p_f <= p_last:
+        return None
+    return fp
 
 
 def _recent_confirm(conf_b: int, n: int, right: int) -> bool:
@@ -87,12 +131,14 @@ def _best_bearish_pair(
     pivots: list[tuple[int, int]],
     p_c: int,
 ) -> tuple[int, int, float, float] | None:
-    """آخرین pivot را اول با pivot قبلی، بعد با pivotهای قدیمی‌تر مقایسه کن."""
-    for j in range(len(pivots) - 1, -1, -1):
-        _, p_a = pivots[j]
-        if p_a >= p_c:
-            continue
-        if not _in_range(p_a, p_c):
+    """آخرین pivot: اول با pivot قبلی، بعد pivot اول و بقیه."""
+    prev_bar = None
+    bars_before = _pivot_bars(pivots, p_c)
+    if len(bars_before) >= 2:
+        prev_bar = bars_before[-1]
+    for p_a in _compare_order(pivots, p_c):
+        adjacent = prev_bar is not None and p_a == prev_bar
+        if not _gap_ok(p_a, p_c, adjacent=adjacent):
             continue
         pair = _bearish_ok(rs, highs, p_a, p_c)
         if pair:
@@ -106,11 +152,13 @@ def _best_bullish_pair(
     pivots: list[tuple[int, int]],
     p_c: int,
 ) -> tuple[int, int, float, float] | None:
-    for j in range(len(pivots) - 1, -1, -1):
-        _, p_a = pivots[j]
-        if p_a >= p_c:
-            continue
-        if not _in_range(p_a, p_c):
+    prev_bar = None
+    bars_before = _pivot_bars(pivots, p_c)
+    if len(bars_before) >= 2:
+        prev_bar = bars_before[-1]
+    for p_a in _compare_order(pivots, p_c):
+        adjacent = prev_bar is not None and p_a == prev_bar
+        if not _gap_ok(p_a, p_c, adjacent=adjacent):
             continue
         pair = _bullish_ok(rs, lows, p_a, p_c)
         if pair:
@@ -244,10 +292,15 @@ def _hit_bearish(
     ordered = _chronological_pivots(pivots, p_c)
     if len(ordered) >= 3 and p_a == ordered[0] and p_c == ordered[-1]:
         ref_note = " (مقایسه pivot اول و سوم)"
+    extra_meta: dict = {}
+    if len(ordered) >= 3:
+        p_mid = ordered[-2]
+        extra_meta["pivot_mid"] = (p_mid, highs[p_mid])
+        extra_meta["pivot_sequence"] = [(i, highs[i]) for i in ordered]
     return PatternHit(
         category="divergence",
         timeframe=timeframe,
-        pattern_id="rsi_bearish",
+        pattern_id=f"rsi_bearish_{p_a}_{p_c}",
         title_fa="واگرایی نزولی RSI",
         status_fa=status,
         summary_fa=(
@@ -277,6 +330,7 @@ def _hit_bearish(
             "rsi_period": RSI_PERIOD,
             "lookback": LOOKBACK_LEFT,
             **ladder,
+            **extra_meta,
         },
     )
 
@@ -305,10 +359,15 @@ def _hit_bullish(
     ordered = _chronological_pivots(pivots, p_c)
     if len(ordered) >= 3 and p_a == ordered[0] and p_c == ordered[-1]:
         ref_note = " (مقایسه pivot اول و سوم)"
+    extra_meta: dict = {}
+    if len(ordered) >= 3:
+        p_mid = ordered[-2]
+        extra_meta["pivot_mid"] = (p_mid, lows[p_mid])
+        extra_meta["pivot_sequence"] = [(i, lows[i]) for i in ordered]
     return PatternHit(
         category="divergence",
         timeframe=timeframe,
-        pattern_id="rsi_bullish",
+        pattern_id=f"rsi_bullish_{p_a}_{p_c}",
         title_fa="واگرایی مثبت RSI",
         status_fa=status,
         summary_fa=(
@@ -338,6 +397,7 @@ def _hit_bullish(
             "rsi_period": RSI_PERIOD,
             "lookback": LOOKBACK_LEFT,
             **ladder,
+            **extra_meta,
         },
     )
 
@@ -423,6 +483,38 @@ def detect_rsi_divergence(
         rs, left=LOOKBACK_LEFT, right=LOOKBACK_RIGHT
     )
 
+    if allow_early:
+        forming_bear = _forming_after_last(rs, ph, high=True, n=n)
+        if forming_bear:
+            p_c, right = forming_bear
+            hit = _try_bearish(
+                bars,
+                timeframe,
+                rs,
+                highs,
+                ph,
+                p_c,
+                p_c + right,
+                early=True,
+            )
+            if hit:
+                return hit
+        forming_bull = _forming_after_last(rs, pl, high=False, n=n)
+        if forming_bull:
+            p_c, right = forming_bull
+            hit = _try_bullish(
+                bars,
+                timeframe,
+                rs,
+                lows,
+                pl,
+                p_c,
+                p_c + right,
+                early=True,
+            )
+            if hit:
+                return hit
+
     if len(ph) >= 2:
         conf_c, p_c = ph[-1]
         if _recent_confirm(conf_c, n, LOOKBACK_RIGHT):
@@ -454,40 +546,5 @@ def detect_rsi_divergence(
             )
             if hit:
                 return hit
-
-    if not allow_early:
-        return None
-
-    forming_h = _forming_pivot(rs, high=True, n=n)
-    if forming_h and ph:
-        p_c, right = forming_h
-        hit = _try_bearish(
-            bars,
-            timeframe,
-            rs,
-            highs,
-            ph,
-            p_c,
-            p_c + right,
-            early=True,
-        )
-        if hit:
-            return hit
-
-    forming_l = _forming_pivot(rs, high=False, n=n)
-    if forming_l and pl:
-        p_c, right = forming_l
-        hit = _try_bullish(
-            bars,
-            timeframe,
-            rs,
-            lows,
-            pl,
-            p_c,
-            p_c + right,
-            early=True,
-        )
-        if hit:
-            return hit
 
     return None

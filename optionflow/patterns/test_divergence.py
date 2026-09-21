@@ -30,6 +30,34 @@ def test_constants_match_bigbeluga() -> None:
     assert ENTRY_LEG2_WEIGHT == 0.65
 
 
+def test_pivot1_to_pivot3_allows_wide_gap() -> None:
+    from optionflow.patterns.divergence import _best_bullish_pair, _gap_ok
+
+    assert _gap_ok(50, 180, adjacent=False) is True
+    assert _gap_ok(50, 180, adjacent=True) is False
+    rs: list[float | None] = [40.0] * 250
+    lows = [100.0] * 250
+    rs[50] = 74.0
+    rs[120] = 70.0
+    rs[180] = 77.0
+    lows[50] = 100.0
+    lows[120] = 106.0
+    lows[180] = 98.0
+    pivots = [(60, 50), (130, 120), (190, 180)]
+    found = _best_bullish_pair(rs, lows, pivots, 180)
+    assert found is not None
+    assert found[0] == 50
+
+
+def test_compare_order_prefers_first_on_third_pivot() -> None:
+    from optionflow.patterns.divergence import _compare_order
+
+    pivots = [(60, 50), (120, 100), (180, 150)]
+    order = _compare_order(pivots, 150)
+    assert order[0] == 50
+    assert order[1] == 100
+
+
 def test_third_pivot_can_diverge_with_first_not_second() -> None:
     rs: list[float | None] = [40.0] * 200
     highs = [100.0 + i * 0.1 for i in range(200)]
