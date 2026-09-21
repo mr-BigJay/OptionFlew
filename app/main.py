@@ -10,6 +10,7 @@ from urllib.parse import quote
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -43,6 +44,7 @@ from app.jobs import (
     run_scheduled_4h_report,
     run_scheduled_daily_report,
     run_scheduled_report,
+    run_scheduled_behavior_scan,
 )
 from app.storage import (
     data_dir,
@@ -55,6 +57,12 @@ from app.storage import (
 )
 from app.telegram_notify import send_telegram_message, send_telegram_photo
 from optionflow.patterns.history import cache_status
+from optionflow.patterns.behavior_service import (
+    behavior_cache_timestamp,
+    get_cached_behavior_scan,
+    invalidate_behavior_cache,
+    run_behavior_scan_and_notify,
+)
 from optionflow.patterns.service import (
     get_cached_scan,
     invalidate_pattern_cache,
@@ -177,10 +185,12 @@ def _category_fa(category: str) -> str:
         "trendline": "ترندلاین",
         "channel": "کانال",
         "ema50": "EMA50",
+        "meaningful_behavior": "رفتار معنادار",
     }.get(category, category)
 
 
-PATTERN_TABS = ("triangle", "flag", "divergence", "trendline", "channel", "ema50")
+BACKTEST_TABS = ("triangle", "flag", "divergence", "trendline", "channel", "ema50")
+PATTERN_TABS = BACKTEST_TABS + ("meaningful_behavior",)
 
 
 def _page_ctx(request: Request, **extra: Any) -> dict[str, Any]:
@@ -293,6 +303,15 @@ async def lifespan(app: FastAPI):
         id="flow_report_daily",
         replace_existing=True,
         misfire_grace_time=900,
+    )
+    scheduler.add_job(
+        run_scheduled_behavior_scan,
+        trigger=IntervalTrigger(minutes=2),
+        id="meaningful_behavior_scan",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=120,
     )
     scheduler.start()
     logger.info(
@@ -575,10 +594,18 @@ async def report_detail(request: Request, report_id: int):
 async def patterns_page(request: Request, tab: str = "triangle"):
     if tab not in PATTERN_TABS:
         tab = "triangle"
-    scan = get_cached_scan(_patterns_dir)
-    hits = scan.get(tab, {})
+    if tab == "meaningful_behavior":
+        hits = get_cached_behavior_scan(
+            _patterns_dir, data_root=data_dir(), notify=True
+        )
+        cache_ts = behavior_cache_timestamp()
+        sub = "Deribit · فلو آپشن · هشدار تلگرام برای ورود ناگهانی حجم"
+    else:
+        scan = get_cached_scan(_patterns_dir)
+        hits = scan.get(tab, {})
+        cache_ts = pattern_cache_timestamp()
+        sub = "BTCUSDT · تایم‌فریم ۵m، ۱۵m، ۱h — جدا از گزارش ۴h و روزانه"
     rows = [(tf, hits.get(tf)) for tf in ("5m", "15m", "1h")]
-    cache_ts = pattern_cache_timestamp()
     return templates.TemplateResponse(
         request,
         "patterns.html",
@@ -588,8 +615,9 @@ async def patterns_page(request: Request, tab: str = "triangle"):
             tab=tab,
             rows=rows,
             cache_ts=cache_ts,
+            subheader=sub,
             tf_labels={
-                "5m": "۵ دقیقه",
+                "5m": "۵ دقیقه (پنجرهٔ burst)",
                 "15m": "۱۵ دقیقه",
                 "1h": "۱ ساعت",
             },
@@ -603,7 +631,7 @@ async def backtest_page(
     tab: str = "triangle",
     run_id: int = 0,
 ):
-    if tab not in PATTERN_TABS:
+    if tab not in BACKTEST_TABS:
         tab = "triangle"
     active_run = get_backtest_run(run_id) if run_id else None
     return templates.TemplateResponse(
@@ -727,7 +755,7 @@ async def backtest_start(
     timeframe: str = Form("1h"),
     target_profit_pct: str = Form(""),
 ):
-    if tab not in PATTERN_TABS:
+    if tab not in BACKTEST_TABS:
         tab = "triangle"
     if timeframe not in ("5m", "15m", "1h", "4h", "1d"):
         timeframe = "1h"
@@ -754,8 +782,12 @@ async def backtest_start(
 async def patterns_refresh(tab: str = Form("triangle")):
     if tab not in PATTERN_TABS:
         tab = "triangle"
-    invalidate_pattern_cache()
-    get_cached_scan(_patterns_dir)
+    if tab == "meaningful_behavior":
+        invalidate_behavior_cache()
+        run_behavior_scan_and_notify(_patterns_dir, data_dir())
+    else:
+        invalidate_pattern_cache()
+        get_cached_scan(_patterns_dir)
     return RedirectResponse(f"/patterns?tab={tab}", status_code=303)
 
 

@@ -69,3 +69,13 @@ def run_manual_reports() -> None:
 def run_scheduled_report() -> None:
     """Alias for manual button (legacy name)."""
     run_manual_reports()
+
+
+def run_scheduled_behavior_scan() -> None:
+    from app.storage import data_dir
+    from optionflow.patterns.behavior_service import run_behavior_scan_and_notify
+    from optionflow.patterns.service import patterns_data_dir
+
+    chart_dir = patterns_data_dir(data_dir())
+    run_behavior_scan_and_notify(chart_dir, data_dir())
+    logger.info("Meaningful behavior scan + notify completed")
