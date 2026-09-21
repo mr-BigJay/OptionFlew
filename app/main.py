@@ -6,7 +6,7 @@ import secrets
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -57,6 +57,7 @@ from app.storage import (
     report_has_chart,
 )
 from app.telegram_notify import send_telegram_message, send_telegram_photo
+from optionflow.patterns.backtest import evaluate_target_profit
 from optionflow.patterns.history import cache_status
 from optionflow.patterns.behavior_service import (
     behavior_cache_timestamp,
@@ -65,11 +66,14 @@ from optionflow.patterns.behavior_service import (
     run_behavior_scan_and_notify,
 )
 from optionflow.patterns.service import (
+    LIMITS,
     get_cached_scan,
     invalidate_pattern_cache,
     pattern_cache_timestamp,
     patterns_data_dir,
 )
+from optionflow.patterns.ohlc import OhlcBar, load_btcusdt
+from optionflow.patterns.types import PatternHit
 from optionflow.price_levels import fetch_price_levels
 from optionflow.tehran_time import (
     CRON_4H_HOURS,
@@ -214,6 +218,114 @@ def _pattern_menu_items() -> list[dict[str, str]]:
             "hint": PATTERN_HINTS.get(slug, "BTCUSDT"),
         }
         for slug in PATTERN_TABS
+    ]
+
+
+PATTERN_TF_LABELS: dict[str, str] = {
+    "5m": "۵ دقیقه",
+    "15m": "۱۵ دقیقه",
+    "1h": "۱ ساعت",
+}
+
+
+def _pattern_filter_qs(*, tf: str = "", min_profit: str = "") -> str:
+    q: dict[str, str] = {}
+    if tf:
+        q["tf"] = tf
+    mp = (min_profit or "").strip().replace(",", ".")
+    if mp:
+        q["min_profit"] = mp
+    if not q:
+        return ""
+    return "&" + urlencode(q)
+
+
+def _parse_min_profit_pct(raw: str) -> float | None:
+    s = (raw or "").strip().replace(",", ".")
+    if not s:
+        return None
+    try:
+        v = float(s)
+    except ValueError:
+        return None
+    if v < 0 or v > 10:
+        return None
+    return v
+
+
+def _row_to_pattern_hit(row: dict[str, Any]) -> PatternHit:
+    meta = row.get("meta") or {}
+    return PatternHit(
+        category=str(row["category"]),
+        timeframe=str(row["timeframe"]),
+        pattern_id=str(row["pattern_id"]),
+        title_fa=str(row.get("title_fa") or ""),
+        status_fa=str(row.get("status_fa") or ""),
+        summary_fa=str(row.get("summary_fa") or ""),
+        forecast_fa=str(row.get("forecast_fa") or ""),
+        meta=dict(meta),
+        chart_file=str(row.get("chart_file") or ""),
+    )
+
+
+def _signal_index_for_profit(hit: PatternHit) -> int | None:
+    meta = hit.meta or {}
+    for key in (
+        "entry_index",
+        "early_index",
+        "confirm_index",
+        "final_index",
+    ):
+        ix = meta.get(key)
+        if isinstance(ix, int):
+            return ix
+    return None
+
+
+def _row_meets_min_profit(
+    row: dict[str, Any],
+    min_profit_pct: float,
+    bars_cache: dict[str, list[OhlcBar]],
+) -> bool:
+    meta = row.get("meta") or {}
+    path = meta.get("path_pct")
+    threshold = min_profit_pct / 100.0
+    if isinstance(path, (int, float)):
+        return abs(float(path)) >= threshold
+    tf = str(row.get("timeframe") or "")
+    if tf not in bars_cache:
+        try:
+            bars_cache[tf] = load_btcusdt(tf, limit=LIMITS.get(tf, 200))
+        except Exception:
+            logger.exception("load_btcusdt failed tf=%s", tf)
+            bars_cache[tf] = []
+    bars = bars_cache[tf]
+    if not bars:
+        return False
+    hit = _row_to_pattern_hit(row)
+    sig_ix = _signal_index_for_profit(hit)
+    if sig_ix is None or sig_ix < 0 or sig_ix >= len(bars):
+        return False
+    ok, _note = evaluate_target_profit(bars, sig_ix, hit, min_profit_pct)
+    return ok is True
+
+
+def _filter_pattern_timeline(
+    items: list[dict[str, Any]],
+    *,
+    timeframe: str,
+    min_profit_pct: float | None,
+) -> list[dict[str, Any]]:
+    out = items
+    if timeframe:
+        out = [r for r in out if r.get("timeframe") == timeframe]
+    if min_profit_pct is None or min_profit_pct <= 0:
+        return out
+    bars_cache: dict[str, list[OhlcBar]] = {}
+    return [
+        r
+        for r in out
+        if _row_meets_min_profit(r, min_profit_pct, bars_cache)
     ]
 
 
@@ -682,11 +794,17 @@ async def pattern_category_page(
     date: str = "",
     from_date: str = "",
     to_date: str = "",
+    tf: str = "",
+    min_profit: str = "",
 ):
     if category not in PATTERN_TABS:
         return RedirectResponse("/patterns", status_code=302)
     if period not in ("day", "week", "month", "range"):
         period = "day"
+    tf = tf if tf in PATTERN_TF_LABELS else ""
+    min_profit_raw = (min_profit or "").strip()
+    min_profit_pct = _parse_min_profit_pct(min_profit_raw)
+    filter_qs = _pattern_filter_qs(tf=tf, min_profit=min_profit_raw)
 
     if category == "meaningful_behavior":
         get_cached_behavior_scan(
@@ -709,6 +827,10 @@ async def pattern_category_page(
             category, start_iso=start_iso, end_iso=end_iso
         )
 
+    raw_count = len(items)
+    items = _filter_pattern_timeline(
+        items, timeframe=tf, min_profit_pct=min_profit_pct
+    )
     grouped = _group_by_date(items)
     sub = (
         "Deribit · فلو آپشن"
@@ -728,8 +850,14 @@ async def pattern_category_page(
             date=date,
             from_date=from_date,
             to_date=to_date,
+            tf_filter=tf,
+            min_profit=min_profit_raw,
+            min_profit_pct=min_profit_pct,
+            filter_qs=filter_qs,
+            tf_labels=PATTERN_TF_LABELS,
             grouped=grouped,
             count=len(items),
+            raw_count=raw_count,
             subheader=sub,
         ),
     )
