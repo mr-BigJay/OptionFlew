@@ -2,7 +2,7 @@
 {% block title %}الگوها — OptionFlow{% endblock %}
 {% block header %}<span class="header-title">الگوها</span>{% endblock %}
 {% block subheader %}
-<p class="muted patterns-sub">BTCUSDT · تایم‌فریم ۵m، ۱۵m، ۱h — جدا از گزارش ۴h و روزانه</p>
+<p class="muted patterns-sub">{{ subheader }}</p>
 {% endblock %}
 
 {% block content %}
@@ -13,6 +13,7 @@
   <a href="/patterns?tab=trendline" class="{% if tab == 'trendline' %}on{% endif %}">ترندلاین</a>
   <a href="/patterns?tab=channel" class="{% if tab == 'channel' %}on{% endif %}">کانال</a>
   <a href="/patterns?tab=ema50" class="{% if tab == 'ema50' %}on{% endif %}">EMA50</a>
+  <a href="/patterns?tab=meaningful_behavior" class="{% if tab == 'meaningful_behavior' %}on{% endif %}">رفتار معنادار</a>
 </nav>
 
 <form class="patterns-refresh" method="post" action="/patterns/refresh">
@@ -31,6 +32,13 @@
     </header>
     <p class="pattern-summary">{{ hit.summary_fa }}</p>
     <p class="pattern-forecast"><strong>پیش‌بینی:</strong> {{ hit.forecast_fa }}</p>
+    {% if hit.meta.get('entry_px') or hit.meta.get('tp_px') %}
+    <p class="pattern-forecast"><strong>ورود / هدف:</strong>
+      {% if hit.meta.get('entry_px') %}ورود ~{{ "{:,.0f}".format(hit.meta.entry_px) }}{% endif %}
+      {% if hit.meta.get('tp_px') %} · هدف ۰.۵٪ ~{{ "{:,.0f}".format(hit.meta.tp_px) }}{% endif %}
+      {% if hit.meta.get('path_pct') is not none %} · مسیر تا الان {{ "{:+.2f}".format(hit.meta.path_pct * 100) }}٪{% endif %}
+    </p>
+    {% endif %}
     {% if hit.chart_file %}
     <figure class="scenario-chart pattern-chart">
       <div class="scenario-chart-frame">

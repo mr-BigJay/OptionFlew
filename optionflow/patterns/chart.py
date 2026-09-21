@@ -105,6 +105,31 @@ def _slice_range(
         pb = meta.get("pullback_index", sig)
         early = meta.get("early_index", pb)
         start, end = ema50_slice(n, sig, int(pb), int(early))
+<<<<<<< Updated upstream
+=======
+    elif hit.category == "divergence":
+        ia = meta.get("pivot_a", (sig, 0))[0]
+        ib = meta.get("pivot_b", (sig, 0))[0]
+        entry = meta.get("entry_index", meta.get("early_index", sig))
+        if not isinstance(entry, int):
+            entry = sig
+        exit_i = meta.get("exit_index")
+        start = max(0, min(ia, ib, entry) - 24)
+        if isinstance(exit_i, int):
+            end = min(n, max(chart_window_end(n, entry, start), exit_i + 8))
+        else:
+            end = chart_window_end(n, entry, start)
+    elif hit.category == "meaningful_behavior":
+        entry = meta.get("entry_index", sig)
+        if not isinstance(entry, int):
+            entry = sig
+        exit_i = meta.get("exit_index")
+        start = max(0, entry - 48)
+        if isinstance(exit_i, int):
+            end = min(n, max(chart_window_end(n, entry, start), exit_i + 8))
+        else:
+            end = chart_window_end(n, entry, start)
+>>>>>>> Stashed changes
     else:
         start = max(0, sig - 60)
         end = chart_window_end(n, sig, start)
@@ -511,6 +536,38 @@ def _render_price_pattern(
         if isinstance(meta.get("exit_index"), int):
             _mark_trendline_path(ax, xs, start, meta, outcome_success)
 
+    elif hit.category == "meaningful_behavior":
+        import matplotlib.dates as mdates
+
+        entry = meta.get("entry_index", sig)
+        tp = meta.get("tp_px")
+        if isinstance(entry, int) and start <= entry < min(end, len(bars)):
+            x_e = mdates.date2num(bars[entry].ts)
+            ax.scatter(
+                [x_e],
+                [bars[entry].close],
+                c="#fbbf24",
+                s=55,
+                zorder=8,
+                edgecolors="#fff",
+                linewidths=0.5,
+                label="ورود",
+            )
+        if isinstance(tp, (int, float)):
+            ax.hlines(
+                float(tp),
+                xs[0],
+                xs[-1],
+                colors="#66bb6a" if meta.get("direction") == "up" else "#ef5350",
+                linestyles="--",
+                linewidth=1.1,
+                alpha=0.85,
+                label="هدف ۰.۵٪",
+            )
+        _mark_early_entry(ax, bars, meta, start, end, color="#fbbf24")
+        if isinstance(meta.get("exit_index"), int):
+            _mark_trendline_path(ax, xs, start, meta, outcome_success)
+
     elif hit.category == "flag":
         ps, pe = meta["pole_start"], meta["pole_end"]
         fh, fl = meta["flag_high"], meta["flag_low"]
@@ -545,9 +602,11 @@ def _render_price_pattern(
                         arrowprops=dict(arrowstyle="->", color="#ef5350", lw=1.8),
                     )
 
-    path_drawn = hit.category in ("trendline", "ema50") and isinstance(
-        hit.meta.get("exit_index"), int
-    )
+    path_drawn = hit.category in (
+        "trendline",
+        "ema50",
+        "meaningful_behavior",
+    ) and isinstance(hit.meta.get("exit_index"), int)
     if sig is not None and not path_drawn:
         _mark_signal_and_forward(ax, xs, slice_bars, sig, start, forward_bars, outcome_success)
 
