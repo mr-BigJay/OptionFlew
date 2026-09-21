@@ -105,6 +105,18 @@ def _slice_range(
         pb = meta.get("pullback_index", sig)
         early = meta.get("early_index", pb)
         start, end = ema50_slice(n, sig, int(pb), int(early))
+    elif hit.category == "divergence":
+        ia = meta.get("pivot_a", (sig, 0))[0]
+        ib = meta.get("pivot_b", (sig, 0))[0]
+        entry = meta.get("entry_index", meta.get("early_index", sig))
+        if not isinstance(entry, int):
+            entry = sig
+        exit_i = meta.get("exit_index")
+        start = max(0, min(ia, ib, entry) - 24)
+        if isinstance(exit_i, int):
+            end = min(n, max(chart_window_end(n, entry, start), exit_i + 8))
+        else:
+            end = chart_window_end(n, entry, start)
     else:
         start = max(0, sig - 60)
         end = chart_window_end(n, sig, start)
@@ -600,15 +612,21 @@ def _render_divergence(
     ia, ib = meta["pivot_a"][0], meta["pivot_b"][0]
     early_ix = meta.get("early_index")
     final_ix = meta.get("final_index")
-    sig = signal_index if signal_index is not None else meta.get("confirm_index", ib)
+    entry_ix = meta.get("entry_index", early_ix or final_ix or ib)
+    sig = signal_index if signal_index is not None else entry_ix
     idxs = [ia, ib, sig]
     if isinstance(early_ix, int):
         idxs.append(early_ix)
     if isinstance(final_ix, int):
         idxs.append(final_ix)
-    sig_ix = sig if isinstance(sig, int) else ib
+    exit_ix = meta.get("exit_index")
+    if isinstance(exit_ix, int):
+        idxs.append(exit_ix)
+    sig_ix = entry_ix if isinstance(entry_ix, int) else ib
     start = max(0, min(idxs) - 24)
     end = chart_window_end(len(bars), sig_ix, start)
+    if isinstance(exit_ix, int):
+        end = max(end, min(len(bars), exit_ix + 2))
     slice_bars = bars[start:end]
     if len(slice_bars) < 10:
         return None
@@ -633,21 +651,11 @@ def _render_divergence(
     x_a = mdates.date2num(bars[pa[0]].ts)
     x_b = mdates.date2num(bars[pb[0]].ts)
     line_color = "#ef5350" if direction == "down" else "#66bb6a"
-    price_pts_x = [x_a, x_b]
-    price_pts_y = [pa[1], pb[1]]
-    rsi_pts_y = [meta["rsi_a"], meta["rsi_b"]]
-    mid = meta.get("pivot_mid")
-    if isinstance(mid, (list, tuple)) and len(mid) == 2:
-        xm = mdates.date2num(bars[mid[0]].ts)
-        price_pts_x.insert(1, xm)
-        price_pts_y.insert(1, mid[1])
-        rm = rs[mid[0]] if mid[0] < len(rs) and rs[mid[0]] is not None else float("nan")
-        rsi_pts_y.insert(1, float(rm))
     if direction == "down":
-        ax1.scatter(price_pts_x, price_pts_y, c="#ef5350", s=55, zorder=6, edgecolors="#fff", linewidths=0.4)
+        ax1.scatter([x_a, x_b], [pa[1], pb[1]], c="#ef5350", s=55, zorder=6, edgecolors="#fff", linewidths=0.4)
         ax1.plot([x_a, x_b], [pa[1], pb[1]], color="#ef5350", linestyle="--", linewidth=1.2, alpha=0.9)
     else:
-        ax1.scatter(price_pts_x, price_pts_y, c="#66bb6a", s=55, zorder=6, edgecolors="#fff", linewidths=0.4)
+        ax1.scatter([x_a, x_b], [pa[1], pb[1]], c="#66bb6a", s=55, zorder=6, edgecolors="#fff", linewidths=0.4)
         ax1.plot([x_a, x_b], [pa[1], pb[1]], color="#66bb6a", linestyle="--", linewidth=1.2, alpha=0.9)
 
     rsi_y: list[float] = []
@@ -655,6 +663,7 @@ def _render_divergence(
         v = rs[i] if i < len(rs) else None
         rsi_y.append(float("nan") if v is None else float(v))
     _style_rsi_pane(ax2, xs, rsi_y, period=RSI_PERIOD)
+    line_color = "#ef5350" if direction == "down" else "#66bb6a"
     ax2.scatter(
         [x_a, x_b],
         [meta["rsi_a"], meta["rsi_b"]],
@@ -664,22 +673,18 @@ def _render_divergence(
         edgecolors="#fff",
         linewidths=0.4,
     )
-    if isinstance(mid, (list, tuple)) and len(mid) == 2:
-        ax2.scatter(
-            [price_pts_x[1]],
-            [rsi_pts_y[1]],
-            c="#fbbf24",
-            s=40,
-            zorder=6,
-            edgecolors="#fff",
-            linewidths=0.4,
-        )
     ax2.plot([x_a, x_b], [meta["rsi_a"], meta["rsi_b"]], color=line_color, linestyle="--", linewidth=1.2, alpha=0.9)
 
     _mark_early_entry(ax1, bars, meta, start, end)
-
-    if sig is not None and 0 <= sig < len(bars):
-        _mark_signal_and_forward(ax1, xs, slice_bars, sig, start, forward_bars, outcome_success)
+    if isinstance(meta.get("exit_index"), int):
+        path_ok = outcome_success
+        if path_ok is None and isinstance(meta.get("path_pct"), (int, float)):
+            path_ok = meta["path_pct"] > 0
+        _mark_trendline_path(ax1, xs, start, meta, path_ok)
+    elif sig is not None and 0 <= sig < len(bars):
+        _mark_signal_and_forward(
+            ax1, xs, slice_bars, sig, start, forward_bars, outcome_success
+        )
         ax2.axvline(mdates.date2num(bars[sig].ts), color="#78909c", linewidth=0.8, linestyle=":")
 
     _style_axes(ax1, f"BTCUSDT {hit.timeframe} — {hit.title_fa}")

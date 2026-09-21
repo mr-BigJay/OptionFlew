@@ -7,11 +7,12 @@ from optionflow.patterns.divergence import (
     RANGE_LOWER,
     RANGE_UPPER,
     RSI_PERIOD,
+    TAKE_PROFIT_PCT,
     _bearish_ok,
     _bullish_ok,
     _entry_lines,
-    _forming_pivot,
     detect_rsi_divergence,
+    evaluate_divergence_path,
 )
 from optionflow.patterns.indicators import (
     rsi,
@@ -44,18 +45,7 @@ def test_consecutive_pivots_only() -> None:
     assert p_b == 115
 
 
-def test_forming_pivot_needs_two_bars_right() -> None:
-    n = 50
-    rs: list[float | None] = [40.0 - i * 0.02 for i in range(n)]
-    rs[n - 1 - 2] = 78.0
-    found = _forming_pivot(rs, high=True, n=n)
-    assert found is not None
-    p, right = found
-    assert p == n - 1 - 2
-    assert right == 2
-
-
-def test_bearish_regular_conditions() -> None:
+def test_bearish_ok_pair() -> None:
     rs: list[float | None] = [40.0] * 120
     highs = [100.0] * 120
     rs[50], rs[80] = 75.0, 70.0
@@ -103,3 +93,47 @@ def test_short_bars_no_hit() -> None:
         for i in range(10)
     ]
     assert detect_rsi_divergence(bars, "5m") is None
+
+
+def test_evaluate_divergence_path_tp() -> None:
+    from optionflow.patterns.types import PatternHit
+
+    t0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    entry = 100_000.0
+    bars = [
+        OhlcBar(
+            ts=t0 + timedelta(minutes=5 * i),
+            open=entry,
+            high=entry + 50,
+            low=entry - 50,
+            close=entry,
+            volume=1.0,
+        )
+        for i in range(5)
+    ]
+    tp = entry * (1 - TAKE_PROFIT_PCT)
+    bars.append(
+        OhlcBar(
+            ts=t0 + timedelta(minutes=25),
+            open=entry,
+            high=entry,
+            low=tp - 1,
+            close=tp,
+            volume=1.0,
+        )
+    )
+    hit = PatternHit(
+        category="divergence",
+        timeframe="5m",
+        pattern_id="rsi_bearish",
+        title_fa="test",
+        status_fa="",
+        summary_fa="",
+        forecast_fa="",
+        meta={"direction": "down", "entry_index": 0},
+    )
+    ok, note = evaluate_divergence_path(bars, len(bars) - 1, hit)
+    assert ok is True
+    assert hit.meta["exit_index"] == 5
+    assert hit.meta["path_pct"] >= TAKE_PROFIT_PCT - 1e-9
+    assert "۰.۵٪" in note or "0.5" in note or "%" in note

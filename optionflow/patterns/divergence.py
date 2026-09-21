@@ -17,6 +17,7 @@ LOOKBACK_RIGHT = 10
 EARLY_RIGHT = 2
 RANGE_LOWER = 5
 RANGE_UPPER = 60
+TAKE_PROFIT_PCT = 0.005
 
 
 def _in_range(p_a: int, p_b: int) -> bool:
@@ -24,28 +25,7 @@ def _in_range(p_a: int, p_b: int) -> bool:
 
 
 def _recent_confirm(conf_b: int, n: int, right: int) -> bool:
-    """سیگنال تأییدشده هنوز تازه است (چند کندل بعد از pivot 10/10)."""
     return conf_b >= n - right - 2
-
-
-def _forming_pivot(
-    values: list[float | None],
-    *,
-    high: bool,
-    n: int,
-) -> tuple[int, int] | None:
-    for right in range(EARLY_RIGHT, LOOKBACK_RIGHT):
-        p = n - 1 - right
-        if p < LOOKBACK_LEFT:
-            continue
-        ok = (
-            is_pivot_high(values, p, LOOKBACK_LEFT, right)
-            if high
-            else is_pivot_low(values, p, LOOKBACK_LEFT, right)
-        )
-        if ok:
-            return p, right
-    return None
 
 
 def _bearish_ok(
@@ -133,6 +113,7 @@ def _hit_bearish(
     early_ix, final_ix, early_px, final_px, extra = _entry_lines(
         bars, p_b, early=early
     )
+    entry_i = early_ix if early else (final_ix if final_ix is not None else confirm_index)
     return PatternHit(
         category="divergence",
         timeframe=timeframe,
@@ -160,6 +141,8 @@ def _hit_bearish(
             "final_index": final_ix,
             "early_price": early_px,
             "final_price": final_px,
+            "entry_index": entry_i,
+            "early_side": "high",
             "stage": "early" if early else "confirmed",
         },
     )
@@ -182,6 +165,7 @@ def _hit_bullish(
     early_ix, final_ix, early_px, final_px, extra = _entry_lines(
         bars, p_b, early=early
     )
+    entry_i = early_ix if early else (final_ix if final_ix is not None else confirm_index)
     return PatternHit(
         category="divergence",
         timeframe=timeframe,
@@ -209,9 +193,212 @@ def _hit_bullish(
             "final_index": final_ix,
             "early_price": early_px,
             "final_price": final_px,
+            "entry_index": entry_i,
+            "early_side": "low",
             "stage": "early" if early else "confirmed",
         },
     )
+
+
+def _confirmed_bearish(
+    bars: list[OhlcBar],
+    timeframe: str,
+    rs: list[float | None],
+    highs: list[float],
+    ph: list[tuple[int, int]],
+    n: int,
+) -> PatternHit | None:
+    if len(ph) < 2:
+        return None
+    conf_b, p_b = ph[-1]
+    if not _recent_confirm(conf_b, n, LOOKBACK_RIGHT):
+        return None
+    _, p_a = ph[-2]
+    if not _in_range(p_a, p_b):
+        return None
+    pair = _bearish_ok(rs, highs, p_a, p_b)
+    if not pair:
+        return None
+    ra, rb = pair
+    return _hit_bearish(
+        bars, timeframe, p_a, p_b, highs, ra, rb, conf_b, early=False
+    )
+
+
+def _confirmed_bullish(
+    bars: list[OhlcBar],
+    timeframe: str,
+    rs: list[float | None],
+    lows: list[float],
+    pl: list[tuple[int, int]],
+    n: int,
+) -> PatternHit | None:
+    if len(pl) < 2:
+        return None
+    conf_b, p_b = pl[-1]
+    if not _recent_confirm(conf_b, n, LOOKBACK_RIGHT):
+        return None
+    _, p_a = pl[-2]
+    if not _in_range(p_a, p_b):
+        return None
+    pair = _bullish_ok(rs, lows, p_a, p_b)
+    if not pair:
+        return None
+    ra, rb = pair
+    return _hit_bullish(
+        bars, timeframe, p_a, p_b, lows, ra, rb, conf_b, early=False
+    )
+
+
+def _early_bearish(
+    bars: list[OhlcBar],
+    timeframe: str,
+    rs: list[float | None],
+    highs: list[float],
+    ph: list[tuple[int, int]],
+    n: int,
+) -> PatternHit | None:
+    if not ph:
+        return None
+    _, p_ref = ph[-1]
+    best: tuple[int, int, float, float] | None = None
+    for right in range(EARLY_RIGHT, LOOKBACK_RIGHT):
+        p = n - 1 - right
+        if p < LOOKBACK_LEFT or p <= p_ref:
+            continue
+        if not is_pivot_high(rs, p, LOOKBACK_LEFT, right):
+            continue
+        if not _in_range(p_ref, p):
+            continue
+        pair = _bearish_ok(rs, highs, p_ref, p)
+        if pair and (best is None or p > best[0]):
+            best = (p, right, pair[0], pair[1])
+    if not best:
+        return None
+    p_b, right, ra, rb = best
+    return _hit_bearish(
+        bars,
+        timeframe,
+        p_ref,
+        p_b,
+        highs,
+        ra,
+        rb,
+        p_b + right,
+        early=True,
+    )
+
+
+def _early_bullish(
+    bars: list[OhlcBar],
+    timeframe: str,
+    rs: list[float | None],
+    lows: list[float],
+    pl: list[tuple[int, int]],
+    n: int,
+) -> PatternHit | None:
+    if not pl:
+        return None
+    _, p_ref = pl[-1]
+    best: tuple[int, int, float, float] | None = None
+    for right in range(EARLY_RIGHT, LOOKBACK_RIGHT):
+        p = n - 1 - right
+        if p < LOOKBACK_LEFT or p <= p_ref:
+            continue
+        if not is_pivot_low(rs, p, LOOKBACK_LEFT, right):
+            continue
+        if not _in_range(p_ref, p):
+            continue
+        pair = _bullish_ok(rs, lows, p_ref, p)
+        if pair and (best is None or p > best[0]):
+            best = (p, right, pair[0], pair[1])
+    if not best:
+        return None
+    p_b, right, ra, rb = best
+    return _hit_bullish(
+        bars,
+        timeframe,
+        p_ref,
+        p_b,
+        lows,
+        ra,
+        rb,
+        p_b + right,
+        early=True,
+    )
+
+
+def _pick_latest(*hits: PatternHit | None) -> PatternHit | None:
+    found = [h for h in hits if h is not None]
+    if not found:
+        return None
+    return max(found, key=lambda h: int(h.meta.get("confirm_index", 0)))
+
+
+def evaluate_divergence_path(
+    bars: list[OhlcBar],
+    idx: int,
+    hit: PatternHit,
+) -> tuple[bool | None, str]:
+    """ورود = early_index؛ خروج = ۰.۵٪ سود یا آخرین کندل (مثل ترندلاین برای TP)."""
+    meta = hit.meta
+    direction = meta.get("direction")
+    if direction not in ("up", "down"):
+        return None, "جهت واگرایی مشخص نیست."
+
+    entry_i = meta.get("entry_index")
+    if not isinstance(entry_i, int):
+        early = meta.get("early_index")
+        final = meta.get("final_index")
+        entry_i = early if isinstance(early, int) else final
+    if not isinstance(entry_i, int):
+        entry_i = idx
+    entry_i = max(0, min(entry_i, len(bars) - 1))
+    entry_px = float(bars[entry_i].close)
+    if entry_px <= 0:
+        return None, "قیمت ورود نامعتبر است."
+
+    start = entry_i + 1
+    if start >= len(bars):
+        return None, "کندل کافی بعد از ورود نبود."
+
+    if direction == "up":
+        tp_px = entry_px * (1 + TAKE_PROFIT_PCT)
+    else:
+        tp_px = entry_px * (1 - TAKE_PROFIT_PCT)
+
+    exit_i: int | None = None
+    exit_px: float | None = None
+    reason = ""
+    for i in range(start, len(bars)):
+        b = bars[i]
+        if direction == "up" and b.high >= tp_px:
+            exit_i, exit_px, reason = i, tp_px, "بستن در سود ۰.۵٪"
+            break
+        if direction == "down" and b.low <= tp_px:
+            exit_i, exit_px, reason = i, tp_px, "بستن در سود ۰.۵٪"
+            break
+
+    if exit_i is None:
+        exit_i = len(bars) - 1
+        exit_px = float(bars[exit_i].close)
+        reason = "پایان داده"
+
+    if direction == "up":
+        pct = (exit_px - entry_px) / entry_px
+    else:
+        pct = (entry_px - exit_px) / entry_px
+
+    meta["entry_index"] = entry_i
+    meta["exit_index"] = exit_i
+    meta["path_pct"] = pct
+    meta["exit_reason"] = reason
+    ok = pct > 0
+    note = (
+        f"بازده مسیر ورود تا {reason}: {pct * 100:+.2f}٪ "
+        f"({entry_px:,.0f} → {exit_px:,.0f})"
+    )
+    return ok, note
 
 
 def detect_rsi_divergence(
@@ -237,87 +424,17 @@ def detect_rsi_divergence(
         rs, left=LOOKBACK_LEFT, right=LOOKBACK_RIGHT
     )
 
-    if len(ph) >= 2:
-        conf_b, p_b = ph[-1]
-        if _recent_confirm(conf_b, n, LOOKBACK_RIGHT):
-            _, p_a = ph[-2]
-            if _in_range(p_a, p_b):
-                pair = _bearish_ok(rs, highs, p_a, p_b)
-                if pair:
-                    ra, rb = pair
-                    return _hit_bearish(
-                        bars,
-                        timeframe,
-                        p_a,
-                        p_b,
-                        highs,
-                        ra,
-                        rb,
-                        conf_b,
-                        early=False,
-                    )
-
-    if len(pl) >= 2:
-        conf_b, p_b = pl[-1]
-        if _recent_confirm(conf_b, n, LOOKBACK_RIGHT):
-            _, p_a = pl[-2]
-            if _in_range(p_a, p_b):
-                pair = _bullish_ok(rs, lows, p_a, p_b)
-                if pair:
-                    ra, rb = pair
-                    return _hit_bullish(
-                        bars,
-                        timeframe,
-                        p_a,
-                        p_b,
-                        lows,
-                        ra,
-                        rb,
-                        conf_b,
-                        early=False,
-                    )
+    confirmed = _pick_latest(
+        _confirmed_bearish(bars, timeframe, rs, highs, ph, n),
+        _confirmed_bullish(bars, timeframe, rs, lows, pl, n),
+    )
+    if confirmed is not None:
+        return confirmed
 
     if not allow_early:
         return None
 
-    forming_h = _forming_pivot(rs, high=True, n=n)
-    if forming_h and ph:
-        p_b, right = forming_h
-        _, p_a = ph[-1]
-        if p_a < p_b and _in_range(p_a, p_b):
-            pair = _bearish_ok(rs, highs, p_a, p_b)
-            if pair:
-                ra, rb = pair
-                return _hit_bearish(
-                    bars,
-                    timeframe,
-                    p_a,
-                    p_b,
-                    highs,
-                    ra,
-                    rb,
-                    p_b + right,
-                    early=True,
-                )
-
-    forming_l = _forming_pivot(rs, high=False, n=n)
-    if forming_l and pl:
-        p_b, right = forming_l
-        _, p_a = pl[-1]
-        if p_a < p_b and _in_range(p_a, p_b):
-            pair = _bullish_ok(rs, lows, p_a, p_b)
-            if pair:
-                ra, rb = pair
-                return _hit_bullish(
-                    bars,
-                    timeframe,
-                    p_a,
-                    p_b,
-                    lows,
-                    ra,
-                    rb,
-                    p_b + right,
-                    early=True,
-                )
-
-    return None
+    return _pick_latest(
+        _early_bearish(bars, timeframe, rs, highs, ph, n),
+        _early_bullish(bars, timeframe, rs, lows, pl, n),
+    )
