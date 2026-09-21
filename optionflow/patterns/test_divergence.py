@@ -4,9 +4,14 @@ from optionflow.patterns.divergence import (
     EARLY_RIGHT,
     LOOKBACK_LEFT,
     LOOKBACK_RIGHT,
+    MAX_PREV_PIVOTS,
+    RANGE_LOWER,
+    RANGE_UPPER,
     RSI_PERIOD,
     _entry_lines,
+    _find_bearish_ref,
     _forming_pivot,
+    _scan_bearish_prev,
     detect_rsi_divergence,
 )
 from optionflow.patterns.indicators import (
@@ -22,6 +27,36 @@ def test_constants_match_bigbeluga() -> None:
     assert LOOKBACK_LEFT == 10
     assert LOOKBACK_RIGHT == 10
     assert EARLY_RIGHT == 2
+    assert MAX_PREV_PIVOTS == 2
+    assert RANGE_LOWER == 5
+    assert RANGE_UPPER == 60
+
+
+def test_multi_pivot_prefers_newer_ref() -> None:
+    rs: list[float | None] = [40.0] * 160
+    highs = [100.0] * 160
+    p1, p2, p3 = 50, 80, 110
+    rs[p1], rs[p2], rs[p3] = 75.0, 70.0, 72.0
+    highs[p1], highs[p2], highs[p3] = 100.0, 106.0, 108.0
+    pivots = [(60, p1), (90, p2), (120, p3)]
+    assert _scan_bearish_prev(pivots[:-1], p3, rs, highs) is None
+    found = _find_bearish_ref(pivots, rs, highs)
+    assert found is not None
+    p_a, p_c, _ra, _rb = found
+    assert p_a == p1
+    assert p_c == p3
+
+
+def test_multi_pivot_uses_immediate_prev_when_valid() -> None:
+    rs: list[float | None] = [40.0] * 160
+    highs = [100.0] * 160
+    p1, p2, p3 = 50, 80, 110
+    rs[p1], rs[p2], rs[p3] = 78.0, 74.0, 70.0
+    highs[p1], highs[p2], highs[p3] = 100.0, 106.0, 108.0
+    pivots = [(60, p1), (90, p2), (120, p3)]
+    found = _find_bearish_ref(pivots, rs, highs)
+    assert found is not None
+    assert found[0] == p2
 
 
 def test_consecutive_pivots_not_first_vs_last() -> None:
