@@ -8,14 +8,10 @@
 {% block content %}
 <section class="pattern-section" aria-labelledby="pattern-types-head">
   <h2 id="pattern-types-head" class="section-title">نوع الگو</h2>
-  <div class="pattern-nav-feed">
+  <div class="pattern-nav-grid">
     {% for item in menu_items %}
-    <a href="/patterns/{{ item.slug }}" class="pattern-nav-card">
-      <div class="pattern-nav-row">
-        <span class="pattern-nav-title">{{ item.label }}</span>
-        <span class="pattern-nav-chevron" aria-hidden="true">‹</span>
-      </div>
-      <p class="pattern-nav-hint">{{ item.hint }}</p>
+    <a href="/patterns/{{ item.slug }}" class="pattern-nav-card pattern-nav-card-compact">
+      <span class="pattern-nav-title">{{ item.label }}</span>
     </a>
     {% endfor %}
   </div>

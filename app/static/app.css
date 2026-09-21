@@ -385,40 +385,28 @@ a.pattern-nav-card::before {
   border-radius: var(--radius) 0 0 var(--radius);
 }
 
-.pattern-nav-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding-right: 4px;
-}
-
 .pattern-nav-title {
   font-weight: 600;
-  font-size: 0.92rem;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  display: block;
+  text-align: center;
 }
 
-.pattern-nav-chevron {
-  flex-shrink: 0;
-  color: var(--muted);
-  font-size: 1.15rem;
-  line-height: 1;
-}
-
-.pattern-nav-feed {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+.pattern-nav-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
   margin-bottom: 8px;
   width: 100%;
 }
 
-.pattern-nav-hint {
-  margin: 6px 0 0;
-  padding-right: 4px;
-  font-size: 0.72rem;
-  color: var(--muted);
-  line-height: 1.45;
+a.pattern-nav-card.pattern-nav-card-compact {
+  padding: 10px 6px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 a.pattern-nav-card:active {
