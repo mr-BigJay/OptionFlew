@@ -36,7 +36,8 @@ logger = logging.getLogger("optionflow.patterns.backtest")
 
 CATEGORIES = ("triangle", "flag", "divergence", "trendline", "channel", "ema50")
 STRIDE_BY_TF = {"5m": 6, "15m": 2, "1h": 1, "4h": 1, "1d": 1}
-STRIDE_DIVERGENCE = {"5m": 12, "15m": 4, "1h": 2, "4h": 1, "1d": 1}
+STRIDE_HEAVY = {"5m": 12, "15m": 4, "1h": 2, "4h": 1, "1d": 1}
+HEAVY_STRIDE_CATEGORIES = frozenset({"divergence", "trendline", "channel", "ema50"})
 DEDUPE_BARS = {"5m": 48, "15m": 20, "1h": 24, "4h": 8, "1d": 4}
 FORWARD_BARS = {"5m": 36, "15m": 24, "1h": 18, "4h": 12, "1d": 8}
 MIN_MOVE_PCT = {"5m": 0.008, "15m": 0.012, "1h": 0.015, "4h": 0.02, "1d": 0.025}
@@ -279,6 +280,9 @@ def _shift_hit_bar_indices(hit: PatternHit, offset: int) -> None:
         "entry_index",
         "break_index",
         "pullback_index",
+        "start_i",
+        "end_i",
+        "window_offset",
     ):
         v = meta.get(key)
         if isinstance(v, int):
@@ -287,6 +291,12 @@ def _shift_hit_bar_indices(hit: PatternHit, offset: int) -> None:
         t = meta.get(key)
         if isinstance(t, (list, tuple)) and len(t) >= 2:
             meta[key] = (int(t[0]) + offset, t[1])
+    for key in ("touch_highs", "touch_lows", "hi_idx", "lo_idx"):
+        lst = meta.get(key)
+        if isinstance(lst, list):
+            meta[key] = [
+                int(x) + offset for x in lst if isinstance(x, (int, float))
+            ]
 
 
 def _replay_divergence(
@@ -336,6 +346,64 @@ def _replay_divergence(
     return out
 
 
+def _replay_window_bars(category: str) -> int:
+    return {
+        "trendline": 132,
+        "channel": 132,
+        "ema50": 200,
+        "triangle": 260,
+        "flag": 260,
+    }.get(category, 220)
+
+
+def _replay_stride(category: str, timeframe: str, stride: int | None) -> int:
+    if stride is not None:
+        return stride
+    if category in HEAVY_STRIDE_CATEGORIES:
+        return STRIDE_HEAVY.get(timeframe, STRIDE_BY_TF.get(timeframe, 1))
+    return STRIDE_BY_TF.get(timeframe, 1)
+
+
+def _replay_sliding_window(
+    bars: list[OhlcBar],
+    *,
+    category: str,
+    timeframe: str,
+    scan_start: int,
+    scan_end: int,
+    stride: int,
+    on_progress: ProgressFn | None = None,
+) -> list[tuple[int, PatternHit]]:
+    dedupe = DEDUPE_BARS.get(timeframe, 12)
+    detect = _detector(category)
+    win = _replay_window_bars(category)
+    last_key: dict[str, int] = {}
+    out: list[tuple[int, PatternHit]] = []
+    total = max(1, len(range(scan_start, scan_end + 1, stride)))
+    done = 0
+
+    for i in range(scan_start, scan_end + 1, stride):
+        lo = max(0, i + 1 - win)
+        chunk = bars[lo : i + 1]
+        hit = detect(chunk, timeframe)
+        done += 1
+        if on_progress and (
+            done == 1 or done == total or done % max(1, total // 40) == 0
+        ):
+            on_progress(done, total)
+        if hit is None:
+            continue
+        _shift_hit_bar_indices(hit, lo)
+        prev = last_key.get(hit.pattern_id)
+        if prev is not None and i - prev < dedupe:
+            continue
+        last_key[hit.pattern_id] = i
+        out.append((i, hit))
+    if on_progress:
+        on_progress(total, total)
+    return out
+
+
 def replay_category(
     bars: list[OhlcBar],
     *,
@@ -346,8 +414,8 @@ def replay_category(
     stride: int | None = None,
     on_progress: ProgressFn | None = None,
 ) -> list[tuple[int, PatternHit]]:
+    st = _replay_stride(category, timeframe, stride)
     if category == "divergence":
-        st = stride or STRIDE_DIVERGENCE.get(timeframe, STRIDE_BY_TF.get(timeframe, 1))
         return _replay_divergence(
             bars,
             timeframe=timeframe,
@@ -356,30 +424,15 @@ def replay_category(
             stride=st,
             on_progress=on_progress,
         )
-    stride = stride or STRIDE_BY_TF.get(timeframe, 1)
-    dedupe = DEDUPE_BARS.get(timeframe, 12)
-    detect = _detector(category)
-    last_key: dict[str, int] = {}
-    out: list[tuple[int, PatternHit]] = []
-    indices = range(scan_start, scan_end + 1, stride)
-    total = max(1, len(list(range(scan_start, scan_end + 1, stride))))
-    done = 0
-
-    for i in range(scan_start, scan_end + 1, stride):
-        hit = detect(bars[: i + 1], timeframe)
-        done += 1
-        if on_progress and (done == 1 or done == total or done % max(1, total // 50) == 0):
-            on_progress(done, total)
-        if hit is None:
-            continue
-        prev = last_key.get(hit.pattern_id)
-        if prev is not None and i - prev < dedupe:
-            continue
-        last_key[hit.pattern_id] = i
-        out.append((i, hit))
-    if on_progress:
-        on_progress(total, total)
-    return out
+    return _replay_sliding_window(
+        bars,
+        category=category,
+        timeframe=timeframe,
+        scan_start=scan_start,
+        scan_end=scan_end,
+        stride=st,
+        on_progress=on_progress,
+    )
 
 
 def run_backtest(
@@ -422,16 +475,14 @@ def run_backtest(
         result.error = "بازهٔ انتخابی خارج از دادهٔ ذخیره‌شده است."
         return result
 
-    stride_val = stride or (
-        STRIDE_DIVERGENCE.get(timeframe, STRIDE_BY_TF.get(timeframe, 1))
-        if category == "divergence"
-        else STRIDE_BY_TF.get(timeframe, 1)
-    )
+    stride_val = _replay_stride(category, timeframe, stride)
     result.stride = stride_val
+
+    scan_pct = 42
 
     def scan_progress(done: int, total: int) -> None:
         if on_progress and total:
-            on_progress(int(done * 72 / total), 100)
+            on_progress(int(done * scan_pct / total), 100)
 
     raw_hits = replay_category(
         full,
@@ -443,11 +494,23 @@ def run_backtest(
         on_progress=scan_progress if on_progress else None,
     )
 
-    chart_cap = min(len(raw_hits), max_charts)
-    chart_cap = max(chart_cap, 1)
+    n_findings = max(1, len(raw_hits))
+    chart_limit = max_charts
+    if category in ("trendline", "channel", "ema50") and chart_limit > 48:
+        chart_limit = 48
 
     chart_dir.mkdir(parents=True, exist_ok=True)
     for n, (idx, hit) in enumerate(raw_hits):
+
+        def _phase(fraction: float) -> None:
+            if on_progress:
+                on_progress(
+                    scan_pct
+                    + int(fraction * (100 - scan_pct) / n_findings),
+                    100,
+                )
+
+        _phase(float(n) + 0.05)
         ts = full[idx].ts
         success, outcome_fa = evaluate_outcome(
             full,
@@ -456,6 +519,7 @@ def run_backtest(
             timeframe,
             target_profit_pct=target_profit_pct,
         )
+        _phase(float(n) + 0.45)
         finding = BacktestFinding.from_hit(
             hit, idx, ts, success=success, outcome_fa=outcome_fa
         )
@@ -463,8 +527,9 @@ def run_backtest(
             result.success_count += 1
         elif success is False:
             result.fail_count += 1
-        if n < max_charts:
-            if hit.category in ("trendline", "ema50"):
+        if n < chart_limit:
+            _phase(float(n) + 0.55)
+            if hit.category in ("trendline", "ema50", "channel"):
                 sig_ix = hit.meta.get("entry_index", hit.meta.get("early_index", idx))
             else:
                 sig_ix = hit.meta.get("confirm_index", idx)
@@ -478,17 +543,15 @@ def run_backtest(
                 forward_bars=fwd,
                 outcome_success=success,
             )
+            _phase(float(n) + 0.92)
             if png:
                 fname = f"{chart_prefix}bt_{category}_{timeframe}_{idx}_{hit.pattern_id}.png"
                 (chart_dir / fname).write_bytes(png)
                 finding.chart_file = fname
         result.findings.append(finding)
-        if on_progress and n < max_charts:
-            on_progress(72 + int((n + 1) * 28 / chart_cap), 100)
-        elif on_progress and n == len(raw_hits) - 1:
-            on_progress(100, 100)
+        _phase(float(n) + 1.0)
 
-    if on_progress and not raw_hits:
+    if on_progress:
         on_progress(100, 100)
 
     return result
