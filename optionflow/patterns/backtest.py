@@ -8,7 +8,13 @@ from pathlib import Path
 from typing import Callable
 
 from optionflow.patterns.chart import render_pattern_chart, chart_forward_bars
-from optionflow.patterns.divergence import detect_rsi_divergence
+from optionflow.patterns.divergence import (
+    LOOKBACK_LEFT,
+    LOOKBACK_RIGHT,
+    RANGE_UPPER,
+    RSI_PERIOD,
+    detect_rsi_divergence,
+)
 from optionflow.patterns.flag import detect_flag
 from optionflow.patterns.history import (
     INTERVAL_MS,
@@ -16,8 +22,8 @@ from optionflow.patterns.history import (
     history_data_dir,
     slice_with_warmup,
 )
+from optionflow.patterns.indicators import rsi
 from optionflow.patterns.ohlc import OhlcBar
-from optionflow.patterns.ema50 import detect_ema50, evaluate_ema50_path
 from optionflow.patterns.trendline import (
     detect_channel,
     detect_trendline,
@@ -30,6 +36,7 @@ logger = logging.getLogger("optionflow.patterns.backtest")
 
 CATEGORIES = ("triangle", "flag", "divergence", "trendline", "channel", "ema50")
 STRIDE_BY_TF = {"5m": 6, "15m": 2, "1h": 1, "4h": 1, "1d": 1}
+STRIDE_DIVERGENCE = {"5m": 12, "15m": 4, "1h": 2, "4h": 1, "1d": 1}
 DEDUPE_BARS = {"5m": 48, "15m": 20, "1h": 24, "4h": 8, "1d": 4}
 FORWARD_BARS = {"5m": 36, "15m": 24, "1h": 18, "4h": 12, "1d": 8}
 MIN_MOVE_PCT = {"5m": 0.008, "15m": 0.012, "1h": 0.015, "4h": 0.02, "1d": 0.025}
@@ -115,7 +122,9 @@ def _detector(category: str):
             bars, tf, require_breakout=True
         ),
         "flag": detect_flag,
-        "divergence": lambda bars, tf: detect_rsi_divergence(bars, tf),
+        "divergence": lambda bars, tf: detect_rsi_divergence(
+            bars, tf, allow_early=False
+        ),
         "trendline": lambda bars, tf: detect_trendline(
             bars, tf, allow_early=False
         ),
@@ -255,6 +264,78 @@ def evaluate_outcome(
     return ok, note
 
 
+def _divergence_window_bars() -> int:
+    return LOOKBACK_LEFT + LOOKBACK_RIGHT + RANGE_UPPER + RSI_PERIOD + 40
+
+
+def _shift_hit_bar_indices(hit: PatternHit, offset: int) -> None:
+    if offset <= 0:
+        return
+    meta = hit.meta
+    for key in (
+        "confirm_index",
+        "early_index",
+        "final_index",
+        "entry_index",
+        "break_index",
+        "pullback_index",
+    ):
+        v = meta.get(key)
+        if isinstance(v, int):
+            meta[key] = v + offset
+    for key in ("pivot_a", "pivot_b", "pivot_mid"):
+        t = meta.get(key)
+        if isinstance(t, (list, tuple)) and len(t) >= 2:
+            meta[key] = (int(t[0]) + offset, t[1])
+
+
+def _replay_divergence(
+    bars: list[OhlcBar],
+    *,
+    timeframe: str,
+    scan_start: int,
+    scan_end: int,
+    stride: int,
+    on_progress: ProgressFn | None = None,
+) -> list[tuple[int, PatternHit]]:
+    """ریپلی واگرایی: RSI یک‌بار + پنجرهٔ محدود (سریع‌تر از bars[:i+1] روی کل سری)."""
+    dedupe = DEDUPE_BARS.get(timeframe, 12)
+    win = _divergence_window_bars()
+    closes = [b.close for b in bars]
+    rs_full = rsi(closes, RSI_PERIOD)
+    last_key: dict[str, int] = {}
+    out: list[tuple[int, PatternHit]] = []
+    total = max(1, len(range(scan_start, scan_end + 1, stride)))
+    done = 0
+
+    for i in range(scan_start, scan_end + 1, stride):
+        lo = max(0, i + 1 - win)
+        chunk = bars[lo : i + 1]
+        rs_chunk = rs_full[lo : i + 1]
+        hit = detect_rsi_divergence(
+            chunk,
+            timeframe,
+            allow_early=False,
+            rs=rs_chunk,
+        )
+        done += 1
+        if on_progress and (
+            done == 1 or done == total or done % max(1, total // 40) == 0
+        ):
+            on_progress(done, total)
+        if hit is None:
+            continue
+        _shift_hit_bar_indices(hit, lo)
+        prev = last_key.get(hit.pattern_id)
+        if prev is not None and i - prev < dedupe:
+            continue
+        last_key[hit.pattern_id] = i
+        out.append((i, hit))
+    if on_progress:
+        on_progress(total, total)
+    return out
+
+
 def replay_category(
     bars: list[OhlcBar],
     *,
@@ -265,6 +346,16 @@ def replay_category(
     stride: int | None = None,
     on_progress: ProgressFn | None = None,
 ) -> list[tuple[int, PatternHit]]:
+    if category == "divergence":
+        st = stride or STRIDE_DIVERGENCE.get(timeframe, STRIDE_BY_TF.get(timeframe, 1))
+        return _replay_divergence(
+            bars,
+            timeframe=timeframe,
+            scan_start=scan_start,
+            scan_end=scan_end,
+            stride=st,
+            on_progress=on_progress,
+        )
     stride = stride or STRIDE_BY_TF.get(timeframe, 1)
     dedupe = DEDUPE_BARS.get(timeframe, 12)
     detect = _detector(category)
@@ -331,15 +422,29 @@ def run_backtest(
         result.error = "بازهٔ انتخابی خارج از دادهٔ ذخیره‌شده است."
         return result
 
+    stride_val = stride or (
+        STRIDE_DIVERGENCE.get(timeframe, STRIDE_BY_TF.get(timeframe, 1))
+        if category == "divergence"
+        else STRIDE_BY_TF.get(timeframe, 1)
+    )
+    result.stride = stride_val
+
+    def scan_progress(done: int, total: int) -> None:
+        if on_progress and total:
+            on_progress(int(done * 72 / total), 100)
+
     raw_hits = replay_category(
         full,
         category=category,
         timeframe=timeframe,
         scan_start=scan_start,
         scan_end=scan_end,
-        stride=stride,
-        on_progress=on_progress,
+        stride=stride_val,
+        on_progress=scan_progress if on_progress else None,
     )
+
+    chart_cap = min(len(raw_hits), max_charts)
+    chart_cap = max(chart_cap, 1)
 
     chart_dir.mkdir(parents=True, exist_ok=True)
     for n, (idx, hit) in enumerate(raw_hits):
@@ -378,6 +483,13 @@ def run_backtest(
                 (chart_dir / fname).write_bytes(png)
                 finding.chart_file = fname
         result.findings.append(finding)
+        if on_progress and n < max_charts:
+            on_progress(72 + int((n + 1) * 28 / chart_cap), 100)
+        elif on_progress and n == len(raw_hits) - 1:
+            on_progress(100, 100)
+
+    if on_progress and not raw_hits:
+        on_progress(100, 100)
 
     return result
 
