@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>طرح C — Terminal</title>
+  <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root { --bg: #0a0c0a; --green: #3dd68c; --red: #f07178; --line: #1e2e1e; --text: #dce8dc; --muted: #6b806b; }
+    * { box-sizing: border-box; margin: 0; }
+    body { font-family: "Vazirmatn", sans-serif; background: var(--bg); color: var(--text); font-size: 14px; }
+    .wrap { max-width: 430px; margin: 0 auto; border-inline: 1px solid var(--line); min-height: 100vh; }
+    .bar {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.65rem; color: var(--green);
+      padding: 10px 14px; border-bottom: 1px solid var(--line);
+      background: #0d100d;
+    }
+    .bar span { color: var(--muted); }
+    h1 { font-size: 0.95rem; font-weight: 600; padding: 16px 14px 8px; letter-spacing: 0.02em; }
+    .sub { padding: 0 14px 14px; font-size: 0.72rem; color: var(--muted); }
+    .sub a { color: var(--green); }
+    table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+    th {
+      text-align: right; padding: 10px 14px; font-weight: 500;
+      color: var(--muted); border-bottom: 1px solid var(--line);
+      font-family: "JetBrains Mono", monospace; font-size: 0.62rem;
+    }
+    td { padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    tr:active { background: rgba(61,214,140,0.06); }
+    .sym { font-family: "JetBrains Mono", monospace; color: var(--green); font-size: 0.7rem; }
+    .sym.put { color: var(--red); }
+    .log { padding: 14px; }
+    .log-head { font-size: 0.68rem; color: var(--muted); margin-bottom: 10px; font-family: "JetBrains Mono", monospace; }
+    .log-line {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.68rem; line-height: 1.7; color: #a8b8a8;
+      border-right: 2px solid var(--green); padding-right: 10px; margin-bottom: 12px;
+    }
+    .log-line .t { color: var(--muted); }
+    .log-line .tag { color: var(--green); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="bar">PATTERNS_MODULE <span>v2.1</span> · LIVE</div>
+    <h1>SCANNER / ALGO</h1>
+    <p class="sub"><a href="index.html">← schemes</a> · طرح C Terminal · 24h window</p>
+    <table>
+      <thead><tr><th>MODULE</th><th>TF</th><th>STATUS</th></tr></thead>
+      <tbody>
+        <tr><td><strong>FLOW_SURGE</strong><br><span class="sym">call_buy</span></td><td>15m</td><td style="color:var(--green)">HIT</td></tr>
+        <tr><td><strong>RSI_DIV</strong><br><span class="sym put">bear</span></td><td>5m</td><td style="color:var(--green)">HIT</td></tr>
+        <tr><td><strong>TRENDLINE</strong></td><td>1h</td><td style="color:var(--muted)">—</td></tr>
+        <tr><td><strong>EMA50</strong></td><td>15m</td><td style="color:var(--muted)">—</td></tr>
+        <tr><td><strong>TRIANGLE</strong></td><td>5m</td><td style="color:var(--muted)">—</td></tr>
+        <tr><td><strong>FLAG</strong></td><td>1h</td><td style="color:var(--muted)">—</td></tr>
+        <tr><td><strong>CHANNEL</strong></td><td>15m</td><td style="color:var(--muted)">—</td></tr>
+      </tbody>
+    </table>
+    <div class="log">
+      <div class="log-head">// EVENT_LOG last 24h</div>
+      <div class="log-line"><span class="t">14:02:08</span> <span class="tag">[FLOW]</span> call_surge vol=1043.1 BTC strikes=86000,85000</div>
+      <div class="log-line"><span class="t">11:18:44</span> <span class="tag">[RSI]</span> bear_div confirmed entry→tp +0.50%</div>
+    </div>
+  </div>
+</body>
+</html>

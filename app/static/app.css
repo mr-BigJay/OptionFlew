@@ -758,10 +758,15 @@ body.chart-lightbox-open {
   text-decoration: none;
 }
 
-.patterns-layout-picker a.on {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: var(--accent-dim);
+.patterns-design-link {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(34,211,238,0.15), rgba(167,139,250,0.12));
+  border: 1px solid rgba(34,211,238,0.25);
+  color: var(--accent) !important;
+  font-weight: 600;
 }
 
 .patterns-timeline-block {

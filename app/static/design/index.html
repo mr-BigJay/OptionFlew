@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>طرح‌های حرفه‌ای — الگوها OptionFlow</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Vazirmatn", system-ui, sans-serif;
+      background: #06080d;
+      color: #e8edf4;
+      padding: 24px 20px 48px;
+    }
+    h1 { font-size: 1.35rem; font-weight: 700; margin: 0 0 8px; }
+    .lead { color: #8b98a8; font-size: 0.9rem; line-height: 1.7; max-width: 520px; margin-bottom: 28px; }
+    .grid {
+      display: grid;
+      gap: 16px;
+      max-width: 560px;
+      margin: 0 auto;
+    }
+    a.card {
+      display: block;
+      padding: 20px 18px;
+      border-radius: 20px;
+      text-decoration: none;
+      color: inherit;
+      border: 1px solid rgba(255,255,255,0.08);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    a.card:hover { transform: translateY(-2px); }
+    .v1 { background: linear-gradient(135deg, #0d1520 0%, #122030 100%); box-shadow: 0 12px 40px rgba(34,211,238,0.08); }
+    .v2 { background: linear-gradient(145deg, #15102a 0%, #1a1535 50%, #0f1828 100%); box-shadow: 0 12px 40px rgba(167,139,250,0.12); }
+    .v3 { background: linear-gradient(180deg, #111820 0%, #0a0e14 100%); border-color: rgba(52,211,153,0.2); }
+    .v4 { background: rgba(255,255,255,0.04); backdrop-filter: blur(12px); border-color: rgba(255,255,255,0.12); }
+    .tag { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.7; margin-bottom: 6px; }
+    .title { font-size: 1.05rem; font-weight: 600; margin-bottom: 6px; }
+    .desc { font-size: 0.82rem; color: #9aa8b8; line-height: 1.55; }
+    .pill { display: inline-block; margin-top: 10px; font-size: 0.72rem; padding: 4px 10px; border-radius: 999px; background: rgba(255,255,255,0.06); }
+  </style>
+</head>
+<body>
+  <div class="grid">
+    <h1>طرح‌های حرفه‌ای صفحهٔ الگوها</h1>
+    <p class="lead">هر لینک یک صفحهٔ کامل (منو + تایم‌لاین ۲۴ ساعت) با UI متفاوت است. روی موبایل باز کنید و یکی را برای پیاده‌سازی نهایی انتخاب کنید.</p>
+
+    <a class="card v1" href="patterns-pro-v1-aurora.html">
+      <div class="tag">طرح A</div>
+      <div class="title">Aurora — برند OptionFlow</div>
+      <p class="desc">سایان، کارت‌های شیشه‌ای، تایم‌لاین مثل گزارش‌ها. مناسب enrich فعلی.</p>
+      <span class="pill">پیشنهاد پیش‌فرض</span>
+    </a>
+
+    <a class="card v2" href="patterns-pro-v2-obsidian.html">
+      <div class="tag">طرح B</div>
+      <div class="title">Obsidian — پریمیوم ترید</div>
+      <p class="desc">بنفش + طلایی، آیکون دسته، badge حجم فلو. حس داشبورد حرفه‌ای.</p>
+      <span class="pill">لوکس / VIP</span>
+    </a>
+
+    <a class="card v3" href="patterns-pro-v3-terminal.html">
+      <div class="tag">طرح C</div>
+      <div class="title">Terminal — مینیمال داده‌محور</div>
+      <p class="desc">خطوط تیز، جدول‌وار، سبز/قرمز، بدون شلوغی. برای کاربر تحلیل‌گر.</p>
+      <span class="pill">مینیمال</span>
+    </a>
+
+    <a class="card v4" href="patterns-pro-v4-glass.html">
+      <div class="tag">طرح D</div>
+      <div class="title">Glass — iOS مدرن</div>
+      <p class="desc">بلور، گردی زیاد، فاصلهٔ airy، تایم‌لاین card stack.</p>
+      <span class="pill">مدرن موبایل</span>
+    </a>
+  </div>
+</body>
+</html>
