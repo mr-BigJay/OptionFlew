@@ -11,34 +11,54 @@
 {% if not runs %}
 <p class="empty">هنوز بکتستی اجرا نشده.</p>
 {% else %}
-<ul class="bt-run-list">
+<ul class="bt-archive-list" id="bt-archive-list">
   {% for r in runs %}
   <li>
-    <a href="/backtest/reports/{{ r.id }}" class="bt-run-list-item">
-      <div class="bt-run-list-head">
-        <bdi dir="ltr" class="bt-run-id">#{{ r.id }}</bdi>
-        <span>{{ category_labels.get(r.category, r.category) }}</span>
-        <bdi dir="ltr" class="bt-run-tf">{{ r.timeframe }}</bdi>
-      </div>
-      <div class="bt-run-list-range">
-        <span class="bt-meta-label">بازه</span>
-        <bdi dir="ltr">{{ fmt_date(r.from_iso) }} – {{ fmt_date(r.to_iso) }}</bdi>
-      </div>
-      <div class="bt-run-list-meta">
+    <a href="/backtest/reports/{{ r.id }}" class="bt-archive-row status-{{ r.status }}" data-run-id="{{ r.id }}" data-status="{{ r.status }}">
+      <span class="bt-archive-rail" aria-hidden="true"></span>
+      <div class="bt-archive-body">
+        <div class="bt-archive-line1">
+          <bdi dir="ltr" class="bt-archive-id">#{{ r.id }}</bdi>
+          <span class="bt-archive-name">{{ category_labels.get(r.category, r.category) }}</span>
+          <bdi dir="ltr" class="kind-pill bt-archive-tf">{{ r.timeframe }}</bdi>
+          {% if r.status == 'running' %}
+          <span class="bt-archive-badge running">در حال اجرا</span>
+          {% elif r.status == 'error' %}
+          <span class="bt-archive-badge error">خطا</span>
+          {% else %}
+          <span class="bt-archive-badge done">تمام</span>
+          {% endif %}
+        </div>
+        <div class="bt-archive-line2">
+          <span class="bt-meta-label">بازه</span>
+          <bdi dir="ltr">{{ fmt_date(r.from_iso) }} – {{ fmt_date(r.to_iso) }}</bdi>
+          <span class="bt-archive-sep">·</span>
+          <time datetime="{{ r.created_at }}">{{ fmt_dt(r.created_at) }}</time>
+        </div>
         {% if r.status == 'running' %}
-        <span>در حال اجرا <bdi dir="ltr">{{ r.progress_pct }}%</bdi></span>
-        {% elif r.status == 'error' %}
-        <span class="bt-stat-fail">خطا</span>
+        <div class="bt-archive-progress" data-progress-wrap>
+          <div class="bt-progress-track bt-progress-track-slim">
+            <div class="bt-progress-bar" data-progress-bar style="width: {{ r.progress_pct }}%"></div>
+          </div>
+          <bdi dir="ltr" class="bt-archive-pct" data-progress-label>{{ r.progress_pct }}%</bdi>
+        </div>
         {% else %}
-        <span class="bt-stat-ok">موفق <bdi dir="ltr">{{ r.success_count }}</bdi></span>
-        <span class="bt-stat-fail">ناموفق <bdi dir="ltr">{{ r.fail_count }}</bdi></span>
-        <span>کل <bdi dir="ltr">{{ r.findings_count }}</bdi></span>
+        <div class="bt-archive-line3" data-stats-wrap>
+          {% if r.status == 'error' %}
+          <span class="bt-stat-fail">اجرای بکتست ناموفق</span>
+          {% else %}
+          <span class="bt-stat-ok">موفق <bdi dir="ltr">{{ r.success_count }}</bdi></span>
+          <span class="bt-stat-fail">ناموفق <bdi dir="ltr">{{ r.fail_count }}</bdi></span>
+          <span class="muted">کل <bdi dir="ltr">{{ r.findings_count }}</bdi></span>
+          {% endif %}
+        </div>
         {% endif %}
       </div>
-      <time class="bt-run-list-time" datetime="{{ r.created_at }}">{{ fmt_dt(r.created_at) }}</time>
+      <span class="bt-archive-chevron" aria-hidden="true">‹</span>
     </a>
   </li>
   {% endfor %}
 </ul>
 {% endif %}
+<script src="/static/backtest-reports.js?v=1" defer></script>
 {% endblock %}
