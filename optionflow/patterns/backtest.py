@@ -8,7 +8,11 @@ from pathlib import Path
 from typing import Callable
 
 from optionflow.patterns.chart import render_pattern_chart, chart_forward_bars
-from optionflow.patterns.divergence import detect_rsi_divergence
+from optionflow.patterns.divergence import (
+    detect_rsi_divergence,
+    divergence_rank,
+    divergence_signal_key,
+)
 from optionflow.patterns.flag import detect_flag
 from optionflow.patterns.history import (
     INTERVAL_MS,
@@ -30,7 +34,7 @@ logger = logging.getLogger("optionflow.patterns.backtest")
 
 CATEGORIES = ("triangle", "flag", "divergence", "trendline", "channel", "ema50")
 STRIDE_BY_TF = {"5m": 6, "15m": 2, "1h": 1, "4h": 1, "1d": 1}
-DEDUPE_BARS = {"5m": 48, "15m": 20, "1h": 24, "4h": 8, "1d": 4}
+DEDUPE_BARS = {"5m": 48, "15m": 20, "1h": 16, "4h": 8, "1d": 4}
 FORWARD_BARS = {"5m": 36, "15m": 24, "1h": 18, "4h": 12, "1d": 8}
 MIN_MOVE_PCT = {"5m": 0.008, "15m": 0.012, "1h": 0.015, "4h": 0.02, "1d": 0.025}
 BACKTEST_TIMEFRAMES = ("5m", "15m", "1h", "4h", "1d")
@@ -271,6 +275,7 @@ def replay_category(
     dedupe = DEDUPE_BARS.get(timeframe, 12)
     detect = _detector(category)
     last_key: dict[str, int] = {}
+    div_slot: dict[str, int] = {}
     out: list[tuple[int, PatternHit]] = []
     indices = range(scan_start, scan_end + 1, stride)
     total = max(1, len(list(range(scan_start, scan_end + 1, stride))))
@@ -282,6 +287,24 @@ def replay_category(
         if on_progress and (done == 1 or done == total or done % max(1, total // 50) == 0):
             on_progress(done, total)
         if hit is None:
+            continue
+        if hit.category == "divergence":
+            sig = divergence_signal_key(hit)
+            if sig:
+                slot = div_slot.get(sig)
+                if slot is not None:
+                    old_i, old_hit = out[slot]
+                    if divergence_rank(hit) > divergence_rank(old_hit):
+                        out[slot] = (i, hit)
+                        last_key[hit.pattern_id] = i
+                    continue
+            prev = last_key.get(hit.pattern_id)
+            if prev is not None and i - prev < dedupe:
+                continue
+            last_key[hit.pattern_id] = i
+            if sig:
+                div_slot[sig] = len(out)
+            out.append((i, hit))
             continue
         prev = last_key.get(hit.pattern_id)
         if prev is not None and i - prev < dedupe:
