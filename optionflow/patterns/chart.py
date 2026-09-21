@@ -633,31 +633,26 @@ def _render_divergence(
     x_a = mdates.date2num(bars[pa[0]].ts)
     x_b = mdates.date2num(bars[pb[0]].ts)
     line_color = "#ef5350" if direction == "down" else "#66bb6a"
-    price_pts_x = [x_a, x_b]
-    price_pts_y = [pa[1], pb[1]]
-    rsi_pts_y = [meta["rsi_a"], meta["rsi_b"]]
     mid = meta.get("pivot_mid")
-    if isinstance(mid, (list, tuple)) and len(mid) == 2:
-        xm = mdates.date2num(bars[mid[0]].ts)
-        price_pts_x.insert(1, xm)
-        price_pts_y.insert(1, mid[1])
-        rm = rs[mid[0]] if mid[0] < len(rs) and rs[mid[0]] is not None else float("nan")
-        rsi_pts_y.insert(1, float(rm))
     if direction == "down":
-        ax1.scatter(price_pts_x, price_pts_y, c="#ef5350", s=55, zorder=6, edgecolors="#fff", linewidths=0.4)
+        ax1.scatter([x_a, x_b], [pa[1], pb[1]], c="#ef5350", s=55, zorder=6, edgecolors="#fff", linewidths=0.4)
         ax1.plot([x_a, x_b], [pa[1], pb[1]], color="#ef5350", linestyle="--", linewidth=1.2, alpha=0.9)
     else:
-        ax1.scatter(price_pts_x, price_pts_y, c="#66bb6a", s=55, zorder=6, edgecolors="#fff", linewidths=0.4)
+        ax1.scatter([x_a, x_b], [pa[1], pb[1]], c="#66bb6a", s=55, zorder=6, edgecolors="#fff", linewidths=0.4)
         ax1.plot([x_a, x_b], [pa[1], pb[1]], color="#66bb6a", linestyle="--", linewidth=1.2, alpha=0.9)
+    if isinstance(mid, (list, tuple)) and len(mid) == 2:
+        xm = mdates.date2num(bars[mid[0]].ts)
+        ax1.scatter([xm], [mid[1]], c="#fbbf24", s=42, zorder=6, edgecolors="#fff", linewidths=0.4)
 
     rsi_y: list[float] = []
     for i in range(start, end):
         v = rs[i] if i < len(rs) else None
         rsi_y.append(float("nan") if v is None else float(v))
     _style_rsi_pane(ax2, xs, rsi_y, period=RSI_PERIOD)
+    ra, rb = meta["rsi_a"], meta["rsi_b"]
     ax2.scatter(
         [x_a, x_b],
-        [meta["rsi_a"], meta["rsi_b"]],
+        [ra, rb],
         c=line_color,
         s=48,
         zorder=6,
@@ -665,16 +660,17 @@ def _render_divergence(
         linewidths=0.4,
     )
     if isinstance(mid, (list, tuple)) and len(mid) == 2:
+        rm = rs[mid[0]] if mid[0] < len(rs) and rs[mid[0]] is not None else float("nan")
         ax2.scatter(
-            [price_pts_x[1]],
-            [rsi_pts_y[1]],
+            [mdates.date2num(bars[mid[0]].ts)],
+            [float(rm)],
             c="#fbbf24",
             s=40,
             zorder=6,
             edgecolors="#fff",
             linewidths=0.4,
         )
-    ax2.plot([x_a, x_b], [meta["rsi_a"], meta["rsi_b"]], color=line_color, linestyle="--", linewidth=1.2, alpha=0.9)
+    ax2.plot([x_a, x_b], [ra, rb], color=line_color, linestyle="--", linewidth=1.2, alpha=0.9)
 
     _mark_early_entry(ax1, bars, meta, start, end)
 
