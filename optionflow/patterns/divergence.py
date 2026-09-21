@@ -219,13 +219,19 @@ def detect_rsi_divergence(
     timeframe: str,
     *,
     allow_early: bool = True,
+    rs: list[float | None] | None = None,
 ) -> PatternHit | None:
     min_len = LOOKBACK_LEFT + LOOKBACK_RIGHT + RANGE_UPPER + RSI_PERIOD + 20
     if len(bars) < min_len:
         return None
 
     closes = [b.close for b in bars]
-    rs = rsi(closes, RSI_PERIOD)
+    if rs is None:
+        rs = rsi(closes, RSI_PERIOD)
+    elif len(rs) < len(bars):
+        rs = rsi(closes, RSI_PERIOD)
+    else:
+        rs = rs[: len(bars)]
     highs = [b.high for b in bars]
     lows = [b.low for b in bars]
     n = len(bars)
