@@ -14,9 +14,11 @@ from optionflow.patterns.types import PatternHit
 RSI_PERIOD = 24
 LOOKBACK_LEFT = 10
 LOOKBACK_RIGHT = 10
-EARLY_RIGHT = 2  # تأیید اولیه قبل از pivot کامل ۱۰/۱۰
+EARLY_RIGHT = 2
 RANGE_LOWER = 5
 RANGE_UPPER = 60
+ENTRY_LEG1_WEIGHT = 0.35
+ENTRY_LEG2_WEIGHT = 0.65
 
 
 def _in_range(p_a: int, p_b: int) -> bool:
@@ -33,7 +35,6 @@ def _forming_pivot(
     high: bool,
     n: int,
 ) -> tuple[int, int] | None:
-    """سقف/کف RSI در حال شکل‌گیری: ۲ تا ۹ کندل راست (قبل از تأیید ۱۰)."""
     for right in range(EARLY_RIGHT, LOOKBACK_RIGHT):
         p = n - 1 - right
         if p < LOOKBACK_LEFT:
@@ -80,6 +81,95 @@ def _bullish_ok(
     return float(ra), float(rb)
 
 
+def _best_bearish_pair(
+    rs: list[float | None],
+    highs: list[float],
+    pivots: list[tuple[int, int]],
+    p_c: int,
+) -> tuple[int, int, float, float] | None:
+    """آخرین pivot را اول با pivot قبلی، بعد با pivotهای قدیمی‌تر مقایسه کن."""
+    for j in range(len(pivots) - 1, -1, -1):
+        _, p_a = pivots[j]
+        if p_a >= p_c:
+            continue
+        if not _in_range(p_a, p_c):
+            continue
+        pair = _bearish_ok(rs, highs, p_a, p_c)
+        if pair:
+            return p_a, p_c, pair[0], pair[1]
+    return None
+
+
+def _best_bullish_pair(
+    rs: list[float | None],
+    lows: list[float],
+    pivots: list[tuple[int, int]],
+    p_c: int,
+) -> tuple[int, int, float, float] | None:
+    for j in range(len(pivots) - 1, -1, -1):
+        _, p_a = pivots[j]
+        if p_a >= p_c:
+            continue
+        if not _in_range(p_a, p_c):
+            continue
+        pair = _bullish_ok(rs, lows, p_a, p_c)
+        if pair:
+            return p_a, p_c, pair[0], pair[1]
+    return None
+
+
+def _chronological_pivots(
+    pivots: list[tuple[int, int]],
+    p_c: int,
+) -> list[int]:
+    ps = sorted({p for _, p in pivots} | {p_c})
+    return ps
+
+
+def _entry_ladder(
+    pivots: list[tuple[int, int]],
+    p_c: int,
+    prices: list[float],
+) -> dict:
+    """۳۵٪ روی pivot دوم؛ ۶۵٪ روی pivot سوم (در صورت وجود)."""
+    ordered = _chronological_pivots(pivots, p_c)
+    out: dict = {
+        "entry_pivot_2_index": None,
+        "entry_pivot_2_px": None,
+        "entry_pivot_3_index": None,
+        "entry_pivot_3_px": None,
+        "entry_leg1_weight": ENTRY_LEG1_WEIGHT,
+        "entry_leg2_weight": None,
+        "entry_blended_px": None,
+        "pivot_count": len(ordered),
+    }
+    if len(ordered) >= 3:
+        p2, p3 = ordered[-2], ordered[-1]
+        px2, px3 = prices[p2], prices[p3]
+        out.update(
+            {
+                "entry_pivot_2_index": p2,
+                "entry_pivot_2_px": px2,
+                "entry_pivot_3_index": p3,
+                "entry_pivot_3_px": px3,
+                "entry_leg2_weight": ENTRY_LEG2_WEIGHT,
+                "entry_blended_px": px2 * ENTRY_LEG1_WEIGHT + px3 * ENTRY_LEG2_WEIGHT,
+            }
+        )
+        return out
+    if len(ordered) >= 2:
+        p2 = ordered[-1]
+        px2 = prices[p2]
+        out.update(
+            {
+                "entry_pivot_2_index": p2,
+                "entry_pivot_2_px": px2,
+                "entry_blended_px": px2,
+            }
+        )
+    return out
+
+
 def _bar_close(bars: list[OhlcBar], idx: int) -> float | None:
     if idx < 0 or idx >= len(bars):
         return None
@@ -97,21 +187,35 @@ def _entry_lines(
     p_b: int,
     *,
     early: bool,
+    ladder: dict,
 ) -> tuple[int, int | None, float | None, float | None, str]:
     early_ix = p_b + EARLY_RIGHT
     final_ix = p_b + LOOKBACK_RIGHT
     early_px = _bar_close(bars, early_ix)
     final_px = None if early else _bar_close(bars, final_ix)
+    px2 = ladder.get("entry_pivot_2_px")
+    px3 = ladder.get("entry_pivot_3_px")
+    if ladder.get("entry_pivot_3_px") is not None:
+        ladder_txt = (
+            f"ورود پله‌ای: {int(ENTRY_LEG1_WEIGHT * 100)}٪ در pivot دوم "
+            f"({_price_txt(px2)}) و {int(ENTRY_LEG2_WEIGHT * 100)}٪ در pivot سوم "
+            f"({_price_txt(px3)})."
+        )
+    elif px2 is not None:
+        ladder_txt = (
+            f"ورود {int(ENTRY_LEG1_WEIGHT * 100)}٪ در pivot دوم ({_price_txt(px2)})؛ "
+            "pivot سوم هنوز نیست."
+        )
+    else:
+        ladder_txt = ""
     if early:
         extra = (
             f"تأیید اولیه در قیمت {_price_txt(early_px)}؛ "
-            f"منتظر pivot RSI {LOOKBACK_LEFT}/{LOOKBACK_RIGHT} (حدود "
-            f"{LOOKBACK_RIGHT - EARLY_RIGHT} کندل)."
+            f"منتظر pivot RSI {LOOKBACK_LEFT}/{LOOKBACK_RIGHT}. {ladder_txt}"
         )
         return early_ix, None, early_px, None, extra
     extra = (
-        f"تأیید اولیه در قیمت {_price_txt(early_px)}، "
-        f"تأیید نهایی (BigBeluga) در قیمت {_price_txt(final_px)}."
+        f"تأیید نهایی در {_price_txt(final_px)}. {ladder_txt}"
     )
     return early_ix, final_ix, early_px, final_px, extra
 
@@ -120,20 +224,26 @@ def _hit_bearish(
     bars: list[OhlcBar],
     timeframe: str,
     p_a: int,
-    p_b: int,
+    p_c: int,
     highs: list[float],
     ra: float,
     rb: float,
     confirm_index: int,
+    pivots: list[tuple[int, int]],
     *,
     early: bool,
 ) -> PatternHit:
     diff = ra - rb
     delay = EARLY_RIGHT if early else LOOKBACK_RIGHT
     status = "سیگنال اولیه" if early else "تأییدشده"
+    ladder = _entry_ladder(pivots, p_c, highs)
     early_ix, final_ix, early_px, final_px, extra = _entry_lines(
-        bars, p_b, early=early
+        bars, p_c, early=early, ladder=ladder
     )
+    ref_note = ""
+    ordered = _chronological_pivots(pivots, p_c)
+    if len(ordered) >= 3 and p_a == ordered[0] and p_c == ordered[-1]:
+        ref_note = " (مقایسه pivot اول و سوم)"
     return PatternHit(
         category="divergence",
         timeframe=timeframe,
@@ -141,19 +251,18 @@ def _hit_bearish(
         title_fa="واگرایی نزولی RSI",
         status_fa=status,
         summary_fa=(
-            f"Regular Bearish (BigBeluga) · "
-            f"قیمت HH ({highs[p_b]:,.0f} > {highs[p_a]:,.0f})، "
+            f"Regular Bearish (BigBeluga){ref_note} · "
+            f"قیمت HH ({highs[p_c]:,.0f} > {highs[p_a]:,.0f})، "
             f"RSI LH ({rb:.1f} < {ra:.1f}، Δ{diff:.1f}). {extra}"
         ),
         forecast_fa=(
             "احتمال اصلاح نزولی؛ تأیید با شکست کف کوتاه‌مدت."
             if not early
-            else "سقف RSI در حال شکل‌گیری است؛ اگر ۲ کندل راست pivot را تأیید کند، "
-            "واگرایی نزولی مثل TradingView ثبت می‌شود."
+            else "سقف RSI در حال شکل‌گیری است؛ pivot سوم با pivotهای قبل هم چک می‌شود."
         ),
         meta={
             "pivot_a": (p_a, highs[p_a]),
-            "pivot_b": (p_b, highs[p_b]),
+            "pivot_b": (p_c, highs[p_c]),
             "rsi_a": ra,
             "rsi_b": rb,
             "direction": "down",
@@ -167,6 +276,7 @@ def _hit_bearish(
             "delay_bars": delay,
             "rsi_period": RSI_PERIOD,
             "lookback": LOOKBACK_LEFT,
+            **ladder,
         },
     )
 
@@ -175,20 +285,26 @@ def _hit_bullish(
     bars: list[OhlcBar],
     timeframe: str,
     p_a: int,
-    p_b: int,
+    p_c: int,
     lows: list[float],
     ra: float,
     rb: float,
     confirm_index: int,
+    pivots: list[tuple[int, int]],
     *,
     early: bool,
 ) -> PatternHit:
     diff = rb - ra
     delay = EARLY_RIGHT if early else LOOKBACK_RIGHT
     status = "سیگنال اولیه" if early else "تأییدشده"
+    ladder = _entry_ladder(pivots, p_c, lows)
     early_ix, final_ix, early_px, final_px, extra = _entry_lines(
-        bars, p_b, early=early
+        bars, p_c, early=early, ladder=ladder
     )
+    ref_note = ""
+    ordered = _chronological_pivots(pivots, p_c)
+    if len(ordered) >= 3 and p_a == ordered[0] and p_c == ordered[-1]:
+        ref_note = " (مقایسه pivot اول و سوم)"
     return PatternHit(
         category="divergence",
         timeframe=timeframe,
@@ -196,19 +312,18 @@ def _hit_bullish(
         title_fa="واگرایی مثبت RSI",
         status_fa=status,
         summary_fa=(
-            f"Regular Bullish (BigBeluga) · "
-            f"قیمت LL ({lows[p_b]:,.0f} < {lows[p_a]:,.0f})، "
+            f"Regular Bullish (BigBeluga){ref_note} · "
+            f"قیمت LL ({lows[p_c]:,.0f} < {lows[p_a]:,.0f})، "
             f"RSI HL ({rb:.1f} > {ra:.1f}، Δ{diff:.1f}). {extra}"
         ),
         forecast_fa=(
             "احتمال اصلاح صعودی؛ تأیید با شکست سقف کوتاه‌مدت."
             if not early
-            else "کف RSI در حال شکل‌گیری است؛ اگر ۲ کندل راست pivot را تأیید کند، "
-            "واگرایی مثبت مثل TradingView ثبت می‌شود."
+            else "کف RSI در حال شکل‌گیری است؛ pivot سوم با pivotهای قبل هم چک می‌شود."
         ),
         meta={
             "pivot_a": (p_a, lows[p_a]),
-            "pivot_b": (p_b, lows[p_b]),
+            "pivot_b": (p_c, lows[p_c]),
             "rsi_a": ra,
             "rsi_b": rb,
             "direction": "up",
@@ -222,7 +337,66 @@ def _hit_bullish(
             "delay_bars": delay,
             "rsi_period": RSI_PERIOD,
             "lookback": LOOKBACK_LEFT,
+            **ladder,
         },
+    )
+
+
+def _try_bearish(
+    bars: list[OhlcBar],
+    timeframe: str,
+    rs: list[float | None],
+    highs: list[float],
+    pivots: list[tuple[int, int]],
+    p_c: int,
+    confirm_index: int,
+    *,
+    early: bool,
+) -> PatternHit | None:
+    found = _best_bearish_pair(rs, highs, pivots, p_c)
+    if not found:
+        return None
+    p_a, _pc, ra, rb = found
+    return _hit_bearish(
+        bars,
+        timeframe,
+        p_a,
+        p_c,
+        highs,
+        ra,
+        rb,
+        confirm_index,
+        pivots,
+        early=early,
+    )
+
+
+def _try_bullish(
+    bars: list[OhlcBar],
+    timeframe: str,
+    rs: list[float | None],
+    lows: list[float],
+    pivots: list[tuple[int, int]],
+    p_c: int,
+    confirm_index: int,
+    *,
+    early: bool,
+) -> PatternHit | None:
+    found = _best_bullish_pair(rs, lows, pivots, p_c)
+    if not found:
+        return None
+    p_a, _pc, ra, rb = found
+    return _hit_bullish(
+        bars,
+        timeframe,
+        p_a,
+        p_c,
+        lows,
+        ra,
+        rb,
+        confirm_index,
+        pivots,
+        early=early,
     )
 
 
@@ -250,54 +424,70 @@ def detect_rsi_divergence(
     )
 
     if len(ph) >= 2:
-        conf_b, p_b = ph[-1]
-        if _recent_confirm(conf_b, n, LOOKBACK_RIGHT):
-            _, p_a = ph[-2]
-            if _in_range(p_a, p_b):
-                pair = _bearish_ok(rs, highs, p_a, p_b)
-                if pair:
-                    ra, rb = pair
-                    return _hit_bearish(
-                        bars, timeframe, p_a, p_b, highs, ra, rb, conf_b, early=False
-                    )
+        conf_c, p_c = ph[-1]
+        if _recent_confirm(conf_c, n, LOOKBACK_RIGHT):
+            hit = _try_bearish(
+                bars,
+                timeframe,
+                rs,
+                highs,
+                ph,
+                p_c,
+                conf_c,
+                early=False,
+            )
+            if hit:
+                return hit
 
     if len(pl) >= 2:
-        conf_b, p_b = pl[-1]
-        if _recent_confirm(conf_b, n, LOOKBACK_RIGHT):
-            _, p_a = pl[-2]
-            if _in_range(p_a, p_b):
-                pair = _bullish_ok(rs, lows, p_a, p_b)
-                if pair:
-                    ra, rb = pair
-                    return _hit_bullish(
-                        bars, timeframe, p_a, p_b, lows, ra, rb, conf_b, early=False
-                    )
+        conf_c, p_c = pl[-1]
+        if _recent_confirm(conf_c, n, LOOKBACK_RIGHT):
+            hit = _try_bullish(
+                bars,
+                timeframe,
+                rs,
+                lows,
+                pl,
+                p_c,
+                conf_c,
+                early=False,
+            )
+            if hit:
+                return hit
 
     if not allow_early:
         return None
 
     forming_h = _forming_pivot(rs, high=True, n=n)
     if forming_h and ph:
-        p_b, right = forming_h
-        _, p_a = ph[-1]
-        if p_a < p_b and _in_range(p_a, p_b):
-            pair = _bearish_ok(rs, highs, p_a, p_b)
-            if pair:
-                ra, rb = pair
-                return _hit_bearish(
-                    bars, timeframe, p_a, p_b, highs, ra, rb, p_b + right, early=True
-                )
+        p_c, right = forming_h
+        hit = _try_bearish(
+            bars,
+            timeframe,
+            rs,
+            highs,
+            ph,
+            p_c,
+            p_c + right,
+            early=True,
+        )
+        if hit:
+            return hit
 
     forming_l = _forming_pivot(rs, high=False, n=n)
     if forming_l and pl:
-        p_b, right = forming_l
-        _, p_a = pl[-1]
-        if p_a < p_b and _in_range(p_a, p_b):
-            pair = _bullish_ok(rs, lows, p_a, p_b)
-            if pair:
-                ra, rb = pair
-                return _hit_bullish(
-                    bars, timeframe, p_a, p_b, lows, ra, rb, p_b + right, early=True
-                )
+        p_c, right = forming_l
+        hit = _try_bullish(
+            bars,
+            timeframe,
+            rs,
+            lows,
+            pl,
+            p_c,
+            p_c + right,
+            early=True,
+        )
+        if hit:
+            return hit
 
     return None

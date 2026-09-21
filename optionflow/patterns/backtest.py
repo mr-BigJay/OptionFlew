@@ -162,7 +162,11 @@ def evaluate_outcome(
     fwd = FORWARD_BARS.get(timeframe, 12)
     if idx + fwd >= len(bars):
         return None, "کندل کافی بعد از سیگнал برای ارزیابی نبود."
-    entry = bars[idx].close
+    blended = hit.meta.get("entry_blended_px")
+    if isinstance(blended, (int, float)) and blended > 0:
+        entry = float(blended)
+    else:
+        entry = bars[idx].close
     future = bars[idx + 1 : idx + 1 + fwd]
     move = MIN_MOVE_PCT.get(timeframe, 0.015)
     if direction == "up":
