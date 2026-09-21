@@ -49,7 +49,11 @@
         if (!wrap) return;
         wrap.hidden = false;
         var pct = data.progress_pct || 0;
-        setBar(bar, label, pct, pctFa(pct));
+        var msg = pctFa(pct);
+        if (data.status === "running" && pct >= 40 && pct < 100) {
+          msg = pctFa(pct) + " · پردازش/نمودار";
+        }
+        setBar(bar, label, pct, msg);
         if (data.status === "running") {
           setTimeout(function () {
             pollRun(runId);
