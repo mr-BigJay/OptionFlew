@@ -115,9 +115,7 @@ def _detector(category: str):
             bars, tf, require_breakout=True
         ),
         "flag": detect_flag,
-        "divergence": lambda bars, tf: detect_rsi_divergence(
-            bars, tf, allow_early=False
-        ),
+        "divergence": lambda bars, tf: detect_rsi_divergence(bars, tf),
         "trendline": lambda bars, tf: detect_trendline(
             bars, tf, allow_early=False
         ),
