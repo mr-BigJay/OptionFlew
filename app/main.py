@@ -304,15 +304,18 @@ async def lifespan(app: FastAPI):
         replace_existing=True,
         misfire_grace_time=900,
     )
-    scheduler.add_job(
-        run_scheduled_behavior_scan,
-        trigger=IntervalTrigger(minutes=2),
-        id="meaningful_behavior_scan",
-        replace_existing=True,
-        max_instances=1,
-        coalesce=True,
-        misfire_grace_time=120,
-    )
+    if os.environ.get("OPTIONFLOW_BEHAVIOR_SCAN", "1").strip() in ("1", "true", "yes"):
+        scheduler.add_job(
+            run_scheduled_behavior_scan,
+            trigger=IntervalTrigger(minutes=2),
+            id="meaningful_behavior_scan",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=120,
+        )
+    else:
+        logger.info("OPTIONFLOW_BEHAVIOR_SCAN=0 — behavior scan job disabled")
     scheduler.start()
     logger.info(
         "Scheduler: 4h at :%s (hours %s); daily at %s:%s (Asia/Tehran)",
