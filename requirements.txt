@@ -5,3 +5,4 @@ apscheduler>=3.10.0
 python-multipart>=0.0.12
 itsdangerous>=2.2.0
 matplotlib>=3.8.0
+jdatetime>=5.0.0

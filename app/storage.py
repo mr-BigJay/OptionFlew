@@ -111,6 +111,9 @@ def init_db() -> None:
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_reports_code "
             "ON reports(report_code) WHERE report_code IS NOT NULL AND report_code != ''"
         )
+    from app.pattern_store import init_pattern_events_db
+
+    init_pattern_events_db()
 
 
 def _upsert_scheduled(conn: sqlite3.Connection, row: dict[str, Any]) -> int:

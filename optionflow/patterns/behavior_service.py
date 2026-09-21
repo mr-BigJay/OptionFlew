@@ -99,6 +99,12 @@ def get_cached_behavior_scan(
         data = scan_meaningful_behavior(chart_dir)
         _cache["ts"] = now
         _cache["hits"] = data
+        try:
+            from app.pattern_store import persist_scan_hits
+
+            persist_scan_hits(data)
+        except Exception:
+            logger.exception("behavior pattern persist failed")
     if notify and data_root is not None:
         notify_new_behavior_hits(
             data,

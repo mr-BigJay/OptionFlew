@@ -46,6 +46,7 @@ from app.jobs import (
     run_scheduled_report,
     run_scheduled_behavior_scan,
 )
+from app.pattern_store import get_pattern_event, list_pattern_events
 from app.storage import (
     data_dir,
     ensure_report_chart,
@@ -82,8 +83,10 @@ from optionflow.tehran_time import (
     format_time_tehran,
     tehran_date_key,
     tehran_day_bounds_utc,
+    tehran_jalali_month_bounds_utc,
     tehran_month_bounds_utc,
     tehran_week_bounds_utc,
+    tehran_week_sat_fri_bounds_utc,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -242,6 +245,17 @@ def _range_for_period(period: str, anchor: str | None) -> tuple[str, str]:
         return tehran_day_bounds_utc(anchor)
     if period == "week":
         return tehran_week_bounds_utc(anchor)
+    return tehran_month_bounds_utc(anchor)
+
+
+def _range_for_pattern_period(period: str, anchor: str | None) -> tuple[str, str]:
+    anchor = anchor or None
+    if period == "day":
+        return tehran_day_bounds_utc(anchor)
+    if period == "week":
+        return tehran_week_sat_fri_bounds_utc(anchor)
+    if period == "month":
+        return tehran_jalali_month_bounds_utc(anchor)
     return tehran_month_bounds_utc(anchor)
 
 
@@ -594,36 +608,98 @@ async def report_detail(request: Request, report_id: int):
 
 
 @app.get("/patterns", response_class=HTMLResponse)
-async def patterns_page(request: Request, tab: str = "triangle"):
-    if tab not in PATTERN_TABS:
-        tab = "triangle"
-    if tab == "meaningful_behavior":
-        hits = get_cached_behavior_scan(
-            _patterns_dir, data_root=data_dir(), notify=True
-        )
-        cache_ts = behavior_cache_timestamp()
-        sub = "Deribit · فلو آپشن · هشدار تلگرام برای ورود ناگهانی حجم"
-    else:
-        scan = get_cached_scan(_patterns_dir)
-        hits = scan.get(tab, {})
-        cache_ts = pattern_cache_timestamp()
-        sub = "BTCUSDT · تایم‌فریم ۵m، ۱۵m، ۱h — جدا از گزارش ۴h و روزانه"
-    rows = [(tf, hits.get(tf)) for tf in ("5m", "15m", "1h")]
+async def patterns_menu(request: Request):
+    items = [
+        {"slug": slug, "label": _category_fa(slug)}
+        for slug in PATTERN_TABS
+    ]
     return templates.TemplateResponse(
         request,
-        "patterns.html",
+        "patterns_menu.html",
         _page_ctx(
             request,
             active="patterns",
-            tab=tab,
-            rows=rows,
+            menu_items=items,
+        ),
+    )
+
+
+@app.get("/patterns/event/{event_id}", response_class=HTMLResponse)
+async def pattern_event_detail(request: Request, event_id: int):
+    event = get_pattern_event(event_id)
+    if not event:
+        return RedirectResponse("/patterns", status_code=302)
+    cache_ts = pattern_cache_timestamp()
+    return templates.TemplateResponse(
+        request,
+        "pattern_event.html",
+        _page_ctx(
+            request,
+            active="patterns",
+            event=event,
+            category_label=_category_fa(event["category"]),
             cache_ts=cache_ts,
+        ),
+    )
+
+
+@app.get("/patterns/{category}", response_class=HTMLResponse)
+async def pattern_category_page(
+    request: Request,
+    category: str,
+    period: str = "day",
+    date: str = "",
+    from_date: str = "",
+    to_date: str = "",
+):
+    if category not in PATTERN_TABS:
+        return RedirectResponse("/patterns", status_code=302)
+    if period not in ("day", "week", "month", "range"):
+        period = "day"
+
+    if category == "meaningful_behavior":
+        get_cached_behavior_scan(
+            _patterns_dir, data_root=data_dir(), notify=True
+        )
+    else:
+        get_cached_scan(_patterns_dir)
+
+    if period == "range" and from_date and to_date:
+        start_iso, end_iso = _range_custom_tehran(from_date, to_date)
+        items = list_pattern_events(
+            category, start_iso=start_iso, end_iso=end_iso
+        )
+    elif period == "range":
+        items = []
+    else:
+        anchor = date or None
+        start_iso, end_iso = _range_for_pattern_period(period, anchor)
+        items = list_pattern_events(
+            category, start_iso=start_iso, end_iso=end_iso
+        )
+
+    grouped = _group_by_date(items)
+    sub = (
+        "Deribit · فلو آپشن"
+        if category == "meaningful_behavior"
+        else "BTCUSDT · ۵m / ۱۵m / ۱h"
+    )
+
+    return templates.TemplateResponse(
+        request,
+        "pattern_timeline.html",
+        _page_ctx(
+            request,
+            active="patterns",
+            category=category,
+            category_label=_category_fa(category),
+            period=period,
+            date=date,
+            from_date=from_date,
+            to_date=to_date,
+            grouped=grouped,
+            count=len(items),
             subheader=sub,
-            tf_labels={
-                "5m": "۵ دقیقه (پنجرهٔ burst)",
-                "15m": "۱۵ دقیقه",
-                "1h": "۱ ساعت",
-            },
         ),
     )
 
@@ -782,16 +858,16 @@ async def backtest_start(
 
 
 @app.post("/patterns/refresh")
-async def patterns_refresh(tab: str = Form("triangle")):
-    if tab not in PATTERN_TABS:
-        tab = "triangle"
-    if tab == "meaningful_behavior":
+async def patterns_refresh(category: str = Form("triangle")):
+    if category not in PATTERN_TABS:
+        category = "triangle"
+    if category == "meaningful_behavior":
         invalidate_behavior_cache()
         run_behavior_scan_and_notify(_patterns_dir, data_dir())
     else:
         invalidate_pattern_cache()
         get_cached_scan(_patterns_dir)
-    return RedirectResponse(f"/patterns?tab={tab}", status_code=303)
+    return RedirectResponse(f"/patterns/{category}", status_code=303)
 
 
 @app.get("/telegram", response_class=HTMLResponse)

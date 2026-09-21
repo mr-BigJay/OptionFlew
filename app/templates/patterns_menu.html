@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}الگوها — OptionFlow{% endblock %}
+{% block header %}<span class="header-title">الگوها</span>{% endblock %}
+{% block subheader %}
+<p class="muted patterns-sub">یک الگو را انتخاب کنید — تاریخچهٔ تشخیص‌ها مثل گزارش‌ها</p>
+{% endblock %}
+
+{% block content %}
+<nav class="patterns-menu" aria-label="فهرست الگوها">
+  {% for item in menu_items %}
+  <a class="patterns-menu-item" href="/patterns/{{ item.slug }}">
+    <span class="patterns-menu-label">{{ item.label }}</span>
+    <span class="patterns-menu-arrow" aria-hidden="true">‹</span>
+  </a>
+  {% endfor %}
+</nav>
+{% endblock %}
