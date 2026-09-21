@@ -542,7 +542,7 @@ def _render_price_pattern(
     return buf.read()
 
 
-def _style_rsi_pane(ax: Any, xs: list[float], rsi_y: list[float]) -> None:
+def _style_rsi_pane(ax: Any, xs: list[float], rsi_y: list[float], *, period: int = 14) -> None:
     """ظاهر نزدیک RSI پیش‌فرض TradingView."""
     ax.set_facecolor("#0d1117")
     ax.axhspan(30, 70, facecolor=(126 / 255, 87 / 255, 194 / 255, 0.35), zorder=0)
@@ -562,7 +562,7 @@ def _style_rsi_pane(ax: Any, xs: list[float], rsi_y: list[float]) -> None:
         ax.fill_between(x, mid, over, where=y > 70, color=(0, 1, 0, 0.12), interpolate=True, zorder=2)
         ax.fill_between(x, under, mid, where=y < 30, color=(1, 0, 0, 0.12), interpolate=True, zorder=2)
     ax.plot(xs, rsi_y, color="#7E57C2", linewidth=1.6, zorder=3, label="RSI")
-    ax.set_ylabel("RSI(14)", color="#787B86", fontsize=8)
+    ax.set_ylabel(f"RSI({period})", color="#787B86", fontsize=8)
 
 
 def _render_divergence(
@@ -592,8 +592,10 @@ def _render_divergence(
     if len(slice_bars) < 10:
         return None
 
+    from optionflow.patterns.divergence import RSI_PERIOD
+
     closes = [b.close for b in bars]
-    rs = rsi(closes)
+    rs = rsi(closes, RSI_PERIOD)
 
     fig, (ax1, ax2) = plt.subplots(
         2, 1, figsize=(8.5, 5.2), dpi=120, height_ratios=[2.2, 1], layout="constrained"
@@ -620,7 +622,7 @@ def _render_divergence(
     for i in range(start, end):
         v = rs[i] if i < len(rs) else None
         rsi_y.append(float("nan") if v is None else float(v))
-    _style_rsi_pane(ax2, xs, rsi_y)
+    _style_rsi_pane(ax2, xs, rsi_y, period=RSI_PERIOD)
     ra, rb = meta["rsi_a"], meta["rsi_b"]
     line_color = "#ef5350" if direction == "down" else "#66bb6a"
     ax2.scatter(
