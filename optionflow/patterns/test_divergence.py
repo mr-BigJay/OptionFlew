@@ -2,12 +2,18 @@ from datetime import datetime, timedelta, timezone
 
 from optionflow.patterns.divergence import (
     EARLY_RIGHT,
+    ENTRY_LEG1_WEIGHT,
+    ENTRY_LEG2_WEIGHT,
     LOOKBACK_LEFT,
     LOOKBACK_RIGHT,
+    RANGE_P1_P3,
     RSI_PERIOD,
+    _bearish_ok,
+    _bullish_ok,
     _entry_lines,
     _forming_pivot,
     detect_rsi_divergence,
+    resolve_divergence_pair,
 )
 from optionflow.patterns.indicators import (
     rsi,
@@ -22,6 +28,9 @@ def test_constants_match_bigbeluga() -> None:
     assert LOOKBACK_LEFT == 10
     assert LOOKBACK_RIGHT == 10
     assert EARLY_RIGHT == 2
+    assert RANGE_P1_P3 == 120
+    assert ENTRY_LEG1_WEIGHT == 0.35
+    assert ENTRY_LEG2_WEIGHT == 0.65
 
 
 def test_consecutive_pivots_not_first_vs_last() -> None:
@@ -102,3 +111,114 @@ def test_entry_lines_include_early_and_final_prices() -> None:
     assert fin is None
     assert fp is None
     assert "اولیه" in extra_early
+    assert "پله‌ای" not in extra_early
+
+
+def test_consecutive_pair_when_no_first_third() -> None:
+    rs: list[float | None] = [40.0] * 160
+    highs = [100.0] * 160
+    p1, p2, p3 = 50, 80, 110
+    rs[p1], rs[p2], rs[p3] = 70.0, 75.0, 72.0
+    highs[p1], highs[p2], highs[p3] = 100.0, 106.0, 108.0
+    pivots = [(p1 + 10, p1), (p2 + 10, p2), (p3 + 10, p3)]
+    assert _bearish_ok(rs, highs, p1, p3) is None
+    assert _bearish_ok(rs, highs, p2, p3) is not None
+    found = resolve_divergence_pair(rs, highs, pivots, p3, _bearish_ok)
+    assert found is not None
+    assert found["p_a"] == p2
+    assert found["p_c"] == p3
+    assert found["p_mid"] is None
+    assert found["ladder"] == {}
+
+
+def test_third_pivot_merges_with_second_when_div_vs_first() -> None:
+    rs: list[float | None] = [40.0] * 160
+    highs = [100.0] * 160
+    p1, p2, p3 = 50, 80, 110
+    rs[p1], rs[p2], rs[p3] = 75.0, 70.0, 72.0
+    highs[p1], highs[p2], highs[p3] = 100.0, 106.0, 108.0
+    pivots = [(p1 + 10, p1), (p2 + 10, p2), (p3 + 10, p3)]
+    assert _bearish_ok(rs, highs, p2, p3) is None
+    assert _bearish_ok(rs, highs, p1, p3) is not None
+    found = resolve_divergence_pair(rs, highs, pivots, p3, _bearish_ok)
+    assert found is not None
+    assert found["p_a"] == p1
+    assert found["p_c"] == p3
+    assert found["p_mid"] == p2
+    ladder = found["ladder"]
+    assert ladder["entry_pivot_2_index"] == p2
+    assert ladder["entry_pivot_3_index"] == p3
+    assert ladder["entry_blended_px"] == highs[p2] * 0.35 + highs[p3] * 0.65
+
+
+def test_merge_still_one_pair_when_both_diverege() -> None:
+    rs: list[float | None] = [40.0] * 160
+    highs = [100.0] * 160
+    p1, p2, p3 = 50, 80, 110
+    rs[p1], rs[p2], rs[p3] = 78.0, 74.0, 70.0
+    highs[p1], highs[p2], highs[p3] = 100.0, 106.0, 108.0
+    pivots = [(p1 + 10, p1), (p2 + 10, p2), (p3 + 10, p3)]
+    assert _bearish_ok(rs, highs, p2, p3) is not None
+    assert _bearish_ok(rs, highs, p1, p3) is not None
+    found = resolve_divergence_pair(rs, highs, pivots, p3, _bearish_ok)
+    assert found is not None
+    assert found["p_a"] == p1
+    assert found["p_mid"] == p2
+    assert found["ladder"]["entry_pivot_3_px"] == 108.0
+
+
+def test_older_fourth_pivot_is_ignored() -> None:
+    rs: list[float | None] = [40.0] * 200
+    highs = [100.0] * 200
+    p0, p1, p2, p3 = 20, 50, 80, 110
+    rs[p0], rs[p1], rs[p2], rs[p3] = 82.0, 75.0, 70.0, 72.0
+    highs[p0], highs[p1], highs[p2], highs[p3] = 90.0, 100.0, 106.0, 108.0
+    pivots = [
+        (p0 + 10, p0),
+        (p1 + 10, p1),
+        (p2 + 10, p2),
+        (p3 + 10, p3),
+    ]
+    found = resolve_divergence_pair(rs, highs, pivots, p3, _bearish_ok)
+    assert found is not None
+    assert found["p_a"] == p1
+    assert found["p_mid"] == p2
+
+
+def test_bullish_merge_uses_last_three_only() -> None:
+    rs: list[float | None] = [60.0] * 160
+    lows = [100.0] * 160
+    p1, p2, p3 = 50, 80, 110
+    rs[p1], rs[p2], rs[p3] = 28.0, 32.0, 30.0
+    lows[p1], lows[p2], lows[p3] = 100.0, 94.0, 92.0
+    pivots = [(p1 + 10, p1), (p2 + 10, p2), (p3 + 10, p3)]
+    assert _bullish_ok(rs, lows, p2, p3) is None
+    found = resolve_divergence_pair(rs, lows, pivots, p3, _bullish_ok)
+    assert found is not None
+    assert found["p_a"] == p1
+    assert found["p_mid"] == p2
+
+
+def test_entry_lines_append_ladder_when_merged() -> None:
+    t0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    bars = [
+        OhlcBar(
+            ts=t0 + timedelta(minutes=5 * i),
+            open=65000 + i,
+            high=65100 + i,
+            low=64900 + i,
+            close=65000 + i,
+            volume=1.0,
+        )
+        for i in range(30)
+    ]
+    ladder = {
+        "entry_pivot_2_px": 65100.0,
+        "entry_pivot_3_px": 65200.0,
+    }
+    _e, _f, _ep, _fp, extra = _entry_lines(
+        bars, 10, early=False, ladder=ladder
+    )
+    assert "35" in extra
+    assert "65" in extra
+    assert "پیوت دوم" in extra

@@ -1,6 +1,10 @@
 from datetime import datetime, timezone
 
-from optionflow.patterns.backtest import evaluate_target_profit, entry_price_for_hit
+from optionflow.patterns.backtest import (
+    _should_replace_divergence,
+    entry_price_for_hit,
+    evaluate_target_profit,
+)
 from optionflow.patterns.ohlc import OhlcBar
 from optionflow.patterns.types import PatternHit
 
@@ -53,3 +57,40 @@ def test_entry_price_uses_blended() -> None:
         meta={"entry_blended_px": 99_500.0},
     )
     assert entry_price_for_hit(_bars([100.0]), 0, hit) == 99_500.0
+
+
+def _div_hit(pattern_id: str, pivot_b: int, **meta: object) -> PatternHit:
+    return PatternHit(
+        category="divergence",
+        timeframe="5m",
+        pattern_id=pattern_id,
+        title_fa="",
+        status_fa="",
+        summary_fa="",
+        forecast_fa="",
+        meta={"pivot_b": (pivot_b, 100.0), **meta},
+    )
+
+
+def test_third_pivot_replaces_second_not_duplicate() -> None:
+    prev = _div_hit("rsi_bearish", 80)
+    merged = _div_hit(
+        "rsi_bearish",
+        110,
+        entry_pivot_2_index=80,
+        entry_pivot_3_index=110,
+    )
+    assert _should_replace_divergence(prev, merged) is True
+
+
+def test_unrelated_divergence_is_not_replaced() -> None:
+    prev = _div_hit("rsi_bearish", 40)
+    merged = _div_hit(
+        "rsi_bearish",
+        110,
+        entry_pivot_2_index=80,
+        entry_pivot_3_index=110,
+    )
+    assert _should_replace_divergence(prev, merged) is False
+    consecutive = _div_hit("rsi_bearish", 110)
+    assert _should_replace_divergence(prev, consecutive) is False
