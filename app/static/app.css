@@ -1343,6 +1343,24 @@ bdi[dir="ltr"] {
   margin-bottom: 16px;
 }
 
+.pattern-filters select,
+.pattern-filters input[type="number"] {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  border: 1px solid #2a3441;
+  background: var(--surface2);
+  color: var(--text);
+  font: inherit;
+}
+
+.pattern-filter-hint {
+  font-size: 0.72rem;
+  margin: -8px 0 14px;
+  line-height: 1.45;
+}
+
 .timeline-section {
   margin-bottom: 28px;
 }

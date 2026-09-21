@@ -2,17 +2,17 @@
 {% block title %}{{ category_label }} — الگوها{% endblock %}
 {% block header %}<span class="header-title">{{ category_label }}</span>{% endblock %}
 {% block subheader %}
-<p class="home-schedule muted">{{ subheader }} · {{ count }} مورد در بازه</p>
+<p class="home-schedule muted">{{ subheader }} · {{ count }} مورد در بازه{% if tf_filter or min_profit %} (فیلتر فعال){% endif %}</p>
 {% endblock %}
 
 {% block content %}
 <p class="patterns-back"><a href="/patterns">← همهٔ الگوها</a></p>
 
 <nav class="tabs tabs-report" aria-label="بازه">
-  <a href="/patterns/{{ category }}?period=day{% if date %}&date={{ date }}{% endif %}" class="{% if period == 'day' %}on{% endif %}">امروز</a>
-  <a href="/patterns/{{ category }}?period=week{% if date %}&date={{ date }}{% endif %}" class="{% if period == 'week' %}on{% endif %}">هفته</a>
-  <a href="/patterns/{{ category }}?period=month{% if date %}&date={{ date }}{% endif %}" class="{% if period == 'month' %}on{% endif %}">ماه</a>
-  <a href="/patterns/{{ category }}?period=range" class="{% if period == 'range' %}on{% endif %}">تاریخ مشخص</a>
+  <a href="/patterns/{{ category }}?period=day{{ filter_qs }}" class="{% if period == 'day' %}on{% endif %}">امروز</a>
+  <a href="/patterns/{{ category }}?period=week{{ filter_qs }}" class="{% if period == 'week' %}on{% endif %}">هفته</a>
+  <a href="/patterns/{{ category }}?period=month{{ filter_qs }}" class="{% if period == 'month' %}on{% endif %}">ماه</a>
+  <a href="/patterns/{{ category }}?period=range{{ filter_qs }}" class="{% if period == 'range' %}on{% endif %}">تاریخ مشخص</a>
 </nav>
 
 {% if period == 'range' %}
@@ -22,14 +22,31 @@
   <input type="date" name="from_date" value="{{ from_date }}" required>
   <label>تا تاریخ</label>
   <input type="date" name="to_date" value="{{ to_date }}" required>
+  <label>تایم‌فریم</label>
+  <select name="tf">
+    <option value="">همه</option>
+    {% for tf, label in tf_labels.items() %}
+    <option value="{{ tf }}" {% if tf_filter == tf %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+  <label>حداقل سود پوزیشن (٪)</label>
+  <input type="number" name="min_profit" min="0" max="10" step="0.1" value="{{ min_profit }}" placeholder="مثلاً ۰.۵">
+  <p class="muted bt-hint">فقط رویدادهایی که مسیر سود (path) در داده ثبت شده و حداقل این درصد را داشته باشند.</p>
   <button type="submit" class="btn primary full">نمایش بازه</button>
 </form>
 {% else %}
-<form class="filter-row filter-compact" method="get" action="/patterns/{{ category }}">
+<form class="filter-row filter-compact pattern-filters" method="get" action="/patterns/{{ category }}">
   <input type="hidden" name="period" value="{{ period }}">
-  <input type="date" name="date" value="{{ date }}" aria-label="تاریخ">
-  <button type="submit" class="btn secondary">برو</button>
+  <select name="tf" aria-label="تایم‌فریم">
+    <option value="">همه تایم‌فریم‌ها</option>
+    {% for tf, label in tf_labels.items() %}
+    <option value="{{ tf }}" {% if tf_filter == tf %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+  <input type="number" name="min_profit" min="0" max="10" step="0.1" value="{{ min_profit }}" placeholder="حداقل سود ٪" aria-label="حداقل سود درصد">
+  <button type="submit" class="btn secondary">اعمال</button>
 </form>
+<p class="muted pattern-filter-hint">حداقل سود: فقط پوزیشن‌هایی که از ورود سیگنال تا هدف این درصد (یا مسیر ثبت‌شده) برآورده شده باشند.</p>
 {% endif %}
 
 <form class="patterns-refresh" method="post" action="/patterns/refresh">
@@ -57,6 +74,9 @@
           <div class="timeline-top">
             <span class="kind-pill">{{ r.timeframe }}</span>
             <span class="bias-mini">{{ r.status_fa }}</span>
+            {% if r.meta.get('path_pct') is not none %}
+            <span class="bias-mini">{{ "{:+.2f}".format(r.meta.path_pct * 100) }}٪</span>
+            {% endif %}
           </div>
           <p class="timeline-preview"><strong>{{ r.title_fa }}</strong> — {{ r.summary_fa[:120] }}{% if r.summary_fa|length > 120 %}…{% endif %}</p>
           <span class="timeline-meta">{{ r.pattern_id }}</span>
@@ -69,6 +89,8 @@
 </section>
 {% endfor %}
 {% else %}
-<div class="empty"><p>در این بازه تشخیصی ثبت نشده. «به‌روزرسانی اسکن» را بزنید.</p></div>
+<div class="empty">
+  <p>{% if raw_count and (tf_filter or min_profit) %}در این بازه {{ raw_count }} مورد بود؛ با فیلتر فعلی چیزی نمانده.{% else %}در این بازه تشخیصی ثبت نشده. «به‌روزرسانی اسکن» را بزنید.{% endif %}</p>
+</div>
 {% endif %}
 {% endblock %}
