@@ -15,12 +15,18 @@
     if (!row || !data) return;
     var status = data.status;
     row.setAttribute("data-status", status);
-    row.classList.remove("status-running", "status-done", "status-error");
+    row.classList.remove("status-running", "status-done", "status-error", "status-cancelled");
     row.classList.add("status-" + status);
 
     if (status === "running") {
       setProgress(row, data.progress_pct);
       return;
+    }
+
+    var wrap = row.closest(".bt-archive-row-wrap");
+    if (wrap) {
+      var stopForm = wrap.querySelector(".bt-archive-stop-form");
+      if (stopForm) stopForm.remove();
     }
 
     var body = row.querySelector(".bt-archive-body");
@@ -30,8 +36,11 @@
 
     var badge = row.querySelector(".bt-archive-badge");
     if (badge) {
-      badge.classList.remove("running", "done", "error");
-      if (status === "error") {
+      badge.classList.remove("running", "done", "error", "cancelled");
+      if (status === "cancelled") {
+        badge.textContent = "متوقف";
+        badge.classList.add("cancelled");
+      } else if (status === "error") {
         badge.textContent = "خطا";
         badge.classList.add("error");
       } else {
@@ -45,10 +54,14 @@
     var stats = document.createElement("div");
     stats.className = "bt-archive-line3";
     stats.setAttribute("data-stats-wrap", "");
-    if (status === "error") {
+    if (status === "error" || status === "cancelled") {
       stats.innerHTML =
         '<span class="bt-stat-fail">' +
-        (data.error_message ? String(data.error_message).slice(0, 80) : "اجرای بکتست ناموفق") +
+        (data.error_message
+          ? String(data.error_message).slice(0, 80)
+          : status === "cancelled"
+            ? "متوقف توسط کاربر"
+            : "اجرای بکتست ناموفق") +
         "</span>";
     } else {
       stats.innerHTML =
