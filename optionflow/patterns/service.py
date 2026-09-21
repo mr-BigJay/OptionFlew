@@ -4,7 +4,7 @@ import logging
 import time
 from pathlib import Path
 
-from optionflow.patterns.chart import render_pattern_chart
+from optionflow.patterns.chart import render_pattern_chart, chart_forward_bars
 from optionflow.patterns.divergence import detect_rsi_divergence
 from optionflow.patterns.flag import detect_flag
 from optionflow.patterns.ohlc import load_btcusdt
@@ -48,9 +48,16 @@ def _scan_tf(tf: str, chart_dir: Path) -> dict[str, PatternHit | None]:
         if hit is None:
             continue
         sig_ix = None
-        if hit.category == "ema50":
+        if hit.category in ("ema50", "trendline"):
             sig_ix = hit.meta.get("entry_index", hit.meta.get("early_index"))
-        png = render_pattern_chart(bars, hit, signal_index=sig_ix)
+        else:
+            sig_ix = hit.meta.get("confirm_index", len(bars) - 1)
+        if not isinstance(sig_ix, int):
+            sig_ix = len(bars) - 1
+        fwd = chart_forward_bars(bars, hit, sig_ix)
+        png = render_pattern_chart(
+            bars, hit, signal_index=sig_ix, forward_bars=fwd
+        )
         if not png:
             continue
         fname = f"{hit.category}_{hit.timeframe}_{hit.pattern_id}.png"

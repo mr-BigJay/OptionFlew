@@ -26,6 +26,7 @@ def start_backtest_job(
     timeframe: str,
     date_from: str,
     date_to: str,
+    target_profit_pct: float | None = None,
 ) -> int:
     start = parse_user_datetime(date_from)
     end = parse_user_datetime(date_to, end_of_day=True)
@@ -34,6 +35,7 @@ def start_backtest_job(
         timeframe=timeframe,
         from_iso=start.isoformat().replace("+00:00", "Z"),
         to_iso=end.isoformat().replace("+00:00", "Z"),
+        target_profit_pct=target_profit_pct,
     )
 
     def _work() -> None:
@@ -57,6 +59,7 @@ def start_backtest_job(
                 end=end,
                 chart_prefix=prefix,
                 on_progress=on_progress,
+                target_profit_pct=target_profit_pct,
             )
             finish_backtest_run(run_id, result.to_dict())
         except Exception as e:

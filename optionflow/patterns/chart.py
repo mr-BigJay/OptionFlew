@@ -17,6 +17,13 @@ FORWARD_BARS_DEFAULT = {
     "4h": 12,
     "1d": 8,
 }
+CHART_AFTER_RATIO = 3
+
+
+def chart_window_end(n: int, sig: int, start: int, *, tail_pad: int = 0) -> int:
+    """کندل‌های بعد از سیگنال = CHART_AFTER_RATIO × قبل از سیگنال."""
+    before = max(1, sig - start)
+    return min(n, sig + CHART_AFTER_RATIO * before + 1 + tail_pad)
 
 
 def render_pattern_chart(
@@ -38,6 +45,12 @@ def render_pattern_chart(
         return None
 
     fwd = forward_bars
+    sig = signal_index
+    if sig is None and hit.meta.get("confirm_index") is not None:
+        sig = hit.meta.get("confirm_index")
+    if fwd is None and sig is not None:
+        start, end, _ = _slice_range(bars, hit, sig, forward_bars=0)
+        fwd = max(6, end - 1 - sig)
     if fwd is None and signal_index is not None:
         fwd = FORWARD_BARS_DEFAULT.get(hit.timeframe, 18)
 
@@ -79,13 +92,13 @@ def _slice_range(
         start = max(0, min(i0, extra0, sig) - 8)
         exit_i = meta.get("exit_index") if hit.category == "trendline" else None
         if isinstance(exit_i, int):
-            end = min(n, max(i1, sig, exit_i) + 8)
+            end = min(n, max(chart_window_end(n, sig, start), exit_i + 8))
         else:
-            end = min(n, max(i1, sig) + forward_bars + 1)
+            end = chart_window_end(n, sig, start)
     elif hit.category == "flag":
         ps = meta.get("pole_start", max(0, sig - 30))
         start = max(0, ps - 8)
-        end = min(n, sig + forward_bars + 1)
+        end = chart_window_end(n, sig, start)
     elif hit.category == "ema50":
         from optionflow.patterns.ema50 import ema50_slice
 
@@ -94,9 +107,16 @@ def _slice_range(
         start, end = ema50_slice(n, sig, int(pb), int(early))
     else:
         start = max(0, sig - 60)
-        end = min(n, sig + forward_bars + 1)
+        end = chart_window_end(n, sig, start)
 
     return start, end, sig
+
+
+def chart_forward_bars(
+    bars: list[OhlcBar], hit: PatternHit, sig_ix: int
+) -> int:
+    start, end, _ = _slice_range(bars, hit, sig_ix, forward_bars=0)
+    return max(6, end - 1 - sig_ix)
 
 
 def _candle_widths(xs: list[float]) -> list[float]:
@@ -586,8 +606,9 @@ def _render_divergence(
         idxs.append(early_ix)
     if isinstance(final_ix, int):
         idxs.append(final_ix)
-    start = max(0, min(idxs) - 25)
-    end = min(len(bars), max(idxs) + forward_bars + 1)
+    sig_ix = sig if isinstance(sig, int) else ib
+    start = max(0, min(idxs) - 24)
+    end = chart_window_end(len(bars), sig_ix, start)
     slice_bars = bars[start:end]
     if len(slice_bars) < 10:
         return None

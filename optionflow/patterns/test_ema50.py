@@ -223,7 +223,7 @@ def test_ema50_chart_renders() -> None:
     assert png[:8] == b"\x89PNG\r\n\x1a\n"
 
 
-def test_ema50_slice_after_is_double_before() -> None:
+def test_ema50_slice_after_is_triple_before() -> None:
     from optionflow.patterns.chart import _slice_range
 
     base = _flat_away_above(wick=True)
@@ -233,10 +233,10 @@ def test_ema50_slice_after_is_double_before() -> None:
     assert isinstance(sig, int)
     bars = list(base)
     last = bars[-1].close
-    for _ in range(120):
+    for _ in range(3 * 80):
         _append(bars, last, last + 20, last - 20, last)
     start, end, _ = _slice_range(bars, hit, sig, 8)
     before = sig - start
     after = end - 1 - sig
     assert before > 0
-    assert after == 2 * before
+    assert after == 3 * before
