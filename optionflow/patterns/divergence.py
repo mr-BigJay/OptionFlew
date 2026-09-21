@@ -10,13 +10,14 @@ from optionflow.patterns.indicators import (
 from optionflow.patterns.ohlc import OhlcBar
 from optionflow.patterns.types import PatternHit
 
-# Trading Toolkit (BigBeluga) — Regular RSI divergence
+# Trading Toolkit (BigBeluga) — Multi Pivot RSI divergence (Pine v6)
 RSI_PERIOD = 24
 LOOKBACK_LEFT = 10
 LOOKBACK_RIGHT = 10
 EARLY_RIGHT = 2  # تأیید اولیه قبل از pivot کامل ۱۰/۱۰
 RANGE_LOWER = 5
 RANGE_UPPER = 60
+MAX_PREV_PIVOTS = 2  # maxPrevPivots in Pine
 
 
 def _in_range(p_a: int, p_b: int) -> bool:
@@ -80,6 +81,65 @@ def _bullish_ok(
     return float(ra), float(rb)
 
 
+def _find_bearish_ref(
+    pivots: list[tuple[int, int]],
+    rs: list[float | None],
+    highs: list[float],
+) -> tuple[int, int, float, float] | None:
+    """جدیدترین pivot تأییدشده را با حداکثر MAX_PREV_PIVOTS قبلی مقایسه کن (مثل Pine)."""
+    if len(pivots) < 2:
+        return None
+    _, p_c = pivots[-1]
+    return _scan_bearish_prev(pivots[:-1], p_c, rs, highs)
+
+
+def _scan_bearish_prev(
+    prev: list[tuple[int, int]],
+    p_c: int,
+    rs: list[float | None],
+    highs: list[float],
+) -> tuple[int, int, float, float] | None:
+    prev_count = min(MAX_PREV_PIVOTS, len(prev))
+    for i in range(prev_count):
+        _, p_ref = prev[len(prev) - 1 - i]
+        if not _in_range(p_ref, p_c):
+            continue
+        pair = _bearish_ok(rs, highs, p_ref, p_c)
+        if pair:
+            ra, rb = pair
+            return p_ref, p_c, ra, rb
+    return None
+
+
+def _find_bullish_ref(
+    pivots: list[tuple[int, int]],
+    rs: list[float | None],
+    lows: list[float],
+) -> tuple[int, int, float, float] | None:
+    if len(pivots) < 2:
+        return None
+    _, p_c = pivots[-1]
+    return _scan_bullish_prev(pivots[:-1], p_c, rs, lows)
+
+
+def _scan_bullish_prev(
+    prev: list[tuple[int, int]],
+    p_c: int,
+    rs: list[float | None],
+    lows: list[float],
+) -> tuple[int, int, float, float] | None:
+    prev_count = min(MAX_PREV_PIVOTS, len(prev))
+    for i in range(prev_count):
+        _, p_ref = prev[len(prev) - 1 - i]
+        if not _in_range(p_ref, p_c):
+            continue
+        pair = _bullish_ok(rs, lows, p_ref, p_c)
+        if pair:
+            ra, rb = pair
+            return p_ref, p_c, ra, rb
+    return None
+
+
 def _bar_close(bars: list[OhlcBar], idx: int) -> float | None:
     if idx < 0 or idx >= len(bars):
         return None
@@ -141,7 +201,7 @@ def _hit_bearish(
         title_fa="واگرایی نزولی RSI",
         status_fa=status,
         summary_fa=(
-            f"Regular Bearish (BigBeluga) · "
+            f"Regular Bearish (BigBeluga Multi Pivot) · "
             f"قیمت HH ({highs[p_b]:,.0f} > {highs[p_a]:,.0f})، "
             f"RSI LH ({rb:.1f} < {ra:.1f}، Δ{diff:.1f}). {extra}"
         ),
@@ -167,6 +227,7 @@ def _hit_bearish(
             "delay_bars": delay,
             "rsi_period": RSI_PERIOD,
             "lookback": LOOKBACK_LEFT,
+            "max_prev_pivots": MAX_PREV_PIVOTS,
         },
     )
 
@@ -196,7 +257,7 @@ def _hit_bullish(
         title_fa="واگرایی مثبت RSI",
         status_fa=status,
         summary_fa=(
-            f"Regular Bullish (BigBeluga) · "
+            f"Regular Bullish (BigBeluga Multi Pivot) · "
             f"قیمت LL ({lows[p_b]:,.0f} < {lows[p_a]:,.0f})، "
             f"RSI HL ({rb:.1f} > {ra:.1f}، Δ{diff:.1f}). {extra}"
         ),
@@ -222,6 +283,7 @@ def _hit_bullish(
             "delay_bars": delay,
             "rsi_period": RSI_PERIOD,
             "lookback": LOOKBACK_LEFT,
+            "max_prev_pivots": MAX_PREV_PIVOTS,
         },
     )
 
@@ -252,26 +314,22 @@ def detect_rsi_divergence(
     if len(ph) >= 2:
         conf_b, p_b = ph[-1]
         if _recent_confirm(conf_b, n, LOOKBACK_RIGHT):
-            _, p_a = ph[-2]
-            if _in_range(p_a, p_b):
-                pair = _bearish_ok(rs, highs, p_a, p_b)
-                if pair:
-                    ra, rb = pair
-                    return _hit_bearish(
-                        bars, timeframe, p_a, p_b, highs, ra, rb, conf_b, early=False
-                    )
+            found = _find_bearish_ref(ph, rs, highs)
+            if found:
+                p_a, p_c, ra, rb = found
+                return _hit_bearish(
+                    bars, timeframe, p_a, p_c, highs, ra, rb, conf_b, early=False
+                )
 
     if len(pl) >= 2:
         conf_b, p_b = pl[-1]
         if _recent_confirm(conf_b, n, LOOKBACK_RIGHT):
-            _, p_a = pl[-2]
-            if _in_range(p_a, p_b):
-                pair = _bullish_ok(rs, lows, p_a, p_b)
-                if pair:
-                    ra, rb = pair
-                    return _hit_bullish(
-                        bars, timeframe, p_a, p_b, lows, ra, rb, conf_b, early=False
-                    )
+            found = _find_bullish_ref(pl, rs, lows)
+            if found:
+                p_a, p_c, ra, rb = found
+                return _hit_bullish(
+                    bars, timeframe, p_a, p_c, lows, ra, rb, conf_b, early=False
+                )
 
     if not allow_early:
         return None
@@ -279,25 +337,25 @@ def detect_rsi_divergence(
     forming_h = _forming_pivot(rs, high=True, n=n)
     if forming_h and ph:
         p_b, right = forming_h
-        _, p_a = ph[-1]
-        if p_a < p_b and _in_range(p_a, p_b):
-            pair = _bearish_ok(rs, highs, p_a, p_b)
-            if pair:
-                ra, rb = pair
+        _, p_last = ph[-1]
+        if p_last < p_b:
+            found = _scan_bearish_prev(ph, p_b, rs, highs)
+            if found:
+                p_a, p_c, ra, rb = found
                 return _hit_bearish(
-                    bars, timeframe, p_a, p_b, highs, ra, rb, p_b + right, early=True
+                    bars, timeframe, p_a, p_c, highs, ra, rb, p_b + right, early=True
                 )
 
     forming_l = _forming_pivot(rs, high=False, n=n)
     if forming_l and pl:
         p_b, right = forming_l
-        _, p_a = pl[-1]
-        if p_a < p_b and _in_range(p_a, p_b):
-            pair = _bullish_ok(rs, lows, p_a, p_b)
-            if pair:
-                ra, rb = pair
+        _, p_last = pl[-1]
+        if p_last < p_b:
+            found = _scan_bullish_prev(pl, p_b, rs, lows)
+            if found:
+                p_a, p_c, ra, rb = found
                 return _hit_bullish(
-                    bars, timeframe, p_a, p_b, lows, ra, rb, p_b + right, early=True
+                    bars, timeframe, p_a, p_c, lows, ra, rb, p_b + right, early=True
                 )
 
     return None
