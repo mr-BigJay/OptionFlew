@@ -2,7 +2,7 @@
 {% block title %}الگوها — OptionFlow{% endblock %}
 {% block header %}<span class="header-title">◇ الگوها</span>{% endblock %}
 {% block subheader %}
-<p class="home-schedule muted">{{ recent_count }} تشخیص در بازه · BTCUSDT + Deribit</p>
+<p class="home-schedule muted">{{ recent_count }} تشخیص در ۲۴ ساعت گذشته</p>
 {% endblock %}
 
 {% block content %}
@@ -10,14 +10,11 @@
   <h2 id="pattern-types-head" class="section-title">نوع الگو</h2>
   <div class="pattern-nav-feed">
     {% for item in menu_items %}
-    <a href="/patterns/{{ item.slug }}" class="home-report-card kind-pattern pattern-nav-card">
-      <header class="home-report-head">
-        <div class="home-report-date">
-          <span class="home-cal" aria-hidden="true">◇</span>
-          <span>{{ item.label }}</span>
-        </div>
-        <span class="type-pill">⏱ 5m · 15m · 1h</span>
-      </header>
+    <a href="/patterns/{{ item.slug }}" class="pattern-nav-card">
+      <div class="pattern-nav-row">
+        <span class="pattern-nav-title">{{ item.label }}</span>
+        <span class="pattern-nav-chevron" aria-hidden="true">‹</span>
+      </div>
       <p class="pattern-nav-hint">{{ item.hint }}</p>
     </a>
     {% endfor %}
@@ -25,31 +22,7 @@
 </section>
 
 <section class="pattern-section" aria-labelledby="pattern-feed-head">
-  <h2 id="pattern-feed-head" class="section-title">تاریخچه · همهٔ الگوها</h2>
-
-  <nav class="tabs tabs-report" aria-label="بازه">
-    <a href="/patterns?period=day{% if date %}&date={{ date }}{% endif %}" class="{% if period == 'day' %}on{% endif %}">امروز</a>
-    <a href="/patterns?period=week{% if date %}&date={{ date }}{% endif %}" class="{% if period == 'week' %}on{% endif %}">هفته</a>
-    <a href="/patterns?period=month{% if date %}&date={{ date }}{% endif %}" class="{% if period == 'month' %}on{% endif %}">ماه</a>
-    <a href="/patterns?period=range" class="{% if period == 'range' %}on{% endif %}">تاریخ مشخص</a>
-  </nav>
-
-  {% if period == 'range' %}
-  <form class="filter-card" method="get" action="/patterns">
-    <input type="hidden" name="period" value="range">
-    <label>از تاریخ</label>
-    <input type="date" name="from_date" value="{{ from_date }}" required>
-    <label>تا تاریخ</label>
-    <input type="date" name="to_date" value="{{ to_date }}" required>
-    <button type="submit" class="btn primary full">نمایش بازه</button>
-  </form>
-  {% else %}
-  <form class="filter-row filter-compact" method="get" action="/patterns">
-    <input type="hidden" name="period" value="{{ period }}">
-    <input type="date" name="date" value="{{ date }}" aria-label="تاریخ">
-    <button type="submit" class="btn secondary">برو</button>
-  </form>
-  {% endif %}
+  <h2 id="pattern-feed-head" class="section-title">۲۴ ساعت گذشته · همهٔ الگوها</h2>
 
   {% if grouped_recent %}
   {% for day_key, items in grouped_recent %}
@@ -84,7 +57,7 @@
   </section>
   {% endfor %}
   {% else %}
-  <div class="empty card"><p>در این بازه تشخیصی ثبت نشده. یک الگو را باز کنید و «به‌روزرسانی اسکن» بزنید.</p></div>
+  <div class="empty card"><p>در ۲۴ ساعت گذشته تشخیصی ثبت نشده. یک الگو را باز کنید و «به‌روزرسانی اسکن» بزنید.</p></div>
   {% endif %}
 </section>
 {% endblock %}

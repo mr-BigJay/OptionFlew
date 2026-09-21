@@ -363,22 +363,67 @@ body.chart-lightbox-open {
 
 a.pattern-nav-card {
   display: block;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 14px 16px 12px;
+  border-radius: var(--radius);
+  background: var(--surface2);
+  border: 1px solid #2a3441;
   text-decoration: none;
-  color: inherit;
+  color: var(--text);
+  position: relative;
+  overflow: hidden;
+}
+
+a.pattern-nav-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: linear-gradient(180deg, var(--accent2), #059669);
+  border-radius: var(--radius) 0 0 var(--radius);
+}
+
+.pattern-nav-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-right: 4px;
+}
+
+.pattern-nav-title {
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+
+.pattern-nav-chevron {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 1.15rem;
+  line-height: 1;
 }
 
 .pattern-nav-feed {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   margin-bottom: 8px;
+  width: 100%;
 }
 
 .pattern-nav-hint {
-  margin: 0;
-  font-size: 0.78rem;
+  margin: 6px 0 0;
+  padding-right: 4px;
+  font-size: 0.72rem;
   color: var(--muted);
-  line-height: 1.5;
+  line-height: 1.45;
+}
+
+a.pattern-nav-card:active {
+  border-color: rgba(52, 211, 153, 0.4);
+  background: rgba(52, 211, 153, 0.06);
 }
 
 .pattern-section {

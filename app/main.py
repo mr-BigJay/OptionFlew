@@ -629,35 +629,17 @@ async def report_detail(request: Request, report_id: int):
 
 
 @app.get("/patterns", response_class=HTMLResponse)
-async def patterns_menu(
-    request: Request,
-    period: str = "day",
-    date: str = "",
-    from_date: str = "",
-    to_date: str = "",
-):
-    if period not in ("day", "week", "month", "range"):
-        period = "day"
+async def patterns_menu(request: Request):
     try:
         get_cached_scan(_patterns_dir)
         get_cached_behavior_scan(_patterns_dir, data_root=data_dir(), notify=False)
     except Exception:
         logger.exception("patterns menu scan failed")
 
-    if period == "range" and from_date and to_date:
-        start_iso, end_iso = _range_custom_tehran(from_date, to_date)
-        recent = list_all_pattern_events(
-            start_iso=start_iso, end_iso=end_iso, limit=300
-        )
-    elif period == "range":
-        recent = []
-    else:
-        anchor = date or None
-        start_iso, end_iso = _range_for_pattern_period(period, anchor)
-        recent = list_all_pattern_events(
-            start_iso=start_iso, end_iso=end_iso, limit=300
-        )
-
+    start_iso = (
+        datetime.now(timezone.utc) - timedelta(hours=24)
+    ).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    recent = list_all_pattern_events(start_iso=start_iso, limit=300)
     grouped_recent = _group_by_date(recent)
 
     return templates.TemplateResponse(
@@ -667,10 +649,6 @@ async def patterns_menu(
             request,
             active="patterns",
             menu_items=_pattern_menu_items(),
-            period=period,
-            date=date,
-            from_date=from_date,
-            to_date=to_date,
             grouped_recent=grouped_recent,
             recent_count=len(recent),
         ),
