@@ -10,31 +10,21 @@ from optionflow.patterns.indicators import (
 from optionflow.patterns.ohlc import OhlcBar
 from optionflow.patterns.types import PatternHit
 
-# TradingView: تأیید نهایی pivot RSI با 5/5
-LOOKBACK_LEFT = 5
-LOOKBACK_RIGHT = 5
-# سیگنال اولیه: ۲ کندل راست کافی است؛ تا کندل ۵ام هنوز «اولیه» است
-EARLY_RIGHT = 2
+# Trading Toolkit (BigBeluga) — Regular RSI divergence
+RSI_PERIOD = 24
+LOOKBACK_LEFT = 10
+LOOKBACK_RIGHT = 10
+EARLY_RIGHT = 2  # تأیید اولیه قبل از pivot کامل ۱۰/۱۰
 RANGE_LOWER = 5
 RANGE_UPPER = 60
-MIN_RSI_DIFF = 3.0
-RSI_OVERBOUGHT = 65.0
-RSI_OVERSOLD = 35.0
-# سقف/کف قیمت تقریباً برابر را واگرایی حساب نکن (۰٫۱۲٪)
-MIN_PRICE_PCT = 0.0012
 
 
-def _in_range(prev_pivot: int, pivot: int) -> bool:
-    return RANGE_LOWER <= (pivot - prev_pivot) <= RANGE_UPPER
+def _in_range(p_a: int, p_b: int) -> bool:
+    return RANGE_LOWER <= (p_b - p_a) <= RANGE_UPPER
 
 
 def _recent_confirm(conf_b: int, n: int, right: int) -> bool:
     return conf_b >= n - right - 2
-
-
-def _price_apart(a: float, b: float) -> bool:
-    base = max(abs(a), 1e-9)
-    return abs(b - a) / base >= MIN_PRICE_PCT
 
 
 def _forming_pivot(
@@ -43,7 +33,7 @@ def _forming_pivot(
     high: bool,
     n: int,
 ) -> tuple[int, int] | None:
-    """آخرین سقف/کف در حال شکل‌گیری: ۲ تا ۴ کندل راست (قبل از تأیید ۵)."""
+    """سقف/کف RSI در حال شکل‌گیری: ۲ تا ۹ کندل راست (قبل از تأیید ۱۰)."""
     for right in range(EARLY_RIGHT, LOOKBACK_RIGHT):
         p = n - 1 - right
         if p < LOOKBACK_LEFT:
@@ -67,9 +57,9 @@ def _bearish_ok(
     ra, rb = rs[p_a], rs[p_b]
     if ra is None or rb is None:
         return None
-    if ra < RSI_OVERBOUGHT or (ra - rb) < MIN_RSI_DIFF:
+    if rb >= ra:
         return None
-    if highs[p_b] <= highs[p_a] or not _price_apart(highs[p_a], highs[p_b]):
+    if highs[p_b] <= highs[p_a]:
         return None
     return float(ra), float(rb)
 
@@ -83,9 +73,9 @@ def _bullish_ok(
     ra, rb = rs[p_a], rs[p_b]
     if ra is None or rb is None:
         return None
-    if ra > RSI_OVERSOLD or (rb - ra) < MIN_RSI_DIFF:
+    if rb <= ra:
         return None
-    if lows[p_b] >= lows[p_a] or not _price_apart(lows[p_a], lows[p_b]):
+    if lows[p_b] >= lows[p_a]:
         return None
     return float(ra), float(rb)
 
@@ -114,13 +104,14 @@ def _entry_lines(
     final_px = None if early else _bar_close(bars, final_ix)
     if early:
         extra = (
-            f"تأیید اولیه در قیمت {_price_txt(early_px)} داده شد؛ "
-            f"تأیید نهایی هنوز صادر نشده (منتظر کندل ۵ام)."
+            f"تأیید اولیه در قیمت {_price_txt(early_px)}؛ "
+            f"منتظر pivot RSI {LOOKBACK_LEFT}/{LOOKBACK_RIGHT} (حدود "
+            f"{LOOKBACK_RIGHT - EARLY_RIGHT} کندل)."
         )
         return early_ix, None, early_px, None, extra
     extra = (
-        f"تأیید اولیه در قیمت {_price_txt(early_px)} داده شد، "
-        f"تأیید نهایی در قیمت {_price_txt(final_px)}."
+        f"تأیید اولیه در قیمت {_price_txt(early_px)}، "
+        f"تأیید نهایی (BigBeluga) در قیمت {_price_txt(final_px)}."
     )
     return early_ix, final_ix, early_px, final_px, extra
 
@@ -150,14 +141,15 @@ def _hit_bearish(
         title_fa="واگرایی نزولی RSI",
         status_fa=status,
         summary_fa=(
-            f"Regular Bearish · دو سقف متوالی — "
-            f"قیمت بالاتر ({highs[p_b]:,.0f} > {highs[p_a]:,.0f})، "
-            f"RSI پایین‌تر ({rb:.1f} < {ra:.1f}، Δ{diff:.1f}). {extra}"
+            f"Regular Bearish (BigBeluga) · "
+            f"قیمت HH ({highs[p_b]:,.0f} > {highs[p_a]:,.0f})، "
+            f"RSI LH ({rb:.1f} < {ra:.1f}، Δ{diff:.1f}). {extra}"
         ),
         forecast_fa=(
             "احتمال اصلاح نزولی؛ تأیید با شکست کف کوتاه‌مدت."
             if not early
-            else "اگر سقف RSI در ۲–۳ کندل بعد بالاتر نرود، واگرایی نزولی تأیید می‌شود."
+            else "سقف RSI در حال شکل‌گیری است؛ اگر ۲ کندل راست pivot را تأیید کند، "
+            "واگرایی نزولی مثل TradingView ثبت می‌شود."
         ),
         meta={
             "pivot_a": (p_a, highs[p_a]),
@@ -173,6 +165,8 @@ def _hit_bearish(
             "tv_pivot": True,
             "stage": "early" if early else "confirmed",
             "delay_bars": delay,
+            "rsi_period": RSI_PERIOD,
+            "lookback": LOOKBACK_LEFT,
         },
     )
 
@@ -202,14 +196,15 @@ def _hit_bullish(
         title_fa="واگرایی مثبت RSI",
         status_fa=status,
         summary_fa=(
-            f"Regular Bullish · دو کف متوالی — "
-            f"قیمت پایین‌تر ({lows[p_b]:,.0f} < {lows[p_a]:,.0f})، "
-            f"RSI بالاتر ({rb:.1f} > {ra:.1f}، Δ{diff:.1f}). {extra}"
+            f"Regular Bullish (BigBeluga) · "
+            f"قیمت LL ({lows[p_b]:,.0f} < {lows[p_a]:,.0f})، "
+            f"RSI HL ({rb:.1f} > {ra:.1f}، Δ{diff:.1f}). {extra}"
         ),
         forecast_fa=(
             "احتمال اصلاح صعودی؛ تأیید با شکست سقف کوتاه‌مدت."
             if not early
-            else "اگر کف RSI در ۲–۳ کندل بعد پایین‌تر نرود، واگرایی مثبت تأیید می‌شود."
+            else "کف RSI در حال شکل‌گیری است؛ اگر ۲ کندل راست pivot را تأیید کند، "
+            "واگرایی مثبت مثل TradingView ثبت می‌شود."
         ),
         meta={
             "pivot_a": (p_a, lows[p_a]),
@@ -225,6 +220,8 @@ def _hit_bullish(
             "tv_pivot": True,
             "stage": "early" if early else "confirmed",
             "delay_bars": delay,
+            "rsi_period": RSI_PERIOD,
+            "lookback": LOOKBACK_LEFT,
         },
     )
 
@@ -235,12 +232,12 @@ def detect_rsi_divergence(
     *,
     allow_early: bool = True,
 ) -> PatternHit | None:
-    min_len = LOOKBACK_LEFT + LOOKBACK_RIGHT + RANGE_UPPER + 20
+    min_len = LOOKBACK_LEFT + LOOKBACK_RIGHT + RANGE_UPPER + RSI_PERIOD + 20
     if len(bars) < min_len:
         return None
 
     closes = [b.close for b in bars]
-    rs = rsi(closes)
+    rs = rsi(closes, RSI_PERIOD)
     highs = [b.high for b in bars]
     lows = [b.low for b in bars]
     n = len(bars)
