@@ -13,7 +13,8 @@ from optionflow.patterns.divergence import (
     _entry_lines,
     _forming_pivot,
     detect_rsi_divergence,
-    resolve_divergence_pair,
+    divergence_rank,
+    pick_confirmed_divergence,
 )
 from optionflow.patterns.indicators import (
     rsi,
@@ -21,6 +22,7 @@ from optionflow.patterns.indicators import (
     rsi_pivot_low_confirmations,
 )
 from optionflow.patterns.ohlc import OhlcBar
+from optionflow.patterns.types import PatternHit
 
 
 def test_constants_match_bigbeluga() -> None:
@@ -34,7 +36,7 @@ def test_constants_match_bigbeluga() -> None:
 
 
 def test_consecutive_pivots_not_first_vs_last() -> None:
-    """فقط دو pivot RSI آخر با هم مقایسه می‌شوند (مثل valuewhen)."""
+    """دو pivot RSI آخر با هم مقایسه می‌شوند (مثل valuewhen)."""
     n = 160
     rs: list[float | None] = [45.0 - i * 0.01 for i in range(n)]
     rs[50] = 80.0
@@ -123,12 +125,27 @@ def test_consecutive_pair_when_no_first_third() -> None:
     pivots = [(p1 + 10, p1), (p2 + 10, p2), (p3 + 10, p3)]
     assert _bearish_ok(rs, highs, p1, p3) is None
     assert _bearish_ok(rs, highs, p2, p3) is not None
-    found = resolve_divergence_pair(rs, highs, pivots, p3, _bearish_ok)
+    found = pick_confirmed_divergence(pivots, rs, highs, _bearish_ok)
     assert found is not None
     assert found["p_a"] == p2
     assert found["p_c"] == p3
     assert found["p_mid"] is None
     assert found["ladder"] == {}
+
+
+def test_prefers_consecutive_when_both_valid() -> None:
+    rs: list[float | None] = [40.0] * 160
+    highs = [100.0] * 160
+    p1, p2, p3 = 50, 80, 110
+    rs[p1], rs[p2], rs[p3] = 78.0, 74.0, 70.0
+    highs[p1], highs[p2], highs[p3] = 100.0, 106.0, 108.0
+    pivots = [(p1 + 10, p1), (p2 + 10, p2), (p3 + 10, p3)]
+    assert _bearish_ok(rs, highs, p2, p3) is not None
+    assert _bearish_ok(rs, highs, p1, p3) is not None
+    found = pick_confirmed_divergence(pivots, rs, highs, _bearish_ok)
+    assert found is not None
+    assert found["p_a"] == p2
+    assert found["p_mid"] is None
 
 
 def test_third_pivot_merges_with_second_when_div_vs_first() -> None:
@@ -140,7 +157,7 @@ def test_third_pivot_merges_with_second_when_div_vs_first() -> None:
     pivots = [(p1 + 10, p1), (p2 + 10, p2), (p3 + 10, p3)]
     assert _bearish_ok(rs, highs, p2, p3) is None
     assert _bearish_ok(rs, highs, p1, p3) is not None
-    found = resolve_divergence_pair(rs, highs, pivots, p3, _bearish_ok)
+    found = pick_confirmed_divergence(pivots, rs, highs, _bearish_ok)
     assert found is not None
     assert found["p_a"] == p1
     assert found["p_c"] == p3
@@ -149,22 +166,6 @@ def test_third_pivot_merges_with_second_when_div_vs_first() -> None:
     assert ladder["entry_pivot_2_index"] == p2
     assert ladder["entry_pivot_3_index"] == p3
     assert ladder["entry_blended_px"] == highs[p2] * 0.35 + highs[p3] * 0.65
-
-
-def test_merge_still_one_pair_when_both_diverege() -> None:
-    rs: list[float | None] = [40.0] * 160
-    highs = [100.0] * 160
-    p1, p2, p3 = 50, 80, 110
-    rs[p1], rs[p2], rs[p3] = 78.0, 74.0, 70.0
-    highs[p1], highs[p2], highs[p3] = 100.0, 106.0, 108.0
-    pivots = [(p1 + 10, p1), (p2 + 10, p2), (p3 + 10, p3)]
-    assert _bearish_ok(rs, highs, p2, p3) is not None
-    assert _bearish_ok(rs, highs, p1, p3) is not None
-    found = resolve_divergence_pair(rs, highs, pivots, p3, _bearish_ok)
-    assert found is not None
-    assert found["p_a"] == p1
-    assert found["p_mid"] == p2
-    assert found["ladder"]["entry_pivot_3_px"] == 108.0
 
 
 def test_older_fourth_pivot_is_ignored() -> None:
@@ -179,7 +180,7 @@ def test_older_fourth_pivot_is_ignored() -> None:
         (p2 + 10, p2),
         (p3 + 10, p3),
     ]
-    found = resolve_divergence_pair(rs, highs, pivots, p3, _bearish_ok)
+    found = pick_confirmed_divergence(pivots, rs, highs, _bearish_ok)
     assert found is not None
     assert found["p_a"] == p1
     assert found["p_mid"] == p2
@@ -193,7 +194,7 @@ def test_bullish_merge_uses_last_three_only() -> None:
     lows[p1], lows[p2], lows[p3] = 100.0, 94.0, 92.0
     pivots = [(p1 + 10, p1), (p2 + 10, p2), (p3 + 10, p3)]
     assert _bullish_ok(rs, lows, p2, p3) is None
-    found = resolve_divergence_pair(rs, lows, pivots, p3, _bullish_ok)
+    found = pick_confirmed_divergence(pivots, rs, lows, _bullish_ok)
     assert found is not None
     assert found["p_a"] == p1
     assert found["p_mid"] == p2
@@ -222,3 +223,27 @@ def test_entry_lines_append_ladder_when_merged() -> None:
     assert "35" in extra
     assert "65" in extra
     assert "پیوت دوم" in extra
+
+
+def test_divergence_rank_confirmed_beats_early() -> None:
+    early = PatternHit(
+        category="divergence",
+        timeframe="5m",
+        pattern_id="rsi_bearish",
+        title_fa="",
+        status_fa="",
+        summary_fa="",
+        forecast_fa="",
+        meta={"stage": "early", "pivot_b": (110, 1.0)},
+    )
+    confirmed = PatternHit(
+        category="divergence",
+        timeframe="5m",
+        pattern_id="rsi_bearish",
+        title_fa="",
+        status_fa="",
+        summary_fa="",
+        forecast_fa="",
+        meta={"stage": "confirmed", "pivot_b": (110, 1.0)},
+    )
+    assert divergence_rank(confirmed) > divergence_rank(early)

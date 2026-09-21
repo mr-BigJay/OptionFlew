@@ -8,7 +8,11 @@ from pathlib import Path
 from typing import Callable
 
 from optionflow.patterns.chart import render_pattern_chart, chart_forward_bars
-from optionflow.patterns.divergence import detect_rsi_divergence
+from optionflow.patterns.divergence import (
+    detect_rsi_divergence,
+    divergence_rank,
+    divergence_signal_key,
+)
 from optionflow.patterns.flag import detect_flag
 from optionflow.patterns.history import (
     INTERVAL_MS,
@@ -257,30 +261,6 @@ def evaluate_outcome(
     return ok, note
 
 
-def _divergence_anchor(hit: PatternHit) -> int | None:
-    pb = hit.meta.get("pivot_b")
-    if isinstance(pb, (list, tuple)) and pb:
-        try:
-            return int(pb[0])
-        except (TypeError, ValueError):
-            return None
-    return None
-
-
-def _should_replace_divergence(prev: PatternHit, new: PatternHit) -> bool:
-    """پیوت سوم همان ساختار را با پیوت اول ادغام می‌کند؛ سیگنال قبلی (پیوت دوم) جایگزین می‌شود."""
-    if prev.category != "divergence" or new.category != "divergence":
-        return False
-    if prev.pattern_id != new.pattern_id:
-        return False
-    if new.meta.get("entry_pivot_3_index") is None:
-        return False
-    mid = new.meta.get("entry_pivot_2_index")
-    if not isinstance(mid, int):
-        return False
-    return _divergence_anchor(prev) == mid
-
-
 def replay_category(
     bars: list[OhlcBar],
     *,
@@ -295,6 +275,7 @@ def replay_category(
     dedupe = DEDUPE_BARS.get(timeframe, 12)
     detect = _detector(category)
     last_key: dict[str, int] = {}
+    div_slot: dict[str, int] = {}
     out: list[tuple[int, PatternHit]] = []
     indices = range(scan_start, scan_end + 1, stride)
     total = max(1, len(list(range(scan_start, scan_end + 1, stride))))
@@ -308,18 +289,21 @@ def replay_category(
         if hit is None:
             continue
         if hit.category == "divergence":
-            anchor = _divergence_anchor(hit)
-            if anchor is not None and last_key.get(f"{hit.pattern_id}:anchor") == anchor:
-                continue
-            if out and _should_replace_divergence(out[-1][1], hit):
-                out.pop()
-            else:
-                prev = last_key.get(hit.pattern_id)
-                if prev is not None and i - prev < dedupe:
+            sig = divergence_signal_key(hit)
+            if sig:
+                slot = div_slot.get(sig)
+                if slot is not None:
+                    old_i, old_hit = out[slot]
+                    if divergence_rank(hit) > divergence_rank(old_hit):
+                        out[slot] = (i, hit)
+                        last_key[hit.pattern_id] = i
                     continue
+            prev = last_key.get(hit.pattern_id)
+            if prev is not None and i - prev < dedupe:
+                continue
             last_key[hit.pattern_id] = i
-            if anchor is not None:
-                last_key[f"{hit.pattern_id}:anchor"] = anchor
+            if sig:
+                div_slot[sig] = len(out)
             out.append((i, hit))
             continue
         prev = last_key.get(hit.pattern_id)

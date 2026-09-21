@@ -17,7 +17,6 @@ LOOKBACK_RIGHT = 10
 EARLY_RIGHT = 2  # تأیید اولیه قبل از pivot کامل ۱۰/۱۰
 RANGE_LOWER = 5
 RANGE_UPPER = 60
-# پیوت اول↔سوم حداکثر دو فاصلهٔ مجاور BigBeluga (۵–۶۰ + ۵–۶۰)
 RANGE_P1_P3 = RANGE_UPPER * 2
 ENTRY_LEG1_WEIGHT = 0.35
 ENTRY_LEG2_WEIGHT = 0.65
@@ -84,10 +83,6 @@ def _bullish_ok(
     return float(ra), float(rb)
 
 
-def _older_bars(pivots: list[tuple[int, int]], p_c: int) -> list[int]:
-    return [p for _, p in pivots if p < p_c]
-
-
 def _ladder_merge(p2: int, p3: int, prices: list[float]) -> dict:
     px2, px3 = float(prices[p2]), float(prices[p3])
     return {
@@ -101,52 +96,66 @@ def _ladder_merge(p2: int, p3: int, prices: list[float]) -> dict:
     }
 
 
-def resolve_divergence_pair(
+def pick_confirmed_divergence(
+    pivots: list[tuple[int, int]],
     rs: list[float | None],
     prices: list[float],
-    pivots: list[tuple[int, int]],
-    p_c: int,
     ok_fn,
 ) -> dict | None:
-    """یک سیگنال: اول جفت متوالی BigBeluga؛ اگر پیوت سوم با اول واگرایی داشت، همان را با پیوت دوم ادغام کن."""
-    older = _older_bars(pivots, p_c)
-    if not older:
+    """BigBeluga: دو پیوت آخر؛ فقط اگر ۲↔۳ واگرایی نداشت، ۱↔۳ + پله ۳۵/۶۵."""
+    if len(pivots) < 2:
         return None
-    p2 = older[-1]
-    if not _in_range(p2, p_c):
+    p2, p3 = pivots[-2][1], pivots[-1][1]
+    if not _in_range(p2, p3):
         return None
 
-    consec = ok_fn(rs, prices, p2, p_c)
-    p1 = older[-2] if len(older) >= 2 else None
-    merge = None
-    if (
-        p1 is not None
-        and _in_range(p1, p2)
-        and (p_c - p1) <= RANGE_P1_P3
-    ):
-        merge = ok_fn(rs, prices, p1, p_c)
-
-    if merge:
-        ra, rb = merge
-        return {
-            "p_a": p1,
-            "p_c": p_c,
-            "ra": ra,
-            "rb": rb,
-            "p_mid": p2,
-            "ladder": _ladder_merge(p2, p_c, prices),
-        }
+    consec = ok_fn(rs, prices, p2, p3)
     if consec:
         ra, rb = consec
         return {
             "p_a": p2,
-            "p_c": p_c,
+            "p_c": p3,
             "ra": ra,
             "rb": rb,
             "p_mid": None,
             "ladder": {},
         }
-    return None
+
+    if len(pivots) < 3:
+        return None
+    p1 = pivots[-3][1]
+    if not (_in_range(p1, p2) and _in_range(p2, p3) and (p3 - p1) <= RANGE_P1_P3):
+        return None
+    merged = ok_fn(rs, prices, p1, p3)
+    if not merged:
+        return None
+    ra, rb = merged
+    return {
+        "p_a": p1,
+        "p_c": p3,
+        "ra": ra,
+        "rb": rb,
+        "p_mid": p2,
+        "ladder": _ladder_merge(p2, p3, prices),
+    }
+
+
+def divergence_signal_key(hit: PatternHit) -> str | None:
+    pb = hit.meta.get("pivot_b")
+    if not isinstance(pb, (list, tuple)) or not pb:
+        return None
+    try:
+        return f"{hit.pattern_id}:{int(pb[0])}"
+    except (TypeError, ValueError):
+        return None
+
+
+def divergence_rank(hit: PatternHit) -> int:
+    stage = hit.meta.get("stage")
+    rank = 10 if stage == "early" else 20 if stage == "confirmed" else 0
+    if hit.meta.get("compared_first_third"):
+        rank += 5
+    return rank
 
 
 def _bar_close(bars: list[OhlcBar], idx: int) -> float | None:
@@ -221,6 +230,7 @@ def _hit_bearish(
     if p_mid is not None:
         extra_meta["pivot_mid"] = (p_mid, highs[p_mid])
         extra_meta["compared_first_third"] = True
+    extra_meta["signal_key"] = f"rsi_bearish:{p_b}"
     return PatternHit(
         category="divergence",
         timeframe=timeframe,
@@ -285,6 +295,7 @@ def _hit_bullish(
     if p_mid is not None:
         extra_meta["pivot_mid"] = (p_mid, lows[p_mid])
         extra_meta["compared_first_third"] = True
+    extra_meta["signal_key"] = f"rsi_bullish:{p_b}"
     return PatternHit(
         category="divergence",
         timeframe=timeframe,
@@ -349,7 +360,7 @@ def detect_rsi_divergence(
     if len(ph) >= 2:
         conf_b, p_b = ph[-1]
         if _recent_confirm(conf_b, n, LOOKBACK_RIGHT):
-            picked = resolve_divergence_pair(rs, highs, ph, p_b, _bearish_ok)
+            picked = pick_confirmed_divergence(ph, rs, highs, _bearish_ok)
             if picked:
                 return _hit_bearish(
                     bars,
@@ -368,7 +379,7 @@ def detect_rsi_divergence(
     if len(pl) >= 2:
         conf_b, p_b = pl[-1]
         if _recent_confirm(conf_b, n, LOOKBACK_RIGHT):
-            picked = resolve_divergence_pair(rs, lows, pl, p_b, _bullish_ok)
+            picked = pick_confirmed_divergence(pl, rs, lows, _bullish_ok)
             if picked:
                 return _hit_bullish(
                     bars,
@@ -391,42 +402,40 @@ def detect_rsi_divergence(
     if forming_h and ph:
         p_b, right = forming_h
         _, p_last = ph[-1]
-        if p_last < p_b:
-            picked = resolve_divergence_pair(rs, highs, ph, p_b, _bearish_ok)
-            if picked:
+        if p_last < p_b and _in_range(p_last, p_b):
+            pair = _bearish_ok(rs, highs, p_last, p_b)
+            if pair:
+                ra, rb = pair
                 return _hit_bearish(
                     bars,
                     timeframe,
-                    picked["p_a"],
-                    picked["p_c"],
+                    p_last,
+                    p_b,
                     highs,
-                    picked["ra"],
-                    picked["rb"],
+                    ra,
+                    rb,
                     p_b + right,
                     early=True,
-                    p_mid=picked["p_mid"],
-                    ladder=picked["ladder"],
                 )
 
     forming_l = _forming_pivot(rs, high=False, n=n)
     if forming_l and pl:
         p_b, right = forming_l
         _, p_last = pl[-1]
-        if p_last < p_b:
-            picked = resolve_divergence_pair(rs, lows, pl, p_b, _bullish_ok)
-            if picked:
+        if p_last < p_b and _in_range(p_last, p_b):
+            pair = _bullish_ok(rs, lows, p_last, p_b)
+            if pair:
+                ra, rb = pair
                 return _hit_bullish(
                     bars,
                     timeframe,
-                    picked["p_a"],
-                    picked["p_c"],
+                    p_last,
+                    p_b,
                     lows,
-                    picked["ra"],
-                    picked["rb"],
+                    ra,
+                    rb,
                     p_b + right,
                     early=True,
-                    p_mid=picked["p_mid"],
-                    ladder=picked["ladder"],
                 )
 
     return None
