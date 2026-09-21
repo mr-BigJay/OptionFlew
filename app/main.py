@@ -46,7 +46,7 @@ from app.jobs import (
     run_scheduled_report,
     run_scheduled_behavior_scan,
 )
-from app.pattern_store import get_pattern_event, list_pattern_events
+from app.pattern_store import get_pattern_event, list_all_pattern_events, list_pattern_events
 from app.storage import (
     data_dir,
     ensure_report_chart,
@@ -608,7 +608,21 @@ async def report_detail(request: Request, report_id: int):
 
 
 @app.get("/patterns", response_class=HTMLResponse)
-async def patterns_menu(request: Request):
+async def patterns_menu(request: Request, layout: str = "cards"):
+    if layout not in ("cards", "grid", "compact"):
+        layout = "cards"
+    try:
+        get_cached_scan(_patterns_dir)
+        get_cached_behavior_scan(_patterns_dir, data_root=data_dir(), notify=False)
+    except Exception:
+        logger.exception("patterns menu scan failed")
+
+    start_iso = (
+        datetime.now(timezone.utc) - timedelta(hours=24)
+    ).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    recent = list_all_pattern_events(start_iso=start_iso, limit=200)
+    grouped_recent = _group_by_date(recent)
+
     items = [
         {"slug": slug, "label": _category_fa(slug)}
         for slug in PATTERN_TABS
@@ -620,6 +634,9 @@ async def patterns_menu(request: Request):
             request,
             active="patterns",
             menu_items=items,
+            layout=layout,
+            grouped_recent=grouped_recent,
+            recent_count=len(recent),
         ),
     )
 
