@@ -2,7 +2,7 @@
 {% block title %}{{ category_label }} — الگوها{% endblock %}
 {% block header %}<span class="header-title">{{ category_label }}</span>{% endblock %}
 {% block subheader %}
-<p class="muted patterns-sub">{{ subheader }} · {{ count }} مورد در بازه</p>
+<p class="home-schedule muted">{{ subheader }} · {{ count }} مورد در بازه</p>
 {% endblock %}
 
 {% block content %}
@@ -54,12 +54,10 @@
       <a href="/patterns/event/{{ r.id }}" class="timeline-card">
         <span class="timeline-play" aria-hidden="true">▶</span>
         <div class="timeline-body">
-          <div class="timeline-top">
-            <span class="kind-pill">{{ r.timeframe }}</span>
-            <span class="bias-mini">{{ r.status_fa }}</span>
-          </div>
-          <p class="timeline-preview"><strong>{{ r.title_fa }}</strong> — {{ r.summary_fa[:120] }}{% if r.summary_fa|length > 120 %}…{% endif %}</p>
-          <span class="timeline-meta">{{ r.pattern_id }}</span>
+            <div class="timeline-top">
+              <span class="kind-pill">{{ r.timeframe }}</span>
+              <span class="bias-mini">{{ r.status_fa }}</span>
+            </div>
         </div>
       </a>
     </div>

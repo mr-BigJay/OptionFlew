@@ -351,6 +351,48 @@ body.chart-lightbox-open {
   box-shadow: 0 0 18px var(--kind-daily-glow);
 }
 
+.home-report-card.kind-pattern {
+  border-color: rgba(52, 211, 153, 0.28);
+  box-shadow: 0 0 0 1px rgba(52, 211, 153, 0.08), 0 12px 28px rgba(0, 0, 0, 0.4);
+}
+
+.home-report-card.kind-pattern::before {
+  background: linear-gradient(180deg, var(--accent2), #059669);
+  box-shadow: 0 0 14px rgba(52, 211, 153, 0.35);
+}
+
+a.pattern-nav-card {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+}
+
+.pattern-nav-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.pattern-nav-hint {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.pattern-section {
+  margin-bottom: 20px;
+}
+
+.section-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--muted);
+  margin: 0 0 12px;
+  letter-spacing: 0.02em;
+}
+
 .home-report-head {
   display: flex;
   align-items: flex-start;
@@ -756,6 +798,12 @@ body.chart-lightbox-open {
   border: 1px solid #2a3441;
   color: var(--muted);
   text-decoration: none;
+}
+
+.patterns-layout-picker a.on {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-dim);
 }
 
 .patterns-design-link {
