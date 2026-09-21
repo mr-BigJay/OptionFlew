@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}{{ event.title_fa }} — {{ category_label }}{% endblock %}
+{% block header %}<span class="header-title">{{ event.title_fa }}</span>{% endblock %}
+{% block subheader %}
+<p class="muted patterns-sub">{{ category_label }} · {{ event.timeframe }} · {{ fmt_dt(event.created_at) }}</p>
+{% endblock %}
+
+{% block content %}
+<p class="patterns-back"><a href="/patterns/{{ event.category }}">← {{ category_label }}</a></p>
+
+<article class="pattern-card pattern-detail">
+  <header class="pattern-head">
+    <span class="pattern-status">{{ event.status_fa }}</span>
+  </header>
+  <p class="pattern-summary">{{ event.summary_fa }}</p>
+  <p class="pattern-forecast"><strong>پیش‌بینی:</strong> {{ event.forecast_fa }}</p>
+  {% set meta = event.meta or {} %}
+  {% if meta.get('entry_px') or meta.get('tp_px') %}
+  <p class="pattern-forecast"><strong>ورود / هدف:</strong>
+    {% if meta.get('entry_px') %}ورود ~{{ "{:,.0f}".format(meta.entry_px) }}{% endif %}
+    {% if meta.get('tp_px') %} · هدف ~{{ "{:,.0f}".format(meta.tp_px) }}{% endif %}
+    {% if meta.get('path_pct') is not none %} · مسیر {{ "{:+.2f}".format(meta.path_pct * 100) }}٪{% endif %}
+  </p>
+  {% endif %}
+  {% if event.chart_file %}
+  <figure class="scenario-chart pattern-chart">
+    <div class="scenario-chart-frame">
+      <img
+        class="chart-preview"
+        src="/pattern-charts/{{ event.chart_file }}?v={{ cache_ts }}"
+        alt="چارت {{ event.title_fa }}"
+        loading="lazy"
+      />
+    </div>
+  </figure>
+  {% endif %}
+</article>
+{% endblock %}

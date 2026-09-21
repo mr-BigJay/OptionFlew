@@ -96,6 +96,12 @@ def get_cached_scan(chart_dir: Path) -> dict[str, dict[str, PatternHit | None]]:
     data = scan_all_patterns(chart_dir)
     _cache["ts"] = now
     _cache["hits"] = data
+    try:
+        from app.pattern_store import persist_scan_hits
+
+        persist_scan_hits(data)
+    except Exception:
+        logger.exception("pattern persist failed")
     return data
 
 

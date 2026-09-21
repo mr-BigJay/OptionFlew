@@ -145,6 +145,55 @@ def tehran_week_bounds_utc(anchor_date: str | None = None) -> tuple[str, str]:
     return iso(start), iso(end)
 
 
+def tehran_week_sat_fri_bounds_utc(anchor_date: str | None = None) -> tuple[str, str]:
+    """هفتهٔ شنبه–جمعه (تهران) که شامل anchor باشد."""
+    if anchor_date:
+        base = datetime.fromisoformat(anchor_date + "T00:00:00").replace(tzinfo=TEHRAN)
+    else:
+        base = now_tehran()
+    # Python weekday: Mon=0 … Sat=5, Sun=6 → روزهای از شنبه
+    days_since_sat = (base.weekday() + 2) % 7
+    start = (base - timedelta(days=days_since_sat)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    end = start + timedelta(days=7)
+
+    def iso(dt: datetime) -> str:
+        return dt.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace(
+            "+00:00", "Z"
+        )
+
+    return iso(start), iso(end)
+
+
+def tehran_jalali_month_bounds_utc(anchor_date: str | None = None) -> tuple[str, str]:
+    """اول تا آخر ماه جاری شمسی (تهران)."""
+    try:
+        import jdatetime
+    except ImportError:
+        return tehran_month_bounds_utc(anchor_date)
+
+    if anchor_date:
+        g = datetime.fromisoformat(anchor_date + "T12:00:00").replace(tzinfo=TEHRAN)
+        j = jdatetime.date.fromgregorian(date=g.date())
+    else:
+        j = jdatetime.date.fromgregorian(date=now_tehran().date())
+    start_j = jdatetime.datetime(j.year, j.month, 1, 0, 0, 0)
+    if j.month == 12:
+        end_j = jdatetime.datetime(j.year + 1, 1, 1, 0, 0, 0)
+    else:
+        end_j = jdatetime.datetime(j.year, j.month + 1, 1, 0, 0, 0)
+
+    def to_iso(jdt: jdatetime.datetime) -> str:
+        gdt = jdt.togregorian()
+        dt = datetime(gdt.year, gdt.month, gdt.day, jdt.hour, jdt.minute, jdt.second, tzinfo=TEHRAN)
+        return dt.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace(
+            "+00:00", "Z"
+        )
+
+    return to_iso(start_j), to_iso(end_j)
+
+
 def tehran_month_bounds_utc(anchor_date: str | None = None) -> tuple[str, str]:
     if anchor_date:
         base = datetime.fromisoformat(anchor_date + "T00:00:00").replace(tzinfo=TEHRAN)

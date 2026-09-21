@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}{{ category_label }} — الگوها{% endblock %}
+{% block header %}<span class="header-title">{{ category_label }}</span>{% endblock %}
+{% block subheader %}
+<p class="muted patterns-sub">{{ subheader }} · {{ count }} مورد در بازه</p>
+{% endblock %}
+
+{% block content %}
+<p class="patterns-back"><a href="/patterns">← همهٔ الگوها</a></p>
+
+<nav class="tabs tabs-report" aria-label="بازه">
+  <a href="/patterns/{{ category }}?period=day{% if date %}&date={{ date }}{% endif %}" class="{% if period == 'day' %}on{% endif %}">امروز</a>
+  <a href="/patterns/{{ category }}?period=week{% if date %}&date={{ date }}{% endif %}" class="{% if period == 'week' %}on{% endif %}">هفته</a>
+  <a href="/patterns/{{ category }}?period=month{% if date %}&date={{ date }}{% endif %}" class="{% if period == 'month' %}on{% endif %}">ماه</a>
+  <a href="/patterns/{{ category }}?period=range" class="{% if period == 'range' %}on{% endif %}">تاریخ مشخص</a>
+</nav>
+
+{% if period == 'range' %}
+<form class="filter-card" method="get" action="/patterns/{{ category }}">
+  <input type="hidden" name="period" value="range">
+  <label>از تاریخ</label>
+  <input type="date" name="from_date" value="{{ from_date }}" required>
+  <label>تا تاریخ</label>
+  <input type="date" name="to_date" value="{{ to_date }}" required>
+  <button type="submit" class="btn primary full">نمایش بازه</button>
+</form>
+{% else %}
+<form class="filter-row filter-compact" method="get" action="/patterns/{{ category }}">
+  <input type="hidden" name="period" value="{{ period }}">
+  <input type="date" name="date" value="{{ date }}" aria-label="تاریخ">
+  <button type="submit" class="btn secondary">برو</button>
+</form>
+{% endif %}
+
+<form class="patterns-refresh" method="post" action="/patterns/refresh">
+  <input type="hidden" name="category" value="{{ category }}">
+  <button type="submit" class="btn secondary full">به‌روزرسانی اسکن</button>
+</form>
+
+{% if grouped %}
+{% for day_key, items in grouped %}
+<section class="timeline-section">
+  <h2 class="timeline-day-title">
+    <span class="cal-icon" aria-hidden="true">📅</span>
+    {{ fmt_date_header(items[0].created_at) }}
+  </h2>
+  <div class="timeline">
+    {% for r in items %}
+    <div class="timeline-item kind-pattern">
+      <div class="timeline-rail">
+        <span class="timeline-time">{{ fmt_time(r.created_at) }}</span>
+        <span class="timeline-dot" aria-hidden="true"></span>
+      </div>
+      <a href="/patterns/event/{{ r.id }}" class="timeline-card">
+        <span class="timeline-play" aria-hidden="true">▶</span>
+        <div class="timeline-body">
+          <div class="timeline-top">
+            <span class="kind-pill">{{ r.timeframe }}</span>
+            <span class="bias-mini">{{ r.status_fa }}</span>
+          </div>
+          <p class="timeline-preview"><strong>{{ r.title_fa }}</strong> — {{ r.summary_fa[:120] }}{% if r.summary_fa|length > 120 %}…{% endif %}</p>
+          <span class="timeline-meta">{{ r.pattern_id }}</span>
+        </div>
+      </a>
+    </div>
+    {% endfor %}
+    <div class="timeline-end-cap" aria-hidden="true"></div>
+  </div>
+</section>
+{% endfor %}
+{% else %}
+<div class="empty"><p>در این بازه تشخیصی ثبت نشده. «به‌روزرسانی اسکن» را بزنید.</p></div>
+{% endif %}
+{% endblock %}
