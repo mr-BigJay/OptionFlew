@@ -2,37 +2,74 @@
 {% block title %}{{ event.title_fa }} — {{ category_label }}{% endblock %}
 {% block header %}<span class="header-title">{{ event.title_fa }}</span>{% endblock %}
 {% block subheader %}
-<p class="muted patterns-sub">{{ category_label }} · {{ event.timeframe }} · {{ fmt_dt(event.created_at) }}</p>
+<p class="home-schedule muted">{{ category_label }} · {{ event.timeframe }} · {{ fmt_dt(event.created_at) }}</p>
 {% endblock %}
 
 {% block content %}
 <p class="patterns-back"><a href="/patterns/{{ event.category }}">← {{ category_label }}</a></p>
 
-<article class="pattern-card pattern-detail">
-  <header class="pattern-head">
-    <span class="pattern-status">{{ event.status_fa }}</span>
-  </header>
-  <p class="pattern-summary">{{ event.summary_fa }}</p>
-  <p class="pattern-forecast"><strong>پیش‌بینی:</strong> {{ event.forecast_fa }}</p>
-  {% set meta = event.meta or {} %}
-  {% if meta.get('entry_px') or meta.get('tp_px') %}
-  <p class="pattern-forecast"><strong>ورود / هدف:</strong>
-    {% if meta.get('entry_px') %}ورود ~{{ "{:,.0f}".format(meta.entry_px) }}{% endif %}
-    {% if meta.get('tp_px') %} · هدف ~{{ "{:,.0f}".format(meta.tp_px) }}{% endif %}
-    {% if meta.get('path_pct') is not none %} · مسیر {{ "{:+.2f}".format(meta.path_pct * 100) }}٪{% endif %}
-  </p>
-  {% endif %}
-  {% if event.chart_file %}
-  <figure class="scenario-chart pattern-chart">
-    <div class="scenario-chart-frame">
-      <img
-        class="chart-preview"
-        src="/pattern-charts/{{ event.chart_file }}?v={{ cache_ts }}"
-        alt="چارت {{ event.title_fa }}"
-        loading="lazy"
-      />
+{% set meta = event.meta or {} %}
+<article class="home-report-card kind-pattern">
+  <header class="home-report-head">
+    <div class="home-report-date">
+      <span class="home-cal" aria-hidden="true">📅</span>
+      <span>{{ fmt_date(event.created_at) }}</span>
+      <span class="home-time-mini">{{ fmt_time(event.created_at) }}</span>
     </div>
-  </figure>
-  {% endif %}
+    <div class="home-report-badges">
+      <span class="type-pill">{{ event.timeframe }}</span>
+      <span class="bias-pill bias-neutral">{{ event.status_fa }}</span>
+    </div>
+  </header>
+
+  <p class="home-headline">{{ event.title_fa }}</p>
+
+  <div class="home-report-body report-prose">
+    {% if event.chart_file %}
+    <figure class="scenario-chart">
+      <div class="scenario-chart-frame">
+        <img
+          class="chart-preview"
+          src="/pattern-charts/{{ event.chart_file }}?v={{ cache_ts }}"
+          alt="چارت {{ event.title_fa }}"
+          loading="lazy"
+        />
+      </div>
+    </figure>
+    {% endif %}
+    <p class="home-paragraph paragraph-justify">{{ event.summary_fa }}</p>
+    <p class="home-paragraph paragraph-justify"><strong>پیش‌بینی:</strong> {{ event.forecast_fa }}</p>
+  </div>
+
+  <footer class="home-metrics home-metrics-dense">
+    {% if meta.get('entry_px') %}
+    <div class="metric-box metric-spot">
+      <span class="metric-label">ورود</span>
+      <span class="metric-val">{{ "{:,.0f}".format(meta.entry_px) }}</span>
+    </div>
+    {% endif %}
+    {% if meta.get('tp_px') %}
+    <div class="metric-box">
+      <span class="metric-label">هدف TP</span>
+      <span class="metric-val">{{ "{:,.0f}".format(meta.tp_px) }}</span>
+    </div>
+    {% endif %}
+    {% if meta.get('path_pct') is not none %}
+    <div class="metric-box">
+      <span class="metric-label">مسیر</span>
+      <span class="metric-val">{{ "{:+.2f}".format(meta.path_pct * 100) }}٪</span>
+    </div>
+    {% endif %}
+    {% if meta.get('spot_at_signal') %}
+    <div class="metric-box metric-spot">
+      <span class="metric-label">Spot</span>
+      <span class="metric-val">{{ "{:,.0f}".format(meta.spot_at_signal) }}</span>
+    </div>
+    {% endif %}
+    <div class="metric-box">
+      <span class="metric-label">شناسه</span>
+      <span class="metric-val mono" style="font-size:0.7rem">{{ event.pattern_id }}</span>
+    </div>
+  </footer>
 </article>
 {% endblock %}
