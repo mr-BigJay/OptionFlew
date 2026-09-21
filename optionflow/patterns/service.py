@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 
 from optionflow.patterns.chart import render_pattern_chart, chart_forward_bars
-from optionflow.patterns.divergence import detect_rsi_divergence
+from optionflow.patterns.divergence import detect_rsi_divergence, evaluate_divergence_path
 from optionflow.patterns.flag import detect_flag
 from optionflow.patterns.ohlc import load_btcusdt
 from optionflow.patterns.ema50 import detect_ema50
@@ -33,6 +33,8 @@ def _scan_tf(tf: str, chart_dir: Path) -> dict[str, PatternHit | None]:
     tri = detect_triangle(bars, tf)
     flg = detect_flag(bars, tf)
     div = detect_rsi_divergence(bars, tf)
+    if div is not None:
+        evaluate_divergence_path(bars, len(bars) - 1, div)
     trl = detect_trendline(bars, tf)
     chn = detect_channel(bars, tf)
     e50 = detect_ema50(bars, tf)
@@ -49,6 +51,8 @@ def _scan_tf(tf: str, chart_dir: Path) -> dict[str, PatternHit | None]:
             continue
         sig_ix = None
         if hit.category in ("ema50", "trendline"):
+            sig_ix = hit.meta.get("entry_index", hit.meta.get("early_index"))
+        elif hit.category == "divergence":
             sig_ix = hit.meta.get("entry_index", hit.meta.get("early_index"))
         else:
             sig_ix = hit.meta.get("confirm_index", len(bars) - 1)

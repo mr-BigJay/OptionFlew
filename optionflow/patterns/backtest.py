@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Callable
 
 from optionflow.patterns.chart import render_pattern_chart, chart_forward_bars
-from optionflow.patterns.divergence import detect_rsi_divergence
+from optionflow.patterns.divergence import detect_rsi_divergence, evaluate_divergence_path
 from optionflow.patterns.flag import detect_flag
 from optionflow.patterns.history import (
     INTERVAL_MS,
@@ -225,6 +225,8 @@ def evaluate_outcome(
         return evaluate_target_profit(bars, idx, hit, target_profit_pct)
     if hit.category == "trendline":
         return evaluate_trendline_path(bars, idx, hit)
+    if hit.category == "divergence":
+        return evaluate_divergence_path(bars, idx, hit)
     if hit.category == "ema50":
         return evaluate_ema50_path(bars, idx, hit)
     direction = expected_direction(hit)
@@ -359,7 +361,7 @@ def run_backtest(
         elif success is False:
             result.fail_count += 1
         if n < max_charts:
-            if hit.category in ("trendline", "ema50"):
+            if hit.category in ("trendline", "ema50", "divergence"):
                 sig_ix = hit.meta.get("entry_index", hit.meta.get("early_index", idx))
             else:
                 sig_ix = hit.meta.get("confirm_index", idx)
