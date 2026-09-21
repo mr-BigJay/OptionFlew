@@ -1305,13 +1305,175 @@ bdi[dir="ltr"] {
 
 .bt-run-list-item {
   display: block;
-  padding: 14px;
-  margin-bottom: 10px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
   background: var(--surface);
   border: 1px solid #2a3441;
   border-radius: var(--radius);
   text-decoration: none;
   color: inherit;
+}
+
+/* ——— آرشیو گزارش بکتست (فشرده + نوار پیشرفت زنده) ——— */
+.bt-archive-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bt-archive-row {
+  display: grid;
+  grid-template-columns: 4px 1fr auto;
+  gap: 0;
+  align-items: stretch;
+  padding: 0;
+  border-radius: var(--radius);
+  border: 1px solid #2a3441;
+  background: var(--surface2);
+  text-decoration: none;
+  color: inherit;
+  overflow: hidden;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.bt-archive-row:active {
+  border-color: rgba(34, 211, 238, 0.35);
+  background: rgba(34, 211, 238, 0.04);
+}
+
+.bt-archive-rail {
+  display: block;
+  background: linear-gradient(180deg, var(--accent), #0891b2);
+}
+
+.bt-archive-row.status-running .bt-archive-rail {
+  background: linear-gradient(180deg, #fbbf24, #d97706);
+  box-shadow: 0 0 12px rgba(251, 191, 36, 0.35);
+}
+
+.bt-archive-row.status-done .bt-archive-rail {
+  background: linear-gradient(180deg, var(--accent2), #059669);
+}
+
+.bt-archive-row.status-error .bt-archive-rail {
+  background: linear-gradient(180deg, var(--danger), #b91c1c);
+}
+
+.bt-archive-body {
+  padding: 8px 10px 9px;
+  min-width: 0;
+}
+
+.bt-archive-line1 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  font-size: 0.82rem;
+  line-height: 1.3;
+  margin-bottom: 4px;
+}
+
+.bt-archive-id {
+  font-weight: 700;
+  color: var(--accent);
+  font-size: 0.78rem;
+}
+
+.bt-archive-name {
+  font-weight: 600;
+}
+
+.bt-archive-tf {
+  font-size: 0.68rem;
+  padding: 2px 7px;
+}
+
+.bt-archive-badge {
+  font-size: 0.65rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  margin-right: auto;
+  border: 1px solid transparent;
+}
+
+.bt-archive-badge.running {
+  color: #fcd34d;
+  border-color: rgba(251, 191, 36, 0.35);
+  background: rgba(251, 191, 36, 0.08);
+}
+
+.bt-archive-badge.done {
+  color: var(--accent2);
+  border-color: rgba(52, 211, 153, 0.3);
+  background: rgba(52, 211, 153, 0.08);
+}
+
+.bt-archive-badge.error {
+  color: var(--danger);
+  border-color: rgba(248, 113, 113, 0.35);
+  background: rgba(248, 113, 113, 0.08);
+}
+
+.bt-archive-line2 {
+  font-size: 0.72rem;
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  line-height: 1.35;
+}
+
+.bt-archive-line2 time {
+  unicode-bidi: isolate;
+  direction: ltr;
+}
+
+.bt-archive-sep {
+  opacity: 0.5;
+}
+
+.bt-archive-line3 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  font-size: 0.72rem;
+  margin-top: 4px;
+}
+
+.bt-archive-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.bt-progress-track-slim {
+  flex: 1;
+  height: 6px;
+  min-width: 0;
+}
+
+.bt-archive-pct {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #fcd34d;
+  min-width: 2.5rem;
+  text-align: left;
+}
+
+.bt-archive-chevron {
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  color: var(--muted);
+  font-size: 1.1rem;
+  border-right: 1px solid #2a3441;
 }
 
 .bt-run-list-head {

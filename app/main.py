@@ -963,6 +963,28 @@ async def backtest_run_api(run_id: int):
     return JSONResponse(payload)
 
 
+@app.get("/backtest/api/runs")
+async def backtest_runs_api():
+    """وضعیت خلاصهٔ همهٔ بکتست‌ها — برای به‌روزرسانی زندهٔ آرشیو."""
+    runs = list_backtest_runs(limit=80)
+    return JSONResponse(
+        {
+            "runs": [
+                {
+                    "id": r["id"],
+                    "status": r["status"],
+                    "progress_pct": r["progress_pct"],
+                    "success_count": r["success_count"],
+                    "fail_count": r["fail_count"],
+                    "findings_count": r["findings_count"],
+                    "error_message": r.get("error_message") or "",
+                }
+                for r in runs
+            ]
+        }
+    )
+
+
 @app.get("/backtest/api/history")
 async def backtest_history_api():
     return JSONResponse(
