@@ -2,11 +2,19 @@
 {% block title %}الگوها — OptionFlow{% endblock %}
 {% block header %}<span class="header-title">الگوها</span>{% endblock %}
 {% block subheader %}
-<p class="muted patterns-sub">یک الگو را انتخاب کنید — تاریخچهٔ تشخیص‌ها مثل گزارش‌ها</p>
+<p class="muted patterns-sub">یک الگو را انتخاب کنید — {{ recent_count }} تشخیص در ۲۴ ساعت گذشته</p>
 {% endblock %}
 
 {% block content %}
-<nav class="patterns-menu" aria-label="فهرست الگوها">
+<p class="patterns-layout-picker" aria-label="طرح منو">
+  <span class="muted" style="width:100%;margin-bottom:4px;font-size:0.75rem">طرح منو (پیش‌نمایش):</span>
+  <a href="/patterns?layout=cards" class="{% if layout == 'cards' %}on{% endif %}">کارت عمودی</a>
+  <a href="/patterns?layout=grid" class="{% if layout == 'grid' %}on{% endif %}">شبکه ۲ ستونه</a>
+  <a href="/patterns?layout=compact" class="{% if layout == 'compact' %}on{% endif %}">فشرده</a>
+  <a href="/static/mockups/patterns-designs.html" target="_blank" rel="noopener">مقایسهٔ طرح‌ها ↗</a>
+</p>
+
+<nav class="patterns-menu patterns-menu--{{ layout }}" aria-label="فهرست الگوها">
   {% for item in menu_items %}
   <a class="patterns-menu-item" href="/patterns/{{ item.slug }}">
     <span class="patterns-menu-label">{{ item.label }}</span>
@@ -14,4 +22,42 @@
   </a>
   {% endfor %}
 </nav>
+
+<section class="patterns-timeline-block" aria-label="۲۴ ساعت گذشته">
+  <h2>همهٔ الگوها · ۲۴ ساعت گذشته</h2>
+  {% if grouped_recent %}
+  {% for day_key, items in grouped_recent %}
+  <section class="timeline-section">
+    <h2 class="timeline-day-title">
+      <span class="cal-icon" aria-hidden="true">📅</span>
+      {{ fmt_date_header(items[0].created_at) }}
+    </h2>
+    <div class="timeline">
+      {% for r in items %}
+      <div class="timeline-item kind-pattern">
+        <div class="timeline-rail">
+          <span class="timeline-time">{{ fmt_time(r.created_at) }}</span>
+          <span class="timeline-dot" aria-hidden="true"></span>
+        </div>
+        <a href="/patterns/event/{{ r.id }}" class="timeline-card">
+          <span class="timeline-play" aria-hidden="true">▶</span>
+          <div class="timeline-body">
+            <div class="timeline-top">
+              <span class="kind-pill">{{ category_fa(r.category) }}</span>
+              <span class="kind-pill">{{ r.timeframe }}</span>
+              <span class="bias-mini">{{ r.status_fa }}</span>
+            </div>
+            <p class="timeline-preview"><strong>{{ r.title_fa }}</strong> — {{ r.summary_fa[:100] }}{% if r.summary_fa|length > 100 %}…{% endif %}</p>
+          </div>
+        </a>
+      </div>
+      {% endfor %}
+      <div class="timeline-end-cap" aria-hidden="true"></div>
+    </div>
+  </section>
+  {% endfor %}
+  {% else %}
+  <div class="empty"><p>هنوز تشخیصی در ۲۴ ساعت گذشته ثبت نشده. از منوی بالا یک الگو را باز کنید و «به‌روزرسانی اسکن» بزنید.</p></div>
+  {% endif %}
+</section>
 {% endblock %}

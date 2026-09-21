@@ -704,13 +704,76 @@ body.chart-lightbox-open {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  width: 100%;
+  box-sizing: border-box;
   padding: 14px 16px;
   border-radius: 12px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
+  background: var(--surface2);
+  border: 1px solid #2a3441;
   color: var(--text);
   text-decoration: none;
   transition: border-color 0.15s, background 0.15s;
+}
+
+/* طرح منو: cards (پیش‌فرض) | grid | compact */
+.patterns-menu--grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.patterns-menu--grid .patterns-menu-item {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-height: 72px;
+}
+
+.patterns-menu--grid .patterns-menu-arrow {
+  align-self: flex-end;
+}
+
+.patterns-menu--compact {
+  gap: 6px;
+}
+
+.patterns-menu--compact .patterns-menu-item {
+  padding: 11px 14px;
+  border-radius: 10px;
+}
+
+.patterns-layout-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.patterns-layout-picker a {
+  font-size: 0.72rem;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid #2a3441;
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.patterns-layout-picker a.on {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.patterns-timeline-block {
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid #2a3441;
+}
+
+.patterns-timeline-block h2 {
+  font-size: 1rem;
+  margin: 0 0 12px;
+  color: var(--text);
 }
 
 .patterns-menu-item:hover {

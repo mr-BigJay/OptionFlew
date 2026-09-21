@@ -146,6 +146,35 @@ def list_pattern_events(
         return out
 
 
+def list_all_pattern_events(
+    *,
+    start_iso: str | None = None,
+    end_iso: str | None = None,
+    limit: int = 400,
+) -> list[dict[str, Any]]:
+    q = "SELECT * FROM pattern_events WHERE 1=1"
+    params: list[Any] = []
+    if start_iso:
+        q += " AND created_at >= ?"
+        params.append(start_iso)
+    if end_iso:
+        q += " AND created_at <= ?"
+        params.append(end_iso)
+    q += " ORDER BY created_at DESC LIMIT ?"
+    params.append(limit)
+    with connect() as conn:
+        rows = conn.execute(q, params).fetchall()
+        out: list[dict[str, Any]] = []
+        for r in rows:
+            d = dict(r)
+            try:
+                d["meta"] = json.loads(d.pop("meta_json") or "{}")
+            except json.JSONDecodeError:
+                d["meta"] = {}
+            out.append(d)
+        return out
+
+
 def get_pattern_event(event_id: int) -> dict[str, Any] | None:
     with connect() as conn:
         row = conn.execute(
