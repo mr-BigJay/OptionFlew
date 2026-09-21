@@ -44,18 +44,89 @@ def utc_now_iso() -> str:
     )
 
 
+def _meta_pivot_price(value: Any) -> int | None:
+    if isinstance(value, (list, tuple)) and len(value) >= 2:
+        try:
+            return int(round(float(value[1])))
+        except (TypeError, ValueError):
+            return None
+    if isinstance(value, (int, float)):
+        return int(round(float(value)))
+    return None
+
+
+def pattern_content_signature(
+    *,
+    category: str,
+    pattern_id: str,
+    meta: dict[str, Any],
+) -> str:
+    """هویت پایدار الگو — بدون وابستگی به اندیس کندل که با اسکن جابه‌جا می‌شود."""
+    alert = meta.get("alert_key")
+    if alert:
+        return str(alert)
+    stage = str(meta.get("stage") or "")
+    if category == "divergence":
+        pa = _meta_pivot_price(meta.get("pivot_a"))
+        pb = _meta_pivot_price(meta.get("pivot_b"))
+        ra, rb = meta.get("rsi_a"), meta.get("rsi_b")
+        rsi = ""
+        if isinstance(ra, (int, float)) and isinstance(rb, (int, float)):
+            rsi = f":r{round(float(ra), 1)}:{round(float(rb), 1)}"
+        return f"{pattern_id}:{stage}:p{pa}:p{pb}{rsi}"
+    if category == "ema50":
+        ep = meta.get("entry_px")
+        px = int(round(float(ep))) if isinstance(ep, (int, float)) else 0
+        return f"{pattern_id}:e{px}"
+    if category in ("trendline", "channel"):
+        side = meta.get("side") or meta.get("early_side") or ""
+        y = meta.get("y_now")
+        yk = int(round(float(y))) if isinstance(y, (int, float)) else 0
+        return f"{pattern_id}:{stage}:{side}:y{yk}"
+    if category == "triangle":
+        kind = meta.get("kind") or ""
+        u = meta.get("upper_now")
+        lo = meta.get("lower_now")
+        uk = int(round(float(u))) if isinstance(u, (int, float)) else 0
+        lk = int(round(float(lo))) if isinstance(lo, (int, float)) else 0
+        return f"{pattern_id}:{stage}:{kind}:u{uk}:l{lk}"
+    if category == "flag":
+        fh = meta.get("flag_high")
+        fl = meta.get("flag_low")
+        d = meta.get("direction") or ""
+        fhk = int(round(float(fh))) if isinstance(fh, (int, float)) else 0
+        flk = int(round(float(fl))) if isinstance(fl, (int, float)) else 0
+        return f"{pattern_id}:{d}:h{fhk}:l{flk}"
+    return f"{pattern_id}:{stage}"
+
+
 def event_key_for_hit(hit: PatternHit) -> str:
     meta = hit.meta or {}
-    stable = meta.get("alert_key")
-    if not stable:
-        parts = [
-            hit.pattern_id,
-            meta.get("confirm_index"),
-            meta.get("entry_index"),
-            meta.get("stage"),
-        ]
-        stable = ":".join(str(p) for p in parts if p is not None)
-    return f"{hit.category}:{hit.timeframe}:{stable}"
+    sig = pattern_content_signature(
+        category=hit.category,
+        pattern_id=hit.pattern_id,
+        meta=meta,
+    )
+    return f"{hit.category}:{hit.timeframe}:{sig}"
+
+
+def _dedupe_event_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """یک ردیف به ازای هر الگوی واقعی (جدیدترین created_at)."""
+    seen: set[str] = set()
+    out: list[dict[str, Any]] = []
+    for d in rows:
+        meta = d.get("meta") or {}
+        sig = pattern_content_signature(
+            category=str(d.get("category") or ""),
+            pattern_id=str(d.get("pattern_id") or ""),
+            meta=meta,
+        )
+        bucket = f"{d.get('category')}:{d.get('timeframe')}:{sig}"
+        if bucket in seen:
+            continue
+        seen.add(bucket)
+        out.append(d)
+    return out
 
 
 def save_pattern_hit(hit: PatternHit, *, created_at: str | None = None) -> int | None:
@@ -143,7 +214,7 @@ def list_pattern_events(
             except json.JSONDecodeError:
                 d["meta"] = {}
             out.append(d)
-        return out
+        return _dedupe_event_rows(out)
 
 
 def list_all_pattern_events(
@@ -172,7 +243,7 @@ def list_all_pattern_events(
             except json.JSONDecodeError:
                 d["meta"] = {}
             out.append(d)
-        return out
+        return _dedupe_event_rows(out)
 
 
 def get_pattern_event(event_id: int) -> dict[str, Any] | None:
