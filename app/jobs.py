@@ -72,10 +72,15 @@ def run_scheduled_report() -> None:
 
 
 def run_scheduled_behavior_scan() -> None:
-    from app.storage import data_dir
-    from optionflow.patterns.behavior_service import run_behavior_scan_and_notify
-    from optionflow.patterns.service import patterns_data_dir
+    if os.environ.get("OPTIONFLOW_BEHAVIOR_SCAN", "1").strip() not in ("1", "true", "yes"):
+        return
+    try:
+        from app.storage import data_dir
+        from optionflow.patterns.behavior_service import run_behavior_scan_and_notify
+        from optionflow.patterns.service import patterns_data_dir
 
-    chart_dir = patterns_data_dir(data_dir())
-    run_behavior_scan_and_notify(chart_dir, data_dir())
-    logger.info("Meaningful behavior scan + notify completed")
+        chart_dir = patterns_data_dir(data_dir())
+        run_behavior_scan_and_notify(chart_dir, data_dir())
+        logger.info("Meaningful behavior scan + notify completed")
+    except Exception:
+        logger.exception("Meaningful behavior scan failed (service keeps running)")
