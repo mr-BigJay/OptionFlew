@@ -40,19 +40,31 @@ def create_backtest_run(
     timeframe: str,
     from_iso: str,
     to_iso: str,
+    target_profit_pct: float | None = None,
 ) -> int:
     ensure_backtest_schema()
+    _ensure_backtest_target_column()
     now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     with connect() as conn:
         cur = conn.execute(
             """
             INSERT INTO backtest_runs
-            (created_at, category, timeframe, from_iso, to_iso, status, progress_pct)
-            VALUES (?, ?, ?, ?, ?, 'running', 0)
+            (created_at, category, timeframe, from_iso, to_iso, status, progress_pct, target_profit_pct)
+            VALUES (?, ?, ?, ?, ?, 'running', 0, ?)
             """,
-            (now, category, timeframe, from_iso, to_iso),
+            (now, category, timeframe, from_iso, to_iso, target_profit_pct),
         )
         return int(cur.lastrowid)
+
+
+def _ensure_backtest_target_column() -> None:
+    with connect() as conn:
+        try:
+            conn.execute(
+                "ALTER TABLE backtest_runs ADD COLUMN target_profit_pct REAL"
+            )
+        except sqlite3.OperationalError:
+            pass
 
 
 def update_backtest_progress(run_id: int, pct: int, bars_scanned: int = 0) -> None:

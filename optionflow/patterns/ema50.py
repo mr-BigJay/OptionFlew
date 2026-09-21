@@ -6,6 +6,7 @@ from optionflow.patterns.types import PatternHit
 
 EMA_LEN = 50
 LEFT_PAD = 24
+CHART_AFTER_RATIO = 3
 SLOPE_BARS = {"5m": 10, "15m": 8, "1h": 6, "4h": 5, "1d": 4}
 STEEP_SLOPE = {"5m": 0.0022, "15m": 0.003, "1h": 0.0045, "4h": 0.006, "1d": 0.008}
 CHOP_BARS = {"5m": 30, "15m": 24, "1h": 20, "4h": 16, "1d": 12}
@@ -94,14 +95,14 @@ def _touches_ema(bar: OhlcBar, ema_v: float) -> bool:
 def ema50_slice(n: int, sig: int, pullback: int, early: int) -> tuple[int, int]:
     start = max(0, min(int(pullback), int(early), sig) - LEFT_PAD)
     before = max(1, sig - start)
-    end = min(n, sig + 2 * before + 1)
+    end = min(n, sig + CHART_AFTER_RATIO * before + 1)
     return start, end
 
 
 def _visible(entry_i: int, n: int, pullback: int) -> bool:
     start = max(0, min(pullback, entry_i) - LEFT_PAD)
     before = max(1, entry_i - start)
-    return n - 1 - entry_i <= 2 * before
+    return n - 1 - entry_i <= CHART_AFTER_RATIO * before
 
 
 def _setup(

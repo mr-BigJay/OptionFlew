@@ -725,16 +725,27 @@ async def backtest_start(
     date_from: str = Form(...),
     date_to: str = Form(...),
     timeframe: str = Form("1h"),
+    target_profit_pct: str = Form(""),
 ):
     if tab not in PATTERN_TABS:
         tab = "triangle"
     if timeframe not in ("5m", "15m", "1h", "4h", "1d"):
         timeframe = "1h"
+    tp: float | None = None
+    raw = (target_profit_pct or "").strip().replace(",", ".")
+    if raw:
+        try:
+            v = float(raw)
+            if 0.1 <= v <= 2.0:
+                tp = v
+        except ValueError:
+            tp = None
     run_id = start_backtest_job(
         category=tab,
         timeframe=timeframe,
         date_from=date_from,
         date_to=date_to,
+        target_profit_pct=tp,
     )
     return RedirectResponse(f"/backtest?tab={tab}&run_id={run_id}", status_code=303)
 

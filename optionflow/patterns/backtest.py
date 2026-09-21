@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable
 
-from optionflow.patterns.chart import render_pattern_chart
+from optionflow.patterns.chart import render_pattern_chart, chart_forward_bars
 from optionflow.patterns.divergence import detect_rsi_divergence
 from optionflow.patterns.flag import detect_flag
 from optionflow.patterns.history import (
@@ -90,6 +90,7 @@ class BacktestResult:
     success_count: int = 0
     fail_count: int = 0
     error: str = ""
+    target_profit_pct: float | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -104,6 +105,7 @@ class BacktestResult:
             "fail_count": self.fail_count,
             "findings": [asdict(f) for f in self.findings],
             "error": self.error,
+            "target_profit_pct": self.target_profit_pct,
         }
 
 
@@ -146,12 +148,83 @@ def expected_direction(hit: PatternHit) -> str | None:
     return None
 
 
+def entry_price_for_hit(
+    bars: list[OhlcBar], idx: int, hit: PatternHit
+) -> float | None:
+    meta = hit.meta
+    blended = meta.get("entry_blended_px")
+    if isinstance(blended, (int, float)) and blended > 0:
+        return float(blended)
+    if hit.category == "ema50":
+        ep = meta.get("entry_px")
+        if isinstance(ep, (int, float)) and ep > 0:
+            return float(ep)
+    if hit.category == "trendline":
+        ei = meta.get("entry_index", meta.get("early_index"))
+        if isinstance(ei, int) and 0 <= ei < len(bars):
+            return float(bars[ei].close)
+    if 0 <= idx < len(bars):
+        return float(bars[idx].close)
+    return None
+
+
+def evaluate_target_profit(
+    bars: list[OhlcBar],
+    idx: int,
+    hit: PatternHit,
+    target_pct: float,
+) -> tuple[bool | None, str]:
+    direction = expected_direction(hit)
+    if direction not in ("up", "down"):
+        return None, "جهت پیش‌بینی مشخص نشد."
+    entry = entry_price_for_hit(bars, idx, hit)
+    if entry is None or entry <= 0:
+        return None, "قیمت ورود مشخص نیست."
+    move = target_pct / 100.0
+    exit_i: int | None = None
+    exit_px: float | None = None
+    for i in range(idx + 1, len(bars)):
+        b = bars[i]
+        if direction == "up":
+            target = entry * (1 + move)
+            if b.high >= target:
+                exit_i, exit_px = i, target
+                break
+        else:
+            target = entry * (1 - move)
+            if b.low <= target:
+                exit_i, exit_px = i, target
+                break
+    if exit_i is None or exit_px is None:
+        return (
+            False,
+            f"تا پایان داده هدف سود {target_pct:g}٪ (ورود {entry:,.0f}) محقق نشد.",
+        )
+    hit.meta["exit_index"] = exit_i
+    hit.meta["target_profit_pct"] = target_pct
+    note = (
+        f"هدف سود {target_pct:g}٪ محقق شد — "
+        f"ورود {entry:,.0f} → ~{exit_px:,.0f}"
+    )
+    return True, note
+
+
+def _chart_forward_bars(
+    bars: list[OhlcBar], hit: PatternHit, sig_ix: int
+) -> int:
+    return chart_forward_bars(bars, hit, sig_ix)
+
+
 def evaluate_outcome(
     bars: list[OhlcBar],
     idx: int,
     hit: PatternHit,
     timeframe: str,
+    *,
+    target_profit_pct: float | None = None,
 ) -> tuple[bool | None, str]:
+    if target_profit_pct is not None and target_profit_pct >= 0.1:
+        return evaluate_target_profit(bars, idx, hit, target_profit_pct)
     if hit.category == "trendline":
         return evaluate_trendline_path(bars, idx, hit)
     if hit.category == "ema50":
@@ -232,6 +305,7 @@ def run_backtest(
     max_charts: int = 200,
     chart_prefix: str = "",
     on_progress: ProgressFn | None = None,
+    target_profit_pct: float | None = None,
 ) -> BacktestResult:
     if category not in CATEGORIES:
         raise ValueError(f"unknown category: {category}")
@@ -249,6 +323,7 @@ def run_backtest(
         bars_total=len(full),
         bars_scanned=max(0, scan_end - scan_start + 1) if scan_end >= scan_start else 0,
         stride=stride or STRIDE_BY_TF.get(timeframe, 1),
+        target_profit_pct=target_profit_pct,
     )
 
     if not bars:
@@ -271,7 +346,13 @@ def run_backtest(
     chart_dir.mkdir(parents=True, exist_ok=True)
     for n, (idx, hit) in enumerate(raw_hits):
         ts = full[idx].ts
-        success, outcome_fa = evaluate_outcome(full, idx, hit, timeframe)
+        success, outcome_fa = evaluate_outcome(
+            full,
+            idx,
+            hit,
+            timeframe,
+            target_profit_pct=target_profit_pct,
+        )
         finding = BacktestFinding.from_hit(
             hit, idx, ts, success=success, outcome_fa=outcome_fa
         )
@@ -282,14 +363,11 @@ def run_backtest(
         if n < max_charts:
             if hit.category in ("trendline", "ema50"):
                 sig_ix = hit.meta.get("entry_index", hit.meta.get("early_index", idx))
-                exit_i = hit.meta.get("exit_index")
-                if isinstance(exit_i, int) and isinstance(sig_ix, int):
-                    fwd = max(6, exit_i - sig_ix + 8)
-                else:
-                    fwd = FORWARD_BARS.get(timeframe, 18)
             else:
                 sig_ix = hit.meta.get("confirm_index", idx)
-                fwd = FORWARD_BARS.get(timeframe, 18)
+            if not isinstance(sig_ix, int):
+                sig_ix = idx
+            fwd = _chart_forward_bars(full, hit, sig_ix)
             png = render_pattern_chart(
                 full,
                 hit,
