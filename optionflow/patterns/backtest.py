@@ -44,6 +44,16 @@ MIN_MOVE_PCT = {"5m": 0.008, "15m": 0.012, "1h": 0.015, "4h": 0.02, "1d": 0.025}
 BACKTEST_TIMEFRAMES = ("5m", "15m", "1h", "4h", "1d")
 
 ProgressFn = Callable[[int, int], None]
+CancelFn = Callable[[], bool]
+
+
+class BacktestCancelled(Exception):
+    """کاربر یا سیستم بکتست را متوقف کرد."""
+
+
+def _check_cancel(should_cancel: CancelFn | None) -> None:
+    if should_cancel and should_cancel():
+        raise BacktestCancelled()
 
 
 @dataclass
@@ -307,6 +317,7 @@ def _replay_divergence(
     scan_end: int,
     stride: int,
     on_progress: ProgressFn | None = None,
+    should_cancel: CancelFn | None = None,
 ) -> list[tuple[int, PatternHit]]:
     """ریپلی واگرایی: RSI یک‌بار + پنجرهٔ محدود (سریع‌تر از bars[:i+1] روی کل سری)."""
     dedupe = DEDUPE_BARS.get(timeframe, 12)
@@ -319,6 +330,7 @@ def _replay_divergence(
     done = 0
 
     for i in range(scan_start, scan_end + 1, stride):
+        _check_cancel(should_cancel)
         lo = max(0, i + 1 - win)
         chunk = bars[lo : i + 1]
         rs_chunk = rs_full[lo : i + 1]
@@ -373,6 +385,7 @@ def _replay_sliding_window(
     scan_end: int,
     stride: int,
     on_progress: ProgressFn | None = None,
+    should_cancel: CancelFn | None = None,
 ) -> list[tuple[int, PatternHit]]:
     dedupe = DEDUPE_BARS.get(timeframe, 12)
     detect = _detector(category)
@@ -383,6 +396,7 @@ def _replay_sliding_window(
     done = 0
 
     for i in range(scan_start, scan_end + 1, stride):
+        _check_cancel(should_cancel)
         lo = max(0, i + 1 - win)
         chunk = bars[lo : i + 1]
         hit = detect(chunk, timeframe)
@@ -413,6 +427,7 @@ def replay_category(
     scan_end: int,
     stride: int | None = None,
     on_progress: ProgressFn | None = None,
+    should_cancel: CancelFn | None = None,
 ) -> list[tuple[int, PatternHit]]:
     st = _replay_stride(category, timeframe, stride)
     if category == "divergence":
@@ -423,6 +438,7 @@ def replay_category(
             scan_end=scan_end,
             stride=st,
             on_progress=on_progress,
+            should_cancel=should_cancel,
         )
     return _replay_sliding_window(
         bars,
@@ -432,6 +448,7 @@ def replay_category(
         scan_end=scan_end,
         stride=st,
         on_progress=on_progress,
+        should_cancel=should_cancel,
     )
 
 
@@ -448,6 +465,7 @@ def run_backtest(
     chart_prefix: str = "",
     on_progress: ProgressFn | None = None,
     target_profit_pct: float | None = None,
+    should_cancel: CancelFn | None = None,
 ) -> BacktestResult:
     if category not in CATEGORIES:
         raise ValueError(f"unknown category: {category}")
@@ -484,6 +502,8 @@ def run_backtest(
         if on_progress and total:
             on_progress(int(done * scan_pct / total), 100)
 
+    _check_cancel(should_cancel)
+
     raw_hits = replay_category(
         full,
         category=category,
@@ -492,6 +512,7 @@ def run_backtest(
         scan_end=scan_end,
         stride=stride_val,
         on_progress=scan_progress if on_progress else None,
+        should_cancel=should_cancel,
     )
 
     n_findings = max(1, len(raw_hits))
@@ -501,6 +522,7 @@ def run_backtest(
 
     chart_dir.mkdir(parents=True, exist_ok=True)
     for n, (idx, hit) in enumerate(raw_hits):
+        _check_cancel(should_cancel)
 
         def _phase(fraction: float) -> None:
             if on_progress:

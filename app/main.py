@@ -37,7 +37,7 @@ from app.auth_store import (
     set_user_password,
     set_user_telegram,
 )
-from app.backtest_jobs import start_backtest_job
+from app.backtest_jobs import request_cancel_backtest, start_backtest_job
 from app.backtest_store import get_backtest_run, list_backtest_runs
 from app.history_jobs import history_download_state, start_history_download
 from app.jobs import (
@@ -983,6 +983,15 @@ async def backtest_runs_api():
             ]
         }
     )
+
+
+@app.post("/backtest/api/run/{run_id}/cancel")
+async def backtest_run_cancel(request: Request, run_id: int):
+    request_cancel_backtest(run_id)
+    referer = (request.headers.get("referer") or "").strip()
+    if not referer or "/backtest" not in referer:
+        referer = "/backtest/reports"
+    return RedirectResponse(referer, status_code=303)
 
 
 @app.get("/backtest/api/history")

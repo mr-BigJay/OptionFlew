@@ -119,6 +119,20 @@ def fail_backtest_run(run_id: int, message: str) -> None:
         )
 
 
+def cancel_backtest_run(run_id: int, *, message: str = "متوقف توسط کاربر") -> bool:
+    """فقط runهای running → cancelled (یا zombie قدیمی)."""
+    with connect() as conn:
+        cur = conn.execute(
+            """
+            UPDATE backtest_runs
+            SET status = 'cancelled', error_message = ?
+            WHERE id = ? AND status = 'running'
+            """,
+            (message[:500], run_id),
+        )
+        return cur.rowcount > 0
+
+
 def get_backtest_run(run_id: int) -> dict[str, Any] | None:
     ensure_backtest_schema()
     with connect() as conn:

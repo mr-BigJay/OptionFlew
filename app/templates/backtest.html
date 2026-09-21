@@ -93,6 +93,11 @@
   </div>
   <span class="bt-progress-label" id="bt-run-label">۰٪</span>
 </div>
+{% if active_run and active_run.status == 'running' %}
+<form method="post" action="/backtest/api/run/{{ active_run.id }}/cancel" class="bt-run-cancel-form">
+  <button type="submit" class="btn secondary full">توقف بکتست</button>
+</form>
+{% endif %}
 
 <div id="bt-run-results" class="bt-results">
   {% if active_run and active_run.status in ('done', 'error') %}
