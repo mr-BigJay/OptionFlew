@@ -17,7 +17,7 @@ MIN_BASELINE_BTC = 8.0
 # burst = آخرین N دقیقه؛ baseline = ساعات قبل از burst (فقط 1h)
 # baseline بلندتر = میانگین «عادی» پایدارتر؛ surge باید واقعاً غیرعادی باشد
 WINDOW_CFG: dict[str, tuple[int, float]] = {
-    "1h": (20, 12.0),
+    "1h": (20, 4.0),
 }
 
 
