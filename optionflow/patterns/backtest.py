@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable
 
+from optionflow.patterns.dedupe import backtest_dedupe_key
 from optionflow.patterns.chart import render_pattern_chart, chart_forward_bars
 from optionflow.patterns.divergence import (
     LOOKBACK_LEFT,
@@ -39,6 +40,7 @@ STRIDE_BY_TF = {"5m": 6, "15m": 2, "1h": 1, "4h": 1, "1d": 1}
 STRIDE_HEAVY = {"5m": 12, "15m": 4, "1h": 2, "4h": 1, "1d": 1}
 HEAVY_STRIDE_CATEGORIES = frozenset({"divergence", "trendline", "channel", "ema50"})
 DEDUPE_BARS = {"5m": 48, "15m": 20, "1h": 24, "4h": 8, "1d": 4}
+DEDUPE_BARS_HEAVY = {"5m": 96, "15m": 48, "1h": 36, "4h": 16, "1d": 8}
 FORWARD_BARS = {"5m": 36, "15m": 24, "1h": 18, "4h": 12, "1d": 8}
 MIN_MOVE_PCT = {"5m": 0.008, "15m": 0.012, "1h": 0.015, "4h": 0.02, "1d": 0.025}
 BACKTEST_TIMEFRAMES = ("5m", "15m", "1h", "4h", "1d")
@@ -280,6 +282,23 @@ def evaluate_outcome(
     return ok, note
 
 
+def _dedupe_window(category: str, timeframe: str) -> int:
+    if category in HEAVY_STRIDE_CATEGORIES:
+        return DEDUPE_BARS_HEAVY.get(timeframe, DEDUPE_BARS.get(timeframe, 12))
+    return DEDUPE_BARS.get(timeframe, 12)
+
+
+def _should_skip_dedupe(
+    last_key: dict[str, int], hit: PatternHit, bar_index: int, dedupe: int
+) -> bool:
+    key = backtest_dedupe_key(hit)
+    prev = last_key.get(key)
+    if prev is not None and bar_index - prev < dedupe:
+        return True
+    last_key[key] = bar_index
+    return False
+
+
 def _divergence_window_bars() -> int:
     return LOOKBACK_LEFT + LOOKBACK_RIGHT + RANGE_UPPER + RSI_PERIOD + 40
 
@@ -324,7 +343,7 @@ def _replay_divergence(
     should_cancel: CancelFn | None = None,
 ) -> list[tuple[int, PatternHit]]:
     """ریپلی واگرایی: RSI یک‌بار + پنجرهٔ محدود (سریع‌تر از bars[:i+1] روی کل سری)."""
-    dedupe = DEDUPE_BARS.get(timeframe, 12)
+    dedupe = _dedupe_window(category, timeframe)
     win = _divergence_window_bars()
     closes = [b.close for b in bars]
     rs_full = rsi(closes, RSI_PERIOD)
@@ -352,10 +371,8 @@ def _replay_divergence(
         if hit is None:
             continue
         _shift_hit_bar_indices(hit, lo)
-        prev = last_key.get(hit.pattern_id)
-        if prev is not None and i - prev < dedupe:
+        if _should_skip_dedupe(last_key, hit, i, dedupe):
             continue
-        last_key[hit.pattern_id] = i
         out.append((i, hit))
     if on_progress:
         on_progress(total, total)
@@ -391,7 +408,7 @@ def _replay_sliding_window(
     on_progress: ProgressFn | None = None,
     should_cancel: CancelFn | None = None,
 ) -> list[tuple[int, PatternHit]]:
-    dedupe = DEDUPE_BARS.get(timeframe, 12)
+    dedupe = _dedupe_window(category, timeframe)
     detect = _detector(category)
     win = _replay_window_bars(category)
     last_key: dict[str, int] = {}
@@ -412,10 +429,8 @@ def _replay_sliding_window(
         if hit is None:
             continue
         _shift_hit_bar_indices(hit, lo)
-        prev = last_key.get(hit.pattern_id)
-        if prev is not None and i - prev < dedupe:
+        if _should_skip_dedupe(last_key, hit, i, dedupe):
             continue
-        last_key[hit.pattern_id] = i
         out.append((i, hit))
     if on_progress:
         on_progress(total, total)

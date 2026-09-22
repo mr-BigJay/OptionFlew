@@ -362,3 +362,56 @@ def test_trendline_chart_shows_path_without_error() -> None:
     )
     assert png is not None
     assert png[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+def test_resistance_tp_path_pct_is_target_not_wick() -> None:
+    slope, intercept = -40.0, 102_000.0
+    bars = _empty(80, 100_000)
+    for i, b in enumerate(bars):
+        y = slope * i + intercept
+        px = y - 400
+        bars[i] = OhlcBar(b.ts, px, px + 50, px - 50, px, 1.0)
+    entry_i = 50
+    entry_px = bars[entry_i].close
+    tp = entry_px * (1 - 0.005)
+    _set_close(bars, 55, tp - 10)
+    bars[55] = OhlcBar(
+        bars[55].ts,
+        tp - 10,
+        tp + 5,
+        tp - 15,
+        tp - 10,
+        1.0,
+    )
+    hit = PatternHit(
+        category="trendline",
+        timeframe="15m",
+        pattern_id="trendline_high_confirmed",
+        title_fa="",
+        status_fa="",
+        summary_fa="",
+        forecast_fa="",
+        meta={
+            "kind": "trendline",
+            "stage": "confirmed",
+            "direction": "down",
+            "side": "high",
+            "upper_slope": slope,
+            "upper_intercept": intercept,
+            "lower_slope": None,
+            "lower_intercept": None,
+            "window_offset": 0,
+            "start_i": 10,
+            "end_i": 60,
+            "touch_highs": [10, 30, 50],
+            "touch_lows": [],
+            "early_index": 30,
+            "confirm_index": entry_i,
+        },
+    )
+    ok, _ = evaluate_trendline_path(
+        bars, 60, hit, take_profit_pct=0.005, timeframe="15m"
+    )
+    assert ok is True
+    assert hit.meta["path_pct"] == pytest.approx(0.005, rel=1e-5)
+    assert hit.meta["exit_index"] == 55
