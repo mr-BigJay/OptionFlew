@@ -104,6 +104,13 @@ def _points_on_line(
     return True
 
 
+def _structure_key(kind: str, hi_px: list[float], lo_px: list[float]) -> str:
+    """هویت پایدار مثلث — از قیمت پیوت‌ها، نه خطوط لغزان روی آخرین کندل."""
+    hp = "-".join(str(int(round(p))) for p in hi_px)
+    lp = "-".join(str(int(round(p))) for p in lo_px)
+    return f"{kind}:H{hp}:L{lp}"
+
+
 def _classify(
     hi_px: list[float],
     lo_px: list[float],
@@ -210,6 +217,9 @@ def _score_window(
         "score": score,
         "touches_high": len(ph),
         "touches_low": len(pl),
+        "hi_px": hi_px,
+        "lo_px": lo_px,
+        "structure_key": _structure_key(kind, hi_px, lo_px),
     }
 
 
@@ -346,5 +356,8 @@ def detect_triangle(
             "confirm_index": n - 1 + (len(bars) - n),
             "upper_now": u_now,
             "lower_now": l_now,
+            "structure_key": best["structure_key"],
+            "touch_high_prices": best["hi_px"],
+            "touch_low_prices": best["lo_px"],
         },
     )
