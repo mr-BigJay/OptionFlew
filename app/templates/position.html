@@ -1,11 +1,12 @@
 {% extends "base.html" %}
 {% block title %}پوزیشن — OptionFlow{% endblock %}
-{% block header %}<span class="header-title">پوزیشن (حساب فرضی)</span>{% endblock %}
+{% block header %}<span class="header-title">پوزیشن</span>{% endblock %}
 {% block subheader %}
-<p class="muted patterns-sub">شبیه‌سازی معامله روی سیگنال الگو / گزارش / اسکلپ — بدون اتصال واقعی به صرافی</p>
+<p class="muted patterns-sub pos-sub">حساب فرضی · آمادهٔ اتصال API</p>
 {% endblock %}
 
 {% block content %}
+<div class="pos-page">
 {% if msg %}
 <p class="flash ok">{{ msg }}</p>
 {% endif %}
@@ -13,181 +14,160 @@
 <p class="flash err">{{ err }}</p>
 {% endif %}
 
-<nav class="tabs tabs-patterns position-tabs" aria-label="بخش پوزیشن">
-  <a href="/position?tab=wallet" class="{% if tab == 'wallet' %}on{% endif %}">کیف پول</a>
-  <a href="/position?tab=settings" class="{% if tab == 'settings' %}on{% endif %}">تنظیمات</a>
-  <a href="/position?tab=open" class="{% if tab == 'open' %}on{% endif %}">باز</a>
+<nav class="pos-seg" aria-label="بخش پوزیشن">
+  <a href="/position?tab=wallet" class="{% if tab == 'wallet' %}on{% endif %}">کیف</a>
+  <a href="/position?tab=settings" class="{% if tab == 'settings' %}on{% endif %}">تنظیم</a>
+  <a href="/position?tab=open" class="{% if tab == 'open' %}on{% endif %}">باز{% if open_positions %}<em>{{ open_positions|length }}</em>{% endif %}</a>
   <a href="/position?tab=report" class="{% if tab == 'report' %}on{% endif %}">گزارش</a>
 </nav>
 
 {% if tab == 'wallet' %}
-<section class="pattern-card">
-  <h2 class="pattern-tf-title">موجودی فرضی (USDT)</h2>
-  <p class="pattern-forecast">
-    آزاد: <strong>{{ "{:,.2f}".format(wallet.balance_usdt) }}</strong> USDT<br>
-    مارجین قفل‌شده: <strong>{{ "{:,.2f}".format(locked_margin) }}</strong> USDT<br>
-    ارزش تقریبی کل: <strong>{{ "{:,.2f}".format(wallet.balance_usdt + locked_margin) }}</strong> USDT
-  </p>
-  <form method="post" action="/position/wallet/deposit" class="stack-form">
-    <label>واریز تتر فرضی برای ربات</label>
-    <input type="number" name="amount" step="0.01" min="1" placeholder="مثلاً 1000" required>
-    <button type="submit" class="btn primary full">واریز</button>
+<section class="pos-panel">
+  <div class="pos-stats">
+    <div class="pos-stat">
+      <span class="pos-stat-k">آزاد</span>
+      <span class="pos-stat-v">{{ "{:,.0f}".format(wallet.balance_usdt) }}</span>
+      <span class="pos-stat-u">USDT</span>
+    </div>
+    <div class="pos-stat">
+      <span class="pos-stat-k">مارجین</span>
+      <span class="pos-stat-v">{{ "{:,.0f}".format(locked_margin) }}</span>
+      <span class="pos-stat-u">قفل</span>
+    </div>
+    <div class="pos-stat accent">
+      <span class="pos-stat-k">کل</span>
+      <span class="pos-stat-v">{{ "{:,.0f}".format(wallet.balance_usdt + locked_margin) }}</span>
+      <span class="pos-stat-u">USDT</span>
+    </div>
+  </div>
+  <form method="post" action="/position/wallet/deposit" class="pos-deposit">
+    <input type="number" name="amount" step="0.01" min="1" placeholder="مبلغ واریز USDT" required>
+    <button type="submit" class="btn primary">+ واریز</button>
   </form>
-  <p class="muted" style="font-size:0.82rem;margin-top:12px;">
-    کارمزد باز/بست ≈ {{ (config.fee_rate * 100)|round(3) }}٪ از حجم نotional (شبیه فیوچرز taker).
-  </p>
+  <p class="pos-hint">کارمزد ≈ {{ (config.fee_rate * 100)|round(2) }}٪ × حجم (مارجین × اهرم)</p>
 </section>
 {% endif %}
 
 {% if tab == 'settings' %}
-<section class="pattern-card">
-  <h2 class="pattern-tf-title">مدیریت ریسک و منابع سیگنال</h2>
-  <form method="post" action="/position/settings" class="stack-form">
-    <label class="check-row">
-      <input type="checkbox" name="enabled" value="1" {% if config.enabled %}checked{% endif %}>
-      ربات فرضی فعال — روی سیگنال‌های جدید پوزیشن باز کند
-    </label>
+<form method="post" action="/position/settings" class="pos-panel pos-form">
+  <label class="pos-bot-toggle">
+    <input type="checkbox" name="enabled" value="1" {% if config.enabled %}checked{% endif %}>
+    <span class="pos-bot-dot"></span>
+    <span class="pos-bot-text">
+      <strong>ربات فرضی</strong>
+      <small>{% if config.enabled %}فعال — روی سیگنال جدید پوزیشن باز می‌شود{% else %}خاموش{% endif %}</small>
+    </span>
+  </label>
 
-    <div class="form-grid-2">
-      <label>مارجین هر معامله (USDT)
-        <input type="number" name="margin_usdt" step="1" min="1" value="{{ config.margin_usdt }}">
-      </label>
-      <label>ضریب (اهرم)
-        <input type="number" name="leverage" step="0.5" min="1" max="125" value="{{ config.leverage }}">
-      </label>
-      <label>استاپ‌لاس (٪)
-        <input type="number" name="stop_loss_pct" step="0.1" min="0.1" value="{{ config.stop_loss_pct }}">
-      </label>
-      <label>تی‌پی (٪)
-        <input type="number" name="take_profit_pct" step="0.1" min="0.1" value="{{ config.take_profit_pct }}">
-      </label>
-      <label>کارمزد صرافی (اعشاری، 0.0004 = 0.04٪)
-        <input type="number" name="fee_rate" step="0.0001" min="0" value="{{ config.fee_rate }}">
-      </label>
-    </div>
+  <p class="pos-section-label">ریسک</p>
+  <div class="pos-risk-grid">
+    <label><span>مارجین</span><input type="number" name="margin_usdt" step="1" min="1" value="{{ config.margin_usdt }}"></label>
+    <label><span>اهرم ×</span><input type="number" name="leverage" step="0.5" min="1" max="125" value="{{ config.leverage }}"></label>
+    <label><span>SL ٪</span><input type="number" name="stop_loss_pct" step="0.1" min="0.1" value="{{ config.stop_loss_pct }}"></label>
+    <label><span>TP ٪</span><input type="number" name="take_profit_pct" step="0.1" min="0.1" value="{{ config.take_profit_pct }}"></label>
+    <label class="wide"><span>کارمزد</span><input type="number" name="fee_rate" step="0.0001" min="0" value="{{ config.fee_rate }}" title="0.0004 = 0.04٪"></label>
+  </div>
 
-    <fieldset class="fieldset-block">
-      <legend>الگوها (تایم‌فریم همان سیگنال)</legend>
+  <details class="pos-details" open>
+    <summary>الگوها <span class="pos-count">{{ config.pattern_categories|length }}/{{ pattern_categories|length }}</span></summary>
+    <div class="pos-check-grid">
       {% for cat in pattern_categories %}
-      <label class="check-row">
-        <input type="checkbox" name="pattern_categories" value="{{ cat }}"
-          {% if cat in config.pattern_categories %}checked{% endif %}>
-        {{ category_fa(cat) }}
-      </label>
+      <label class="pos-chip"><input type="checkbox" name="pattern_categories" value="{{ cat }}" {% if cat in config.pattern_categories %}checked{% endif %}><span>{{ category_fa(cat) }}</span></label>
       {% endfor %}
-    </fieldset>
+    </div>
+  </details>
 
-    <fieldset class="fieldset-block">
-      <legend>سناریوهای اسکلپ (وقتی ماژول اسکلپ فعال شود)</legend>
+  <details class="pos-details">
+    <summary>اسکلپ <span class="pos-count">{{ config.scalp_scenarios|length }}/{{ scalp_scenarios|length }}</span></summary>
+    <div class="pos-check-grid">
       {% for sid, label in scalp_scenarios %}
-      <label class="check-row">
-        <input type="checkbox" name="scalp_scenarios" value="{{ sid }}"
-          {% if sid in config.scalp_scenarios %}checked{% endif %}>
-        {{ label }}
-      </label>
+      <label class="pos-chip"><input type="checkbox" name="scalp_scenarios" value="{{ sid }}" {% if sid in config.scalp_scenarios %}checked{% endif %}><span>{{ label }}</span></label>
       {% endfor %}
-    </fieldset>
+    </div>
+  </details>
 
-    <fieldset class="fieldset-block">
-      <legend>گزارش OptionFlow</legend>
+  <details class="pos-details">
+    <summary>گزارش <span class="pos-count">{{ config.report_kinds|length }}/{{ report_kinds|length }}</span></summary>
+    <div class="pos-check-grid">
       {% for kid, label in report_kinds %}
-      <label class="check-row">
-        <input type="checkbox" name="report_kinds" value="{{ kid }}"
-          {% if kid in config.report_kinds %}checked{% endif %}>
-        {{ label }}
-      </label>
+      <label class="pos-chip"><input type="checkbox" name="report_kinds" value="{{ kid }}" {% if kid in config.report_kinds %}checked{% endif %}><span>{{ label }}</span></label>
       {% endfor %}
-    </fieldset>
+    </div>
+  </details>
 
-    <button type="submit" class="btn primary full">ذخیره تنظیمات</button>
-  </form>
-  <form method="post" action="/position/run" class="patterns-refresh" style="margin-top:14px;">
-    <button type="submit" class="btn secondary full">همین الان سیگنال‌ها را بررسی کن</button>
-  </form>
-</section>
+  <div class="pos-actions">
+    <button type="submit" class="btn primary full">ذخیره</button>
+  </div>
+</form>
+<form method="post" action="/position/run" class="pos-scan-row">
+  <button type="submit" class="btn secondary full">بررسی سیگنال‌ها الان</button>
+</form>
 {% endif %}
 
 {% if tab == 'open' %}
-<section class="pattern-card">
-  <h2 class="pattern-tf-title">پوزیشن‌های باز</h2>
+<section class="pos-panel">
   {% if mark_price %}
-  <p class="muted">قیمت mark: {{ "{:,.0f}".format(mark_price) }} USDT</p>
+  <p class="pos-mark">Mark <strong>{{ "{:,.0f}".format(mark_price) }}</strong></p>
   {% endif %}
   {% if open_positions %}
   {% for p in open_positions %}
-  <article class="position-row">
-    <header>
-      <strong>{{ p.signal_title }}</strong>
-      <span class="badge">{{ status_fa(p.status) }}</span>
-    </header>
-    <p class="pattern-summary">
-      {{ source_fa(p.source_type) }} · {{ p.direction == 'long' and 'لانگ' or 'شورت' }}
-      · اهرم {{ p.leverage|int }}× · مارجین {{ "{:,.0f}".format(p.margin_usdt) }} USDT<br>
-      ورود {{ "{:,.0f}".format(p.entry_price) }} · SL {{ "{:,.0f}".format(p.sl_price) }} · TP {{ "{:,.0f}".format(p.tp_price) }}<br>
-      {% if mark_price %}PnL شناور ≈ {{ "{:+,.2f}".format(unrealized(p, mark_price)) }} USDT{% endif %}
+  <article class="pos-trade {% if p.direction == 'long' %}long{% else %}short{% endif %}">
+    <div class="pos-trade-top">
+      <span class="pos-dir">{{ p.direction == 'long' and '▲ لانگ' or '▼ شورت' }}</span>
+      <span class="pos-lev">{{ p.leverage|int }}×</span>
+      <span class="pos-src">{{ source_fa(p.source_type) }}</span>
+    </div>
+    <p class="pos-trade-title">{{ p.signal_title }}</p>
+    <div class="pos-trade-meta">
+      <span>ورود {{ "{:,.0f}".format(p.entry_price) }}</span>
+      <span>SL {{ "{:,.0f}".format(p.sl_price) }}</span>
+      <span>TP {{ "{:,.0f}".format(p.tp_price) }}</span>
+    </div>
+    {% if mark_price %}
+    <p class="pos-trade-pnl {% if unrealized(p, mark_price) >= 0 %}pos{% else %}neg{% endif %}">
+      {{ "{:+,.2f}".format(unrealized(p, mark_price)) }} USDT
     </p>
-    <form method="post" action="/position/close/{{ p.id }}" class="inline-form">
-      <button type="submit" class="btn secondary">بستن دستی (mark)</button>
+    {% endif %}
+    <form method="post" action="/position/close/{{ p.id }}">
+      <button type="submit" class="btn secondary sm">بستن</button>
     </form>
   </article>
   {% endfor %}
   {% else %}
-  <p class="pattern-empty muted">پوزیشن بازی نیست. ربات را فعال کنید و سیگنال بدهید.</p>
+  <p class="pos-empty">پوزیشن بازی نیست.</p>
   {% endif %}
 </section>
 {% endif %}
 
 {% if tab == 'report' %}
-<section class="pattern-card">
-  <h2 class="pattern-tf-title">تاریخچه پوزیشن‌ها</h2>
+<section class="pos-panel pos-panel-tight">
   {% if closed_positions %}
-  <div class="table-scroll">
-    <table class="data-table">
-      <thead>
-        <tr>
-          <th>زمان</th>
-          <th>سیگنال</th>
-          <th>جهت</th>
-          <th>ورود</th>
-          <th>خروج</th>
-          <th>PnL</th>
-          <th>وضعیت</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for p in closed_positions %}
-        <tr>
-          <td>{{ p.opened_at[:16] }}</td>
-          <td>{{ p.signal_title[:40] }}</td>
-          <td>{{ p.direction == 'long' and 'لانگ' or 'شورت' }}</td>
-          <td>{{ "{:,.0f}".format(p.entry_price) }}</td>
-          <td>{{ "{:,.0f}".format(p.exit_price or 0) }}</td>
-          <td class="{% if (p.pnl_usdt or 0) >= 0 %}pos{% else %}neg{% endif %}">
-            {{ "{:+,.2f}".format(p.pnl_usdt or 0) }}
-          </td>
-          <td>{{ status_fa(p.status) }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  {% for p in closed_positions[:30] %}
+  <div class="pos-hist-row">
+    <div>
+      <span class="pos-hist-title">{{ p.signal_title[:36] }}</span>
+      <span class="pos-hist-sub">{{ p.opened_at[:10] }} · {{ p.direction == 'long' and 'لانگ' or 'شورت' }}</span>
+    </div>
+    <span class="pos-hist-pnl {% if (p.pnl_usdt or 0) >= 0 %}pos{% else %}neg{% endif %}">{{ "{:+,.1f}".format(p.pnl_usdt or 0) }}</span>
+    <span class="pos-hist-st">{{ status_fa(p.status) }}</span>
   </div>
+  {% endfor %}
   {% else %}
-  <p class="pattern-empty muted">هنوز معاملهٔ بسته‌شده‌ای نیست.</p>
+  <p class="pos-empty">تاریخچه خالی است.</p>
   {% endif %}
 
-  <h3 class="pattern-tf-title" style="margin-top:20px;">گردش کیف پول</h3>
   {% if ledger %}
-  <ul class="ledger-list">
-    {% for row in ledger %}
+  <p class="pos-section-label" style="margin-top:14px;">گردش کیف</p>
+  <ul class="pos-ledger">
+    {% for row in ledger[:20] %}
     <li>
-      <span>{{ row.created_at[:16] }}</span>
       <span>{{ ledger_fa(row.kind) }}</span>
-      <span class="{% if row.amount >= 0 %}pos{% else %}neg{% endif %}">{{ "{:+,.2f}".format(row.amount) }}</span>
-      <span class="muted">{{ row.note }}</span>
+      <span class="{% if row.amount >= 0 %}pos{% else %}neg{% endif %}">{{ "{:+,.1f}".format(row.amount) }}</span>
     </li>
     {% endfor %}
   </ul>
   {% endif %}
 </section>
 {% endif %}
+</div>
 {% endblock %}
