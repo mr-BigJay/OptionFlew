@@ -55,9 +55,19 @@
     <span class="pos-bot-dot"></span>
     <span class="pos-bot-text">
       <strong>ربات فرضی</strong>
-      <small>{% if config.enabled %}فعال — روی سیگنال جدید پوزیشن باز می‌شود{% else %}خاموش{% endif %}</small>
+      <small id="pos-bot-status">{% if config.enabled %}ربات روشن است{% else %}ربات خاموش است{% endif %}</small>
     </span>
   </label>
+  <script>
+  (function () {
+    var cb = document.querySelector(".pos-bot-toggle input[name=enabled]");
+    var st = document.getElementById("pos-bot-status");
+    if (!cb || !st) return;
+    cb.addEventListener("change", function () {
+      st.textContent = cb.checked ? "ربات روشن است" : "ربات خاموش است";
+    });
+  })();
+  </script>
 
   <p class="pos-section-label">ریسک</p>
   <div class="pos-risk-grid">
