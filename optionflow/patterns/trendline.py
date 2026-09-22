@@ -132,14 +132,17 @@ def _consecutive_break(
     return False
 
 
-def _take_profit_px(entry_px: float, *, side: str) -> float:
+def _take_profit_px(entry_px: float, *, side: str, pct: float | None = None) -> float:
+    move = pct if pct is not None and pct > 0 else TAKE_PROFIT_PCT
     if side == "low":
-        return entry_px * (1 + TAKE_PROFIT_PCT)
-    return entry_px * (1 - TAKE_PROFIT_PCT)
+        return entry_px * (1 + move)
+    return entry_px * (1 - move)
 
 
-def _take_profit_hit(bar: OhlcBar, *, side: str, entry_px: float) -> bool:
-    target = _take_profit_px(entry_px, side=side)
+def _take_profit_hit(
+    bar: OhlcBar, *, side: str, entry_px: float, pct: float | None = None
+) -> bool:
+    target = _take_profit_px(entry_px, side=side, pct=pct)
     if side == "low":
         return bar.high >= target
     return bar.low <= target
@@ -172,8 +175,10 @@ def evaluate_trendline_path(
     bars: list[OhlcBar],
     idx: int,
     hit: PatternHit,
+    *,
+    take_profit_pct: float | None = None,
 ) -> tuple[bool | None, str]:
-    """ورود = سیگنال اولیه؛ خروج = ۰.۵٪ سود یا شکست معتبر (هرکدام زودتر)."""
+    """ورود = تأیید نهایی (یا اولیه در stage=early)؛ خروج = TP یا شکست معتبر."""
     meta = hit.meta
     side = meta.get("side")
     if side == "low":
@@ -185,17 +190,26 @@ def evaluate_trendline_path(
     if slope is None or intercept is None or side not in ("low", "high"):
         return None, "خط ترندلاین برای ارزیابی مسیر ناقص است."
 
+    tp_move = take_profit_pct if take_profit_pct is not None and take_profit_pct > 0 else TAKE_PROFIT_PCT
+
     wo = int(meta.get("window_offset") or 0)
     early = meta.get("early_index")
-    entry_i = early if isinstance(early, int) else idx
-    entry_i = max(0, min(entry_i, idx, len(bars) - 1))
-    if idx + 1 >= len(bars):
-        return None, "کندل کافی بعد از سیگنال برای شکست معتبر نبود."
+    confirm = meta.get("confirm_index")
+    stage = meta.get("stage")
+    if stage == "confirmed" and isinstance(confirm, int):
+        entry_i = confirm
+    elif isinstance(early, int):
+        entry_i = early
+    else:
+        entry_i = idx
+    entry_i = max(0, min(entry_i, len(bars) - 1))
+    if entry_i + 1 >= len(bars):
+        return None, "کندل کافی بعد از ورود برای ارزیابی نبود."
 
-    atr_vals = atr(bars[: idx + 1])
+    atr_vals = atr(bars[: entry_i + 1])
     atr_now = next((v for v in reversed(atr_vals) if v is not None), None)
     if atr_now is None or atr_now <= 0:
-        atr_now = max(abs(bars[idx].close) * 0.004, 1.0)
+        atr_now = max(abs(bars[entry_i].close) * 0.004, 1.0)
     buf = atr_now * 0.5
 
     entry_px = bars[entry_i].close
@@ -206,25 +220,25 @@ def evaluate_trendline_path(
     if start >= len(bars):
         return None, "کندل کافی بعد از ورود برای ارزیابی نبود."
 
-    tp_px = _take_profit_px(entry_px, side=side)
+    tp_px = _take_profit_px(entry_px, side=side, pct=tp_move)
     exit_i: int | None = None
     exit_px: float | None = None
     reason = ""
     break_run = 0
     for i in range(start, len(bars)):
         b = bars[i]
-        if _take_profit_hit(b, side=side, entry_px=entry_px):
-            exit_i, exit_px, reason = i, tp_px, "بستن در سود ۰.۵٪"
+        if _take_profit_hit(b, side=side, entry_px=entry_px, pct=tp_move):
+            exit_i, exit_px, reason = i, tp_px, f"بستن در سود {tp_move * 100:g}٪"
             break
         line = _y(float(slope), float(intercept), i - wo)
-        hit = _beyond_line(bar=b, line=line, side=side, buf=buf)
-        break_run = break_run + 1 if hit else 0
+        hit_break = _beyond_line(bar=b, line=line, side=side, buf=buf)
+        break_run = break_run + 1 if hit_break else 0
         if break_run >= 2:
             exit_i, exit_px, reason = i, b.close, "شکست معتبر"
             break
 
     if exit_i is None or exit_px is None:
-        return None, "بعد از ورود نه سود ۰.۵٪ و نه شکست معتبر دیده نشد."
+        return None, f"بعد از ورود نه سود {tp_move * 100:g}٪ و نه شکست معتبر دیده نشد."
 
     if side == "low":
         pct = (exit_px - entry_px) / entry_px
@@ -233,11 +247,12 @@ def evaluate_trendline_path(
 
     meta["entry_index"] = entry_i
     meta["exit_index"] = exit_i
+    meta["tp_px"] = tp_px
     meta["path_pct"] = pct
     meta["exit_reason"] = reason
     ok = pct > 0
     note = (
-        f"بازده مسیر سیگنال اولیه تا {reason}: {pct*100:+.2f}٪ "
+        f"بازده مسیر تا {reason}: {pct*100:+.2f}٪ "
         f"({entry_px:,.0f} → {exit_px:,.0f})"
     )
     return ok, note
@@ -493,6 +508,8 @@ def detect_trendline(
     if primary.get("testing"):
         summary += " کندل جاری خط را لمس کرده."
     early_ix = wo + primary["touches"][min(1, n_pri - 1)][0]
+    confirm_ix = wo + (n - 1)
+    touch_pts = [[wo + i, p] for i, p in primary["touches"]]
     return _hit(
         category="trendline",
         timeframe=timeframe,
@@ -518,6 +535,8 @@ def detect_trendline(
             "touch_lows": touch_lows,
             "y_now": primary["y_now"],
             "early_index": early_ix,
+            "confirm_index": confirm_ix,
+            "touch_points": touch_pts,
             "last_close": last.close,
         },
     )

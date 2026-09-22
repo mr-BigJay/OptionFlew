@@ -62,6 +62,15 @@ def render_pattern_chart(
             forward_bars=fwd or 0,
             outcome_success=outcome_success,
         )
+    meta = hit.meta or {}
+    if meta.get("chart_mode") == "renko":
+        return _render_renko_chart(
+            bars,
+            hit,
+            signal_index=signal_index,
+            forward_bars=fwd or 0,
+            outcome_success=outcome_success,
+        )
     return _render_price_pattern(
         bars,
         hit,
@@ -209,6 +218,153 @@ def _mark_signal_and_forward(
     ax.axvline(x_sig, color=edge, linewidth=1.2, linestyle=":", alpha=0.9, zorder=4)
 
 
+def _trendline_y(meta: dict[str, Any], global_i: int) -> float | None:
+    wo = int(meta.get("window_offset") or 0)
+    i_loc = global_i - wo
+    side = meta.get("side")
+    if side == "low":
+        sl, il = meta.get("lower_slope"), meta.get("lower_intercept")
+        if sl is None or il is None:
+            return None
+        return float(sl) * i_loc + float(il)
+    su, iu = meta.get("upper_slope"), meta.get("upper_intercept")
+    if su is None or iu is None:
+        return None
+    return float(su) * i_loc + float(iu)
+
+
+def _mark_confirm_arrow(
+    ax: Any,
+    bars: list[OhlcBar],
+    meta: dict[str, Any],
+    start: int,
+    end: int,
+    *,
+    color: str = "#42a5f5",
+) -> None:
+    """فلش تأیید نهایی (آبی)."""
+    ix = meta.get("confirm_index", meta.get("entry_index"))
+    if not isinstance(ix, int) or ix < start or ix >= min(end, len(bars)):
+        return
+    import matplotlib.dates as mdates
+
+    bar = bars[ix]
+    x = mdates.date2num(bar.ts)
+    window = bars[start:end]
+    span = max(b.high for b in window) - min(b.low for b in window)
+    pad = max(span * 0.012, bar.close * 0.0004)
+    direction = meta.get("direction")
+    if direction == "up":
+        y_tip, y_head = bar.low - pad, bar.low - pad * 2.4
+    else:
+        y_tip, y_head = bar.high + pad, bar.high + pad * 2.4
+    ax.annotate(
+        "",
+        xy=(x, y_tip),
+        xytext=(x, y_head),
+        arrowprops=dict(arrowstyle="-|>", color=color, lw=1.5, mutation_scale=11),
+        zorder=11,
+    )
+
+
+def _mark_tp_arrow(
+    ax: Any,
+    bars: list[OhlcBar],
+    meta: dict[str, Any],
+    start: int,
+    end: int,
+) -> None:
+    """فلش TP (سبز) روی کندل خروج سود."""
+    reason = str(meta.get("exit_reason") or "")
+    if "سود" not in reason:
+        return
+    exit_i = meta.get("exit_index")
+    if not isinstance(exit_i, int) or exit_i < start or exit_i >= min(end, len(bars)):
+        return
+    import matplotlib.dates as mdates
+
+    bar = bars[exit_i]
+    x = mdates.date2num(bar.ts)
+    tp_px = meta.get("tp_px")
+    y = float(tp_px) if isinstance(tp_px, (int, float)) else bar.close
+    direction = meta.get("direction")
+    pad = max(bar.close * 0.00035, 40.0)
+    if direction == "up":
+        ax.annotate(
+            "",
+            xy=(x, y + pad * 0.2),
+            xytext=(x, y + pad * 1.8),
+            arrowprops=dict(arrowstyle="-|>", color="#66bb6a", lw=1.5, mutation_scale=11),
+            zorder=11,
+        )
+    else:
+        ax.annotate(
+            "",
+            xy=(x, y - pad * 0.2),
+            xytext=(x, y - pad * 1.8),
+            arrowprops=dict(arrowstyle="-|>", color="#66bb6a", lw=1.5, mutation_scale=11),
+            zorder=11,
+        )
+
+
+def _mark_trendline_touches(
+    ax: Any,
+    bars: list[OhlcBar],
+    meta: dict[str, Any],
+    start: int,
+    end: int,
+) -> None:
+    import matplotlib.dates as mdates
+
+    pts = meta.get("touch_points")
+    if isinstance(pts, list) and pts:
+        for item in pts:
+            if not isinstance(item, (list, tuple)) or len(item) < 2:
+                continue
+            gi, price = int(item[0]), float(item[1])
+            if gi < start or gi >= min(end, len(bars)):
+                continue
+            ax.scatter(
+                [mdates.date2num(bars[gi].ts)],
+                [price],
+                c="#ffffff",
+                s=38,
+                zorder=7,
+                edgecolors="#78909c",
+                linewidths=0.45,
+            )
+        return
+    wo = int(meta.get("window_offset") or 0)
+    for ti in meta.get("touch_highs") or []:
+        gi = wo + int(ti)
+        if start <= gi < end:
+            y = _trendline_y(meta, gi)
+            py = y if y is not None else bars[gi].high
+            ax.scatter(
+                [mdates.date2num(bars[gi].ts)],
+                [py],
+                c="#ffffff",
+                s=38,
+                zorder=7,
+                edgecolors="#78909c",
+                linewidths=0.45,
+            )
+    for ti in meta.get("touch_lows") or []:
+        gi = wo + int(ti)
+        if start <= gi < end:
+            y = _trendline_y(meta, gi)
+            py = y if y is not None else bars[gi].low
+            ax.scatter(
+                [mdates.date2num(bars[gi].ts)],
+                [py],
+                c="#ffffff",
+                s=38,
+                zorder=7,
+                edgecolors="#78909c",
+                linewidths=0.45,
+            )
+
+
 def _mark_trendline_path(
     ax: Any,
     xs: list[float],
@@ -272,7 +428,7 @@ def _mark_early_entry(
     *,
     color: str | None = None,
 ) -> None:
-    """فلش تأیید اولیه؛ برای ترندلاین/کانال همرنگ نقطهٔ برخورد."""
+    """فلش تأیید اولیه (زرد برای ترندلاین)."""
     early_ix = meta.get("early_index")
     if not isinstance(early_ix, int) or early_ix < start or early_ix >= min(end, len(bars)):
         return
@@ -285,7 +441,9 @@ def _mark_early_entry(
     pad = max(span * 0.012, bar.high * 0.0004)
     side = meta.get("early_side") or meta.get("side")
     if color is None:
-        if side == "low":
+        if meta.get("kind") == "trendline" or meta.get("category") == "trendline":
+            color = "#fbbf24"
+        elif side == "low":
             color = "#81c784"
         elif side == "high":
             color = "#ffb74d"
@@ -413,61 +571,61 @@ def _render_price_pattern(
                     )
 
     elif hit.category in ("trendline", "channel"):
-        wo = meta.get("window_offset", max(0, len(bars) - 120))
-        i0, i1 = meta["start_i"], meta["end_i"]
-        g0, g1 = wo + i0, wo + i1
+        wo = int(meta.get("window_offset") or max(0, len(bars) - 120))
+        i0, i1 = meta.get("start_i", 0), meta.get("end_i", len(bars) - wo - 1)
+        g0, g1 = wo + int(i0), wo + int(i1)
         exit_i = meta.get("exit_index") if hit.category == "trendline" else None
         if isinstance(exit_i, int) and 0 <= exit_i < len(bars):
-            g1 = max(g1, min(exit_i, end - 1))
-            i1 = g1 - wo
-        if 0 <= g0 < len(bars) and 0 <= g1 < len(bars):
+            g1 = max(g1, exit_i)
+        g0 = max(start, min(g0, end - 1))
+        g1 = max(g0, min(g1, end - 1))
+        if g0 < len(bars) and g1 < len(bars):
+            import matplotlib.dates as mdates
+
             x0 = mdates.date2num(bars[g0].ts)
             x1 = mdates.date2num(bars[g1].ts)
-            su, iu = meta.get("upper_slope"), meta.get("upper_intercept")
-            sl, il = meta.get("lower_slope"), meta.get("lower_intercept")
-            if su is not None and iu is not None:
+            y0 = _trendline_y(meta, g0)
+            y1 = _trendline_y(meta, g1)
+            if y0 is not None and y1 is not None:
+                line_color = "#81c784" if meta.get("side") == "low" else "#ffb74d"
                 ax.plot(
                     [x0, x1],
-                    [su * i0 + iu, su * i1 + iu],
+                    [y0, y1],
+                    color=line_color,
+                    linewidth=2.2,
+                    label="ترندلاین",
+                    zorder=4,
+                )
+            su, iu = meta.get("upper_slope"), meta.get("upper_intercept")
+            sl, il = meta.get("lower_slope"), meta.get("lower_intercept")
+            if hit.category == "channel" and su is not None and iu is not None:
+                y0u = float(su) * (g0 - wo) + float(iu)
+                y1u = float(su) * (g1 - wo) + float(iu)
+                ax.plot(
+                    [x0, x1],
+                    [y0u, y1u],
                     color="#ffb74d",
                     linewidth=2,
                     label="مقاومت",
                 )
-            if sl is not None and il is not None:
+            if hit.category == "channel" and sl is not None and il is not None:
+                y0l = float(sl) * (g0 - wo) + float(il)
+                y1l = float(sl) * (g1 - wo) + float(il)
                 ax.plot(
                     [x0, x1],
-                    [sl * i0 + il, sl * i1 + il],
+                    [y0l, y1l],
                     color="#81c784",
                     linewidth=2,
                     label="حمایت",
                 )
-            for ti in meta.get("touch_highs") or []:
-                gi = wo + int(ti)
-                if start <= gi < end:
-                    ax.scatter(
-                        [mdates.date2num(bars[gi].ts)],
-                        [bars[gi].high],
-                        c="#ffb74d",
-                        s=36,
-                        zorder=6,
-                        edgecolors="#fff",
-                        linewidths=0.4,
-                    )
-            for ti in meta.get("touch_lows") or []:
-                gi = wo + int(ti)
-                if start <= gi < end:
-                    ax.scatter(
-                        [mdates.date2num(bars[gi].ts)],
-                        [bars[gi].low],
-                        c="#81c784",
-                        s=36,
-                        zorder=6,
-                        edgecolors="#fff",
-                        linewidths=0.4,
-                    )
-        _mark_early_entry(ax, bars, meta, start, end)
-        if hit.category == "trendline" and isinstance(meta.get("exit_index"), int):
-            _mark_trendline_path(ax, xs, start, meta, outcome_success)
+        if hit.category == "trendline":
+            _mark_trendline_touches(ax, bars, meta, start, end)
+        _mark_early_entry(ax, bars, meta, start, end, color="#fbbf24")
+        if hit.category == "trendline":
+            _mark_confirm_arrow(ax, bars, meta, start, end)
+            if isinstance(meta.get("exit_index"), int):
+                _mark_tp_arrow(ax, bars, meta, start, end)
+                _mark_trendline_path(ax, xs, start, meta, outcome_success)
 
     elif hit.category == "ema50":
         from optionflow.patterns.indicators import ema as ema_fn

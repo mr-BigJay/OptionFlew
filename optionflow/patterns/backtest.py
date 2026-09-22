@@ -5,7 +5,7 @@ import logging
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 from optionflow.patterns.chart import render_pattern_chart, chart_forward_bars
 from optionflow.patterns.divergence import (
@@ -242,6 +242,11 @@ def evaluate_outcome(
     target_profit_pct: float | None = None,
 ) -> tuple[bool | None, str]:
     if target_profit_pct is not None and target_profit_pct >= 0.1:
+        if hit.category == "trendline":
+            tp_frac = target_profit_pct / 100.0
+            return evaluate_trendline_path(
+                bars, idx, hit, take_profit_pct=tp_frac
+            )
         return evaluate_target_profit(bars, idx, hit, target_profit_pct)
     if hit.category == "trendline":
         return evaluate_trendline_path(bars, idx, hit)
@@ -307,6 +312,13 @@ def _shift_hit_bar_indices(hit: PatternHit, offset: int) -> None:
             meta[key] = [
                 int(x) + offset for x in lst if isinstance(x, (int, float))
             ]
+    tps = meta.get("touch_points")
+    if isinstance(tps, list):
+        shifted: list[list[Any]] = []
+        for pt in tps:
+            if isinstance(pt, (list, tuple)) and len(pt) >= 2:
+                shifted.append([int(pt[0]) + offset, pt[1]])
+        meta["touch_points"] = shifted
 
 
 def _replay_divergence(

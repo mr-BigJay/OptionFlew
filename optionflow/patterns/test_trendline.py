@@ -251,7 +251,7 @@ def test_support_path_profit_from_early_to_break() -> None:
     assert hit.meta["entry_index"] == 40
     assert hit.meta["exit_index"] == 44
     assert hit.meta["path_pct"] == pytest.approx(0.005, rel=1e-4)
-    assert "۰.۵٪" in note
+    assert "0.5" in note or "۰.۵" in note
 
 
 def test_take_profit_wins_before_valid_break() -> None:
@@ -268,8 +268,8 @@ def test_take_profit_wins_before_valid_break() -> None:
     ok, note = evaluate_trendline_path(bars, 70, hit)
     assert ok is True
     assert hit.meta["exit_index"] == 44
-    assert hit.meta.get("exit_reason") == "بستن در سود ۰.۵٪"
-    assert "۰.۵٪" in note
+    assert hit.meta.get("exit_reason", "").startswith("بستن در سود")
+    assert "0.5" in note or "۰.۵" in note
 
 
 def test_support_path_loss_when_break_is_below_entry() -> None:
@@ -295,7 +295,7 @@ def test_no_valid_break_is_unknown() -> None:
     hit = _support_hit(early=40, slope=0.0, intercept=98_000.0)
     ok, note = evaluate_trendline_path(bars, 70, hit)
     assert ok is None
-    assert "۰.۵٪" in note
+    assert "0.5" in note or "۰.۵" in note
     assert "exit_index" not in hit.meta
 
 
