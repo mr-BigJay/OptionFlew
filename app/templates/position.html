@@ -44,7 +44,7 @@
     <input type="number" name="amount" step="0.01" min="1" placeholder="مبلغ واریز USDT" required>
     <button type="submit" class="btn primary">+ واریز</button>
   </form>
-  <p class="pos-hint">کارمزد ≈ {{ (config.fee_rate * 100)|round(2) }}٪ × حجم (مارجین × اهرم)</p>
+  <p class="pos-hint">کارمزد (Taker) ≈ {{ (config.fee_rate * 100)|round(3) }}٪ × حجم · {{ fee_profile_label }}</p>
 </section>
 {% endif %}
 
@@ -65,7 +65,18 @@
     <label><span>اهرم ×</span><input type="number" name="leverage" step="0.5" min="1" max="125" value="{{ config.leverage }}"></label>
     <label><span>SL ٪</span><input type="number" name="stop_loss_pct" step="0.1" min="0.1" value="{{ config.stop_loss_pct }}"></label>
     <label><span>TP ٪</span><input type="number" name="take_profit_pct" step="0.1" min="0.1" value="{{ config.take_profit_pct }}"></label>
-    <label class="wide"><span>کارمزد</span><input type="number" name="fee_rate" step="0.0001" min="0" value="{{ config.fee_rate }}" title="0.0004 = 0.04٪"></label>
+  </div>
+
+  <p class="pos-section-label">کارمزد صرافی <small class="pos-fee-note">سطح پایه · هر باز/بست = Taker × حجم</small></p>
+  <div class="pos-fee-grid">
+    {% for fp in fee_profiles %}
+    <label class="pos-fee-card {% if config.fee_profile_id == fp.id %}on{% endif %}">
+      <input type="radio" name="fee_profile_id" value="{{ fp.id }}" {% if config.fee_profile_id == fp.id %}checked{% endif %}>
+      <span class="pos-fee-name">{{ fp.label_fa }}</span>
+      <span class="pos-fee-tier">{{ fp.tier_note_fa }}</span>
+      <span class="pos-fee-rates">M {{ fp.maker_pct }}٪ · T {{ fp.taker_pct }}٪</span>
+    </label>
+    {% endfor %}
   </div>
 
   <details class="pos-details" open>

@@ -5,11 +5,12 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
+from app.exchange_fee_profiles import DEFAULT_FEE_PROFILE_ID, resolve_fee_rate
 from app.storage import connect
 
 logger = logging.getLogger("optionflow.position")
 
-DEFAULT_FEE_RATE = 0.0004  # ~0.04% taker (شبیه فیوچرز)
+DEFAULT_FEE_RATE = resolve_fee_rate(DEFAULT_FEE_PROFILE_ID)
 
 PATTERN_CATEGORIES = (
     "triangle",
@@ -109,6 +110,18 @@ def init_position_db() -> None:
             );
             """
         )
+        _migrate_paper_config(conn)
+
+
+def _migrate_paper_config(conn) -> None:
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(paper_config)").fetchall()}
+    if "fee_profile_id" not in cols:
+        conn.execute(
+            """
+            ALTER TABLE paper_config
+            ADD COLUMN fee_profile_id TEXT NOT NULL DEFAULT 'binance_usdt_vip0'
+            """
+        )
 
 
 def _json_list(raw: str) -> list[str]:
@@ -155,11 +168,11 @@ def get_config(user_id: int) -> dict[str, Any]:
                 """
                 INSERT INTO paper_config (
                     user_id, enabled, margin_usdt, leverage, stop_loss_pct,
-                    take_profit_pct, fee_rate, pattern_categories,
+                    take_profit_pct, fee_rate, fee_profile_id, pattern_categories,
                     scalp_scenarios, report_kinds, source_overrides, updated_at
-                ) VALUES (?, 0, 100, 5, 1.0, 0.5, ?, '[]', '[]', '[]', '{}', ?)
+                ) VALUES (?, 0, 100, 5, 1.0, 0.5, ?, ?, '[]', '[]', '[]', '{}', ?)
                 """,
-                (user_id, DEFAULT_FEE_RATE, now),
+                (user_id, DEFAULT_FEE_RATE, DEFAULT_FEE_PROFILE_ID, now),
             )
             row = conn.execute(
                 "SELECT * FROM paper_config WHERE user_id = ?", (user_id,)
@@ -170,6 +183,9 @@ def get_config(user_id: int) -> dict[str, Any]:
         d["report_kinds"] = _json_list(d.get("report_kinds") or "[]")
         d["source_overrides"] = _json_dict(d.get("source_overrides") or "{}")
         d["enabled"] = bool(d.get("enabled"))
+        pid = str(d.get("fee_profile_id") or DEFAULT_FEE_PROFILE_ID)
+        d["fee_profile_id"] = pid
+        d["fee_rate"] = resolve_fee_rate(pid)
         return d
 
 
@@ -177,6 +193,9 @@ def save_config(user_id: int, **fields: Any) -> None:
     init_position_db()
     cfg = get_config(user_id)
     cfg.update(fields)
+    pid = str(cfg.get("fee_profile_id") or DEFAULT_FEE_PROFILE_ID)
+    cfg["fee_profile_id"] = pid
+    cfg["fee_rate"] = resolve_fee_rate(pid)
     now = utc_now_iso()
     with connect() as conn:
         conn.execute(
@@ -188,6 +207,7 @@ def save_config(user_id: int, **fields: Any) -> None:
                 stop_loss_pct = ?,
                 take_profit_pct = ?,
                 fee_rate = ?,
+                fee_profile_id = ?,
                 pattern_categories = ?,
                 scalp_scenarios = ?,
                 report_kinds = ?,
@@ -202,6 +222,7 @@ def save_config(user_id: int, **fields: Any) -> None:
                 float(cfg["stop_loss_pct"]),
                 float(cfg["take_profit_pct"]),
                 float(cfg["fee_rate"]),
+                pid,
                 json.dumps(cfg.get("pattern_categories") or [], ensure_ascii=False),
                 json.dumps(cfg.get("scalp_scenarios") or [], ensure_ascii=False),
                 json.dumps(cfg.get("report_kinds") or [], ensure_ascii=False),

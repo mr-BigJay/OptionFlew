@@ -47,6 +47,7 @@ from app.jobs import (
     run_scheduled_behavior_scan,
 )
 from app.pattern_store import get_pattern_event, list_all_pattern_events, list_pattern_events
+from app.exchange_fee_profiles import fee_profile_summary_fa, list_fee_profiles
 from app.paper_engine import latest_btc_price, process_signals_for_user, unrealized_pnl
 from app.position_store import (
     PATTERN_CATEGORIES,
@@ -1137,6 +1138,8 @@ async def position_page(request: Request, tab: str = "wallet", msg: str = "", er
             pattern_categories=PATTERN_CATEGORIES,
             scalp_scenarios=SCALP_SCENARIOS,
             report_kinds=REPORT_KINDS,
+            fee_profiles=list_fee_profiles(),
+            fee_profile_label=fee_profile_summary_fa(cfg.get("fee_profile_id")),
             category_fa=_category_fa,
             status_fa=_position_status_fa,
             source_fa=_position_source_fa,
@@ -1174,7 +1177,7 @@ async def position_settings_save(request: Request):
             leverage=float(form.get("leverage") or 5),
             stop_loss_pct=float(form.get("stop_loss_pct") or 1),
             take_profit_pct=float(form.get("take_profit_pct") or 0.5),
-            fee_rate=float(form.get("fee_rate") or 0.0004),
+            fee_profile_id=str(form.get("fee_profile_id") or "binance_usdt_vip0"),
             pattern_categories=form.getlist("pattern_categories"),
             scalp_scenarios=form.getlist("scalp_scenarios"),
             report_kinds=form.getlist("report_kinds"),

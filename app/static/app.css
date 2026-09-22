@@ -1981,6 +1981,51 @@ bdi[dir="ltr"] {
   .pos-risk-grid label.wide { grid-column: span 2; }
 }
 
+.pos-fee-note {
+  font-weight: normal;
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+.pos-fee-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.pos-fee-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 9px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.18);
+  cursor: pointer;
+  font-size: 0.72rem;
+  line-height: 1.25;
+  transition: border-color 0.15s, background 0.15s;
+}
+.pos-fee-card input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.pos-fee-card.on,
+.pos-fee-card:has(input:checked) {
+  border-color: rgba(45, 212, 191, 0.55);
+  background: rgba(45, 212, 191, 0.08);
+}
+.pos-fee-name { font-weight: 600; font-size: 0.78rem; color: var(--text); }
+.pos-fee-tier { color: var(--muted); font-size: 0.68rem; }
+.pos-fee-rates {
+  color: var(--accent);
+  font-size: 0.68rem;
+  margin-top: 2px;
+}
+@media (max-width: 420px) {
+  .pos-fee-grid { grid-template-columns: 1fr; }
+}
+
 .pos-details {
   border: 1px solid var(--border);
   border-radius: 10px;
