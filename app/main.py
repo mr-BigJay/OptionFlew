@@ -833,7 +833,7 @@ async def pattern_category_page(
     )
     grouped = _group_by_date(items)
     sub = (
-        "Deribit · فلو آپشن"
+        "Deribit · فلو آپشن · فقط ۱h (۲۰ دقیقه burst / ۴h baseline)"
         if category == "meaningful_behavior"
         else "BTCUSDT · ۵m / ۱۵m / ۱h"
     )
