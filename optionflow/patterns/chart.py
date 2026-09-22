@@ -93,17 +93,19 @@ def _slice_range(
     meta = hit.meta
 
     if hit.category in ("triangle", "trendline", "channel"):
-        wo = meta.get("window_offset", max(0, n - 120))
-        i0 = wo + meta.get("start_i", 0)
-        i1 = wo + meta.get("end_i", sig)
+        wo = int(meta.get("window_offset") or 0)
+        i0 = wo + int(meta.get("start_i") or 0)
+        i1 = wo + int(meta.get("end_i") or 0)
+        i0 = max(0, min(i0, n - 1))
+        i1 = max(0, min(i1, n - 1))
         early = meta.get("early_index")
         extra0 = early if isinstance(early, int) else i0
         start = max(0, min(i0, extra0, sig) - 8)
+        fwd_cap = FORWARD_BARS_DEFAULT.get(hit.timeframe, 24)
+        end = min(n, max(chart_window_end(n, sig, start), sig + fwd_cap + 8))
         exit_i = meta.get("exit_index") if hit.category == "trendline" else None
-        if isinstance(exit_i, int):
-            end = min(n, max(chart_window_end(n, sig, start), exit_i + 8))
-        else:
-            end = chart_window_end(n, sig, start)
+        if isinstance(exit_i, int) and start <= exit_i < n:
+            end = min(n, max(end, min(exit_i + 6, sig + fwd_cap + 16)))
     elif hit.category == "flag":
         ps = meta.get("pole_start", max(0, sig - 30))
         start = max(0, ps - 8)
@@ -218,22 +220,16 @@ def _mark_signal_and_forward(
     ax.axvline(x_sig, color=edge, linewidth=1.2, linestyle=":", alpha=0.9, zorder=4)
 
 
-def _global_bar_idx(meta: dict[str, Any], idx: int, n_bars: int) -> int:
-    """start_i/end_i/touch بعد از shift سراسری‌اند؛ در detect محلی + window_offset."""
+def _structure_global(meta: dict[str, Any], local_i: int, n_bars: int) -> int:
+    """start_i / touch محلی پنجره + window_offset سراسری."""
     wo = int(meta.get("window_offset") or 0)
-    idx = int(idx)
-    if idx < 0:
-        return 0
-    if idx >= n_bars:
-        return n_bars - 1
-    if wo > 0 and idx < wo:
-        return min(n_bars - 1, wo + idx)
-    return idx
+    gi = wo + int(local_i)
+    return max(0, min(gi, max(0, n_bars - 1)))
 
 
 def _trendline_y(meta: dict[str, Any], global_i: int) -> float | None:
     wo = int(meta.get("window_offset") or 0)
-    i_loc = global_i - wo
+    i_loc = int(global_i) - wo
     side = meta.get("side")
     if side == "low":
         sl, il = meta.get("lower_slope"), meta.get("lower_intercept")
@@ -349,7 +345,7 @@ def _mark_trendline_touches(
         return
     wo = int(meta.get("window_offset") or 0)
     for ti in meta.get("touch_highs") or []:
-        gi = _global_bar_idx(meta, int(ti), len(bars))
+        gi = _structure_global(meta, int(ti), len(bars))
         if start <= gi < end:
             y = _trendline_y(meta, gi)
             py = y if y is not None else bars[gi].high
@@ -363,7 +359,7 @@ def _mark_trendline_touches(
                 linewidths=0.45,
             )
     for ti in meta.get("touch_lows") or []:
-        gi = _global_bar_idx(meta, int(ti), len(bars))
+        gi = _structure_global(meta, int(ti), len(bars))
         if start <= gi < end:
             y = _trendline_y(meta, gi)
             py = y if y is not None else bars[gi].low
@@ -584,16 +580,14 @@ def _render_price_pattern(
                     )
 
     elif hit.category in ("trendline", "channel"):
-        wo = int(meta.get("window_offset") or max(0, len(bars) - 120))
-        i0, i1 = meta.get("start_i", 0), meta.get("end_i", len(bars) - wo - 1)
-        g0 = _global_bar_idx(meta, int(i0), len(bars))
-        g1 = _global_bar_idx(meta, int(i1), len(bars))
-        exit_i = meta.get("exit_index") if hit.category == "trendline" else None
-        if isinstance(exit_i, int) and 0 <= exit_i < len(bars):
-            g1 = max(g1, exit_i)
+        wo = int(meta.get("window_offset") or 0)
+        i0 = int(meta.get("start_i") or 0)
+        i1 = int(meta.get("end_i") or i0)
+        g0 = _structure_global(meta, i0, len(bars))
+        g1 = _structure_global(meta, i1, len(bars))
         g0 = max(start, min(g0, end - 1))
         g1 = max(g0, min(g1, end - 1))
-        if g0 < len(bars) and g1 < len(bars):
+        if g0 < len(bars) and g1 < len(bars) and g1 > g0:
             import matplotlib.dates as mdates
 
             x0 = mdates.date2num(bars[g0].ts)
@@ -610,28 +604,26 @@ def _render_price_pattern(
                     label="ترندلاین",
                     zorder=4,
                 )
-            su, iu = meta.get("upper_slope"), meta.get("upper_intercept")
-            sl, il = meta.get("lower_slope"), meta.get("lower_intercept")
-            if hit.category == "channel" and su is not None and iu is not None:
-                y0u = float(su) * (g0 - wo) + float(iu)
-                y1u = float(su) * (g1 - wo) + float(iu)
-                ax.plot(
-                    [x0, x1],
-                    [y0u, y1u],
-                    color="#ffb74d",
-                    linewidth=2,
-                    label="مقاومت",
-                )
-            if hit.category == "channel" and sl is not None and il is not None:
-                y0l = float(sl) * (g0 - wo) + float(il)
-                y1l = float(sl) * (g1 - wo) + float(il)
-                ax.plot(
-                    [x0, x1],
-                    [y0l, y1l],
-                    color="#81c784",
-                    linewidth=2,
-                    label="حمایت",
-                )
+            if hit.category == "channel":
+                su, iu = meta.get("upper_slope"), meta.get("upper_intercept")
+                sl, il = meta.get("lower_slope"), meta.get("lower_intercept")
+                i0w, i1w = g0 - wo, g1 - wo
+                if su is not None and iu is not None:
+                    ax.plot(
+                        [x0, x1],
+                        [float(su) * i0w + float(iu), float(su) * i1w + float(iu)],
+                        color="#ffb74d",
+                        linewidth=2,
+                        label="مقاومت",
+                    )
+                if sl is not None and il is not None:
+                    ax.plot(
+                        [x0, x1],
+                        [float(sl) * i0w + float(il), float(sl) * i1w + float(il)],
+                        color="#81c784",
+                        linewidth=2,
+                        label="حمایت",
+                    )
         if hit.category == "trendline":
             _mark_trendline_touches(ax, bars, meta, start, end)
         _mark_early_entry(ax, bars, meta, start, end, color="#fbbf24")

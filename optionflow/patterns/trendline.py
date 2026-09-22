@@ -220,12 +220,17 @@ def evaluate_trendline_path(
     if start >= len(bars):
         return None, "کندل کافی بعد از ورود برای ارزیابی نبود."
 
+    hold = {"5m": 48, "15m": 32, "1h": 24, "4h": 16, "1d": 10}.get(
+        hit.timeframe, 32
+    )
+    limit = min(len(bars), start + hold)
+
     tp_px = _take_profit_px(entry_px, side=side, pct=tp_move)
     exit_i: int | None = None
     exit_px: float | None = None
     reason = ""
     break_run = 0
-    for i in range(start, len(bars)):
+    for i in range(start, limit):
         b = bars[i]
         if _take_profit_hit(b, side=side, entry_px=entry_px, pct=tp_move):
             exit_i, exit_px, reason = i, tp_px, f"بستن در سود {tp_move * 100:g}٪"
@@ -238,7 +243,22 @@ def evaluate_trendline_path(
             break
 
     if exit_i is None or exit_px is None:
-        return None, f"بعد از ورود نه سود {tp_move * 100:g}٪ و نه شکست معتبر دیده نشد."
+        last = bars[limit - 1]
+        exit_i, exit_px, reason = limit - 1, last.close, "پایان مهلت بدون TP/شکست"
+        if side == "low":
+            pct_to = (exit_px - entry_px) / entry_px
+        else:
+            pct_to = (entry_px - exit_px) / entry_px
+        meta["entry_index"] = entry_i
+        meta["exit_index"] = exit_i
+        meta["tp_px"] = tp_px
+        meta["path_pct"] = pct_to
+        meta["exit_reason"] = reason
+        note = (
+            f"{reason}: {pct_to*100:+.2f}٪ "
+            f"({entry_px:,.0f} → {exit_px:,.0f})"
+        )
+        return False, note
 
     if side == "low":
         pct = (exit_px - entry_px) / entry_px

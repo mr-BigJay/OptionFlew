@@ -288,6 +288,8 @@ def _shift_hit_bar_indices(hit: PatternHit, offset: int) -> None:
     if offset <= 0:
         return
     meta = hit.meta
+    # start_i / end_i / touch_* نسبت به پنجرهٔ detect محلی می‌مانند.
+    # فقط اندیس‌های مطلق + window_offset با offset تکه جابه‌جا می‌شوند.
     for key in (
         "confirm_index",
         "early_index",
@@ -295,8 +297,6 @@ def _shift_hit_bar_indices(hit: PatternHit, offset: int) -> None:
         "entry_index",
         "break_index",
         "pullback_index",
-        "start_i",
-        "end_i",
         "window_offset",
     ):
         v = meta.get(key)
@@ -306,12 +306,6 @@ def _shift_hit_bar_indices(hit: PatternHit, offset: int) -> None:
         t = meta.get(key)
         if isinstance(t, (list, tuple)) and len(t) >= 2:
             meta[key] = (int(t[0]) + offset, t[1])
-    for key in ("touch_highs", "touch_lows", "hi_idx", "lo_idx"):
-        lst = meta.get(key)
-        if isinstance(lst, list):
-            meta[key] = [
-                int(x) + offset for x in lst if isinstance(x, (int, float))
-            ]
     tps = meta.get("touch_points")
     if isinstance(tps, list):
         shifted: list[list[Any]] = []

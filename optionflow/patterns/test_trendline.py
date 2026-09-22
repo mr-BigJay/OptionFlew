@@ -288,15 +288,15 @@ def test_support_path_loss_when_break_is_below_entry() -> None:
     assert hit.meta["path_pct"] < 0
 
 
-def test_no_valid_break_is_unknown() -> None:
+def test_no_valid_break_is_timeout_fail() -> None:
     bars = _empty(90, 98_200)
     for i in range(len(bars)):
         _set_close(bars, i, 98_200)
     hit = _support_hit(early=40, slope=0.0, intercept=98_000.0)
     ok, note = evaluate_trendline_path(bars, 70, hit)
-    assert ok is None
-    assert "0.5" in note or "۰.۵" in note
-    assert "exit_index" not in hit.meta
+    assert ok is False
+    assert "مهلت" in note
+    assert hit.meta.get("exit_index") is not None
 
 
 def test_resistance_short_path_profit() -> None:
