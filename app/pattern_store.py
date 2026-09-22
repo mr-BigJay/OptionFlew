@@ -259,3 +259,41 @@ def get_pattern_event(event_id: int) -> dict[str, Any] | None:
         except json.JSONDecodeError:
             d["meta"] = {}
         return d
+
+
+def get_pattern_event_by_key(event_key: str) -> dict[str, Any] | None:
+    key = (event_key or "").strip()
+    if not key:
+        return None
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM pattern_events WHERE event_key = ?",
+            (key,),
+        ).fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        try:
+            d["meta"] = json.loads(d.pop("meta_json") or "{}")
+        except json.JSONDecodeError:
+            d["meta"] = {}
+        return d
+
+
+def get_pattern_event_by_key(event_key: str) -> dict[str, Any] | None:
+    key = (event_key or "").strip()
+    if not key:
+        return None
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM pattern_events WHERE event_key = ?",
+            (key,),
+        ).fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        try:
+            d["meta"] = json.loads(d.pop("meta_json") or "{}")
+        except json.JSONDecodeError:
+            d["meta"] = {}
+        return d

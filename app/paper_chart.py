@@ -4,6 +4,8 @@ import io
 import logging
 from typing import Any
 
+from app.pattern_store import get_pattern_event_by_key
+from optionflow.patterns.trendline import WINDOW
 from optionflow.scenario_chart import fetch_btcusdt_klines
 
 logger = logging.getLogger("optionflow.paper.chart")
@@ -16,8 +18,118 @@ def _pick_interval(timeframe: str) -> str:
     return "15m"
 
 
+def _pattern_meta(pos: dict[str, Any]) -> tuple[str | None, dict[str, Any] | None]:
+    if str(pos.get("source_type") or "") != "pattern":
+        return None, None
+    sk = str(pos.get("source_key") or "")
+    cat = sk.split(":", 1)[0] if ":" in sk else ""
+    if cat not in ("trendline", "channel"):
+        return cat or None, None
+    ev = get_pattern_event_by_key(sk)
+    if not ev:
+        return cat, None
+    meta = ev.get("meta")
+    return cat, meta if isinstance(meta, dict) else None
+
+
+def _trendline_slice(n: int, meta: dict[str, Any]) -> tuple[int, int]:
+    """برش چارت: فقط یک‌سوم کندل‌های قبل از شروع ترندلاین."""
+    local_start = int(meta.get("start_i") or 0)
+    local_start = max(0, min(local_start, n - 1))
+    pad = max(5, local_start // 3)
+    chart_start = max(0, local_start - pad)
+    return chart_start, n
+
+
+def _slice_index(chart_start: int, wi: int, slice_len: int) -> int | None:
+    if wi < chart_start or wi >= chart_start + slice_len:
+        return None
+    return wi - chart_start
+
+
+def _line_at(meta: dict[str, Any], wi: int, *, upper: bool) -> float | None:
+    if upper:
+        s, ic = meta.get("upper_slope"), meta.get("upper_intercept")
+    else:
+        s, ic = meta.get("lower_slope"), meta.get("lower_intercept")
+    if s is None or ic is None:
+        return None
+    return float(s) * wi + float(ic)
+
+
+def _draw_trendline_overlay(
+    ax,
+    candles,
+    xs,
+    meta: dict[str, Any],
+    *,
+    chart_start: int,
+    category: str,
+) -> None:
+    import matplotlib.dates as mdates
+
+    slice_len = len(candles)
+    wi0 = max(int(meta.get("start_i") or 0), chart_start)
+    wi1 = int(meta.get("end_i") or (chart_start + slice_len - 1))
+    wi1 = max(wi0, min(wi1, chart_start + slice_len - 1))
+    di0 = _slice_index(chart_start, wi0, slice_len)
+    di1 = _slice_index(chart_start, wi1, slice_len)
+    if di0 is None or di1 is None:
+        return
+
+    def plot_seg(upper: bool, color: str, label: str) -> None:
+        y0 = _line_at(meta, wi0, upper=upper)
+        y1 = _line_at(meta, wi1, upper=upper)
+        if y0 is None or y1 is None:
+            return
+        ax.plot(
+            [xs[di0], xs[di1]],
+            [y0, y1],
+            color=color,
+            linewidth=2.2,
+            label=label,
+            zorder=5,
+        )
+
+    if category == "trendline":
+        side = meta.get("side")
+        if side == "low":
+            plot_seg(False, "#81c784", "ترندلاین حمایت")
+        else:
+            plot_seg(True, "#ffb74d", "ترندلاین مقاومت")
+    else:
+        plot_seg(True, "#ffb74d", "مقاومت")
+        plot_seg(False, "#81c784", "حمایت")
+
+    touch_c = "#eceff1" if category == "trendline" else None
+    for ti in meta.get("touch_highs") or []:
+        di = _slice_index(chart_start, int(ti), slice_len)
+        if di is not None:
+            ax.scatter(
+                [mdates.date2num(candles[di].ts)],
+                [candles[di].high],
+                c=touch_c or "#ffb74d",
+                s=40,
+                zorder=6,
+                edgecolors="#fff",
+                linewidths=0.4,
+            )
+    for ti in meta.get("touch_lows") or []:
+        di = _slice_index(chart_start, int(ti), slice_len)
+        if di is not None:
+            ax.scatter(
+                [mdates.date2num(candles[di].ts)],
+                [candles[di].low],
+                c=touch_c or "#81c784",
+                s=40,
+                zorder=6,
+                edgecolors="#fff",
+                linewidths=0.4,
+            )
+
+
 def render_paper_position_chart(pos: dict[str, Any], *, mark: float | None = None) -> bytes | None:
-    """چارت BTCUSDT با خطوط ورود، SL، TP و مارک."""
+    """چارت BTCUSDT با خطوط ورود، SL، TP، مارک و ترندلاین الگو."""
     try:
         import matplotlib
 
@@ -29,13 +141,26 @@ def render_paper_position_chart(pos: dict[str, Any], *, mark: float | None = Non
         return None
 
     interval = _pick_interval(str(pos.get("timeframe") or ""))
+    win_n = WINDOW.get(interval, 120)
     try:
-        candles = fetch_btcusdt_klines(interval=interval, limit=120)
+        candles_all = fetch_btcusdt_klines(interval=interval, limit=win_n)
     except Exception as e:
         logger.warning("klines for paper chart: %s", e)
         return None
-    if len(candles) < 5:
+    if len(candles_all) < 5:
         return None
+
+    category, meta = _pattern_meta(pos)
+    chart_start = 0
+    if meta and category in ("trendline", "channel"):
+        chart_start, chart_end = _trendline_slice(len(candles_all), meta)
+        candles = candles_all[chart_start:chart_end]
+    else:
+        candles = candles_all
+
+    if len(candles) < 5:
+        candles = candles_all
+        chart_start = 0
 
     entry = float(pos["entry_price"])
     sl = float(pos["sl_price"])
@@ -63,6 +188,11 @@ def render_paper_position_chart(pos: dict[str, Any], *, mark: float | None = Non
                 edgecolor=color,
                 linewidth=0,
             )
+        )
+
+    if meta and category in ("trendline", "channel"):
+        _draw_trendline_overlay(
+            ax, candles, xs, meta, chart_start=chart_start, category=category
         )
 
     ax.axhline(entry, color="#fbbf24", linewidth=1.2, linestyle="-", label=f"Entry {entry:,.0f}")
