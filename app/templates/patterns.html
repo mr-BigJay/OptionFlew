@@ -35,7 +35,7 @@
     {% if hit.meta.get('entry_px') or hit.meta.get('tp_px') %}
     <p class="pattern-forecast"><strong>ورود / هدف:</strong>
       {% if hit.meta.get('entry_px') %}ورود ~{{ "{:,.0f}".format(hit.meta.entry_px) }}{% endif %}
-      {% if hit.meta.get('tp_px') %} · هدف ۰.۵٪ ~{{ "{:,.0f}".format(hit.meta.tp_px) }}{% endif %}
+      {% if hit.meta.get('tp_px') %} · strike هدف ~{{ "{:,.0f}".format(hit.meta.tp_px) }}{% endif %}
       {% if hit.meta.get('path_pct') is not none %} · مسیر تا الان {{ "{:+.2f}".format(hit.meta.path_pct * 100) }}٪{% endif %}
     </p>
     {% endif %}
