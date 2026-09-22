@@ -50,7 +50,7 @@
     {% endif %}
     {% if meta.get('tp_px') %}
     <div class="metric-box">
-      <span class="metric-label">هدف TP</span>
+      <span class="metric-label">{% if event.category == 'meaningful_behavior' %}strike هدف{% else %}هدف TP{% endif %}</span>
       <span class="metric-val">{{ "{:,.0f}".format(meta.tp_px) }}</span>
     </div>
     {% endif %}

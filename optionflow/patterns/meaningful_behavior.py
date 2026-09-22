@@ -10,14 +10,14 @@ from optionflow.patterns.ohlc import OhlcBar
 from optionflow.patterns.types import PatternHit
 
 # رفتار معنادار — فلو آپشن Deribit (مستقل از الگوهای کندلی)
-TAKE_PROFIT_PCT = 0.005
 SURGE_RATIO = 2.2
 MIN_BURST_BTC = 28.0
 MIN_BASELINE_BTC = 8.0
 
-# burst = آخرین N دقیقه؛ baseline = کل پنجرهٔ قبل از burst (فقط تایم‌فریم 1h)
+# burst = آخرین N دقیقه؛ baseline = ساعات قبل از burst (فقط 1h)
+# baseline بلندتر = میانگین «عادی» پایدارتر؛ surge باید واقعاً غیرعادی باشد
 WINDOW_CFG: dict[str, tuple[int, float]] = {
-    "1h": (20, 4.0),
+    "1h": (20, 12.0),
 }
 
 
@@ -71,6 +71,39 @@ def _alert_key(tf: str, pattern_id: str, end_ms: int, burst: float) -> str:
     return f"{tf}:{pattern_id}:{bucket}:{int(burst // 5)}"
 
 
+def _parse_dominant_strikes(meta: dict[str, Any]) -> list[float]:
+    raw = meta.get("dominant_strikes") or []
+    out: list[float] = []
+    for item in raw:
+        if isinstance(item, (list, tuple)) and len(item) >= 1:
+            try:
+                out.append(float(item[0]))
+            except (TypeError, ValueError):
+                continue
+    return out
+
+
+def _flow_target_price(
+    meta: dict[str, Any], entry_px: float
+) -> tuple[float | None, str]:
+    """هدف spot = strike اصلی که قراردادهای جدید روی آن متمرکز شده‌اند."""
+    direction = meta.get("direction")
+    strikes = _parse_dominant_strikes(meta)
+    if not strikes or entry_px <= 0:
+        return None, "strike هدف مشخص نشد"
+    # top_strikes: اولین = پرحجم‌ترین
+    primary = strikes[0]
+    if direction == "up":
+        above = [s for s in strikes if s > entry_px]
+        tp = above[0] if above else max(strikes)
+        return tp, f"رسیدن به strike کال {tp:,.0f}"
+    if direction == "down":
+        below = [s for s in strikes if s < entry_px]
+        tp = below[0] if below else min(strikes)
+        return tp, f"رسیدن به strike پوت {tp:,.0f}"
+    return primary, f"strike {primary:,.0f}"
+
+
 def evaluate_behavior_path(
     bars: list[OhlcBar],
     hit: PatternHit,
@@ -88,14 +121,13 @@ def evaluate_behavior_path(
     if entry_px <= 0:
         return None, "قیمت ورود نامعتبر است."
 
+    tp_px, tp_label = _flow_target_price(meta, entry_px)
+    if tp_px is None:
+        return None, tp_label
+
     start = entry_i + 1
     if start >= len(bars):
         return None, "کندل کافی بعد از ورود نبود."
-
-    if direction == "up":
-        tp_px = entry_px * (1 + TAKE_PROFIT_PCT)
-    else:
-        tp_px = entry_px * (1 - TAKE_PROFIT_PCT)
 
     exit_i: int | None = None
     exit_px: float | None = None
@@ -103,16 +135,16 @@ def evaluate_behavior_path(
     for i in range(start, len(bars)):
         b = bars[i]
         if direction == "up" and b.high >= tp_px:
-            exit_i, exit_px, reason = i, tp_px, "بستن در سود ۰.۵٪"
+            exit_i, exit_px, reason = i, tp_px, tp_label
             break
         if direction == "down" and b.low <= tp_px:
-            exit_i, exit_px, reason = i, tp_px, "بستن در سود ۰.۵٪"
+            exit_i, exit_px, reason = i, tp_px, tp_label
             break
 
     if exit_i is None:
         exit_i = len(bars) - 1
         exit_px = float(bars[exit_i].close)
-        reason = "پایان داده"
+        reason = "پایان داده — هدف strike"
 
     if direction == "up":
         pct = (exit_px - entry_px) / entry_px
@@ -125,9 +157,12 @@ def evaluate_behavior_path(
     meta["path_pct"] = pct
     meta["exit_reason"] = reason
     meta["tp_px"] = tp_px
-    ok = pct > 0
+    meta["target_strike"] = tp_px
+    ok = (direction == "up" and exit_px >= tp_px) or (
+        direction == "down" and exit_px <= tp_px
+    )
     note = (
-        f"مسیر spot از ورود تا {reason}: {pct * 100:+.2f}٪ "
+        f"مسیر spot: {reason} · {pct * 100:+.2f}٪ "
         f"({entry_px:,.0f} → {exit_px:,.0f})"
     )
     return ok, note
@@ -176,6 +211,7 @@ def detect_meaningful_behavior(
         top = top_strikes(b_calls, 2)
         strikes_s = "، ".join(f"{int(k):,}" for k, _ in top) if top else "—"
         alert_key = _alert_key(timeframe, "call_surge", end_ms, b_bc)
+        tp_hint = int(top[0][0]) if top else int(spot)
         hit = PatternHit(
             category="meaningful_behavior",
             timeframe=timeframe,
@@ -184,17 +220,19 @@ def detect_meaningful_behavior(
             status_fa="فعال",
             summary_fa=(
                 f"در {burst_min} دقیقهٔ اخیر حدود {b_bc:,.1f} BTC خرید کال "
-                f"(نسبت به میانگین ~{base_bc / baseline_minutes * burst_min:.1f} BTC در همان مدت قبل). "
+                f"(نسبت به میانگین ~{base_bc / baseline_minutes * burst_min:.1f} BTC در همان مدت، "
+                f"baseline {window_hours:g}h). "
                 f"strikeهای پرحجم: {strikes_s}. شاخص ~{spot:,.0f}."
             ),
             forecast_fa=(
-                "تمایل صعودی کوتاه‌مدت در فلو؛ ورود spot با هدف ۰.۵٪ سود "
-                f"(حدود {spot * (1 + TAKE_PROFIT_PCT):,.0f})."
+                "تمایل صعودی کوتاه‌مدت در فلو؛ "
+                f"هدف spot ≈ strike متمرکز خرید کال ({tp_hint:,})."
             ),
             meta={
                 "direction": "up",
                 "stage": "confirmed",
                 "burst_minutes": burst_min,
+                "baseline_hours": window_hours,
                 "burst_buy_call": b_bc,
                 "burst_buy_put": b_bp,
                 "baseline_buy_call": base_bc,
@@ -211,6 +249,7 @@ def detect_meaningful_behavior(
         top = top_strikes(b_puts, 2)
         strikes_s = "، ".join(f"{int(k):,}" for k, _ in top) if top else "—"
         alert_key = _alert_key(timeframe, "put_surge", end_ms, b_bp)
+        tp_hint = int(top[0][0]) if top else int(spot)
         hit = PatternHit(
             category="meaningful_behavior",
             timeframe=timeframe,
@@ -219,17 +258,19 @@ def detect_meaningful_behavior(
             status_fa="فعال",
             summary_fa=(
                 f"در {burst_min} دقیقهٔ اخیر حدود {b_bp:,.1f} BTC خرید پوت "
-                f"(نسبت به میانگین ~{base_bp / baseline_minutes * burst_min:.1f} BTC در همان مدت قبل). "
+                f"(نسبت به میانگین ~{base_bp / baseline_minutes * burst_min:.1f} BTC در همان مدت، "
+                f"baseline {window_hours:g}h). "
                 f"strikeهای پرحجم: {strikes_s}. شاخص ~{spot:,.0f}."
             ),
             forecast_fa=(
-                "تمایل محافظتی/نزولی کوتاه‌مدت؛ ورود spot با هدف ۰.۵٪ سود "
-                f"(حدود {spot * (1 - TAKE_PROFIT_PCT):,.0f})."
+                "تمایل محافظتی/نزولی کوتاه‌مدت؛ "
+                f"هدف spot ≈ strike متمرکز خرید پوت ({tp_hint:,})."
             ),
             meta={
                 "direction": "down",
                 "stage": "confirmed",
                 "burst_minutes": burst_min,
+                "baseline_hours": window_hours,
                 "burst_buy_call": b_bc,
                 "burst_buy_put": b_bp,
                 "baseline_buy_put": base_bp,

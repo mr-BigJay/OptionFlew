@@ -1,13 +1,13 @@
+from datetime import datetime, timedelta, timezone
+
 from optionflow.patterns.meaningful_behavior import (
     MIN_BURST_BTC,
     SURGE_RATIO,
     _surge_ok,
     evaluate_behavior_path,
 )
-from optionflow.patterns.types import PatternHit
-from datetime import datetime, timedelta, timezone
-
 from optionflow.patterns.ohlc import OhlcBar
+from optionflow.patterns.types import PatternHit
 
 
 def test_surge_requires_min_burst() -> None:
@@ -24,9 +24,10 @@ def test_surge_ratio() -> None:
     assert _surge_ok(need, baseline, minutes, burst_min)
 
 
-def test_behavior_path_tp_short() -> None:
+def test_behavior_path_reaches_strike_target() -> None:
     t0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
     px = 86000.0
+    tp = 86500.0
     bars = [
         OhlcBar(
             ts=t0 + timedelta(hours=i),
@@ -38,7 +39,6 @@ def test_behavior_path_tp_short() -> None:
         )
         for i in range(3)
     ]
-    tp = px * 1.005
     bars.append(
         OhlcBar(
             ts=t0 + timedelta(hours=3),
@@ -57,8 +57,13 @@ def test_behavior_path_tp_short() -> None:
         status_fa="",
         summary_fa="",
         forecast_fa="",
-        meta={"direction": "up", "entry_index": 0},
+        meta={
+            "direction": "up",
+            "entry_index": 0,
+            "dominant_strikes": [(86500.0, 120.0), (87000.0, 40.0)],
+        },
     )
     ok, _ = evaluate_behavior_path(bars, hit)
     assert ok is True
+    assert hit.meta["tp_px"] == tp
     assert hit.meta["exit_index"] == 3
