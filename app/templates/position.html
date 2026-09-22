@@ -68,16 +68,37 @@
   </div>
 
   <p class="pos-section-label">کارمزد صرافی <small class="pos-fee-note">سطح پایه · هر باز/بست = Taker × حجم</small></p>
-  <div class="pos-fee-grid">
-    {% for fp in fee_profiles %}
-    <label class="pos-fee-card {% if config.fee_profile_id == fp.id %}on{% endif %}">
-      <input type="radio" name="fee_profile_id" value="{{ fp.id }}" {% if config.fee_profile_id == fp.id %}checked{% endif %}>
-      <span class="pos-fee-name">{{ fp.label_fa }}</span>
-      <span class="pos-fee-tier">{{ fp.tier_note_fa }}</span>
-      <span class="pos-fee-rates">M {{ fp.maker_pct }}٪ · T {{ fp.taker_pct }}٪</span>
+  <div class="pos-fee-picker">
+    <label class="pos-fee-select-wrap">
+      <span>انتخاب صرافی</span>
+      <select name="fee_profile_id" id="pos-fee-select" class="pos-fee-select" aria-label="پروفایل کارمزد صرافی">
+        {% for fp in fee_profiles %}
+        <option value="{{ fp.id }}" {% if config.fee_profile_id == fp.id %}selected{% endif %}>{{ fp.label_fa }}</option>
+        {% endfor %}
+      </select>
     </label>
-    {% endfor %}
+    <div class="pos-fee-detail" id="pos-fee-detail">
+      {% for fp in fee_profiles %}
+      <div class="pos-fee-detail-pane" data-fee-id="{{ fp.id }}" {% if config.fee_profile_id != fp.id %}hidden{% endif %}>
+        <p class="pos-fee-detail-name">{{ fp.label_fa }}</p>
+        <p class="pos-fee-detail-tier">{{ fp.tier_note_fa }}</p>
+        <p class="pos-fee-detail-rates">Maker {{ fp.maker_pct }}٪ · Taker {{ fp.taker_pct }}٪</p>
+        <p class="pos-fee-detail-src">{{ fp.source_note_fa }}</p>
+      </div>
+      {% endfor %}
+    </div>
   </div>
+  <script>
+  (function () {
+    var sel = document.getElementById("pos-fee-select");
+    if (!sel) return;
+    sel.addEventListener("change", function () {
+      document.querySelectorAll(".pos-fee-detail-pane").forEach(function (el) {
+        el.hidden = el.getAttribute("data-fee-id") !== sel.value;
+      });
+    });
+  })();
+  </script>
 
   <details class="pos-details" open>
     <summary>الگوها <span class="pos-count">{{ config.pattern_categories|length }}/{{ pattern_categories|length }}</span></summary>

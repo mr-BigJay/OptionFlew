@@ -1986,44 +1986,60 @@ bdi[dir="ltr"] {
   color: var(--muted);
   font-size: 0.68rem;
 }
-.pos-fee-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-  margin-bottom: 10px;
-}
-.pos-fee-card {
+.pos-fee-picker { margin-bottom: 10px; }
+.pos-fee-select-wrap {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 8px 9px;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.pos-fee-select-wrap > span {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+.pos-fee-select {
+  width: 100%;
+  padding: 10px 12px;
   border-radius: 10px;
   border: 1px solid var(--border);
-  background: rgba(0, 0, 0, 0.18);
+  background: #0d1117;
+  color: var(--text);
+  font-size: 0.85rem;
+  font-family: inherit;
   cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%2394a3b8' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: left 12px center;
+  padding-left: 32px;
+}
+.pos-fee-detail-pane {
+  border: 1px solid rgba(45, 212, 191, 0.35);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: rgba(45, 212, 191, 0.06);
+}
+.pos-fee-detail-pane[hidden] { display: none !important; }
+.pos-fee-detail-name {
+  margin: 0 0 4px;
+  font-weight: 600;
+  font-size: 0.82rem;
+}
+.pos-fee-detail-tier {
+  margin: 0 0 6px;
   font-size: 0.72rem;
-  line-height: 1.25;
-  transition: border-color 0.15s, background 0.15s;
+  color: var(--muted);
 }
-.pos-fee-card input {
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
-}
-.pos-fee-card.on,
-.pos-fee-card:has(input:checked) {
-  border-color: rgba(45, 212, 191, 0.55);
-  background: rgba(45, 212, 191, 0.08);
-}
-.pos-fee-name { font-weight: 600; font-size: 0.78rem; color: var(--text); }
-.pos-fee-tier { color: var(--muted); font-size: 0.68rem; }
-.pos-fee-rates {
+.pos-fee-detail-rates {
+  margin: 0 0 4px;
+  font-size: 0.78rem;
   color: var(--accent);
-  font-size: 0.68rem;
-  margin-top: 2px;
 }
-@media (max-width: 420px) {
-  .pos-fee-grid { grid-template-columns: 1fr; }
+.pos-fee-detail-src {
+  margin: 0;
+  font-size: 0.68rem;
+  color: var(--muted);
+  line-height: 1.35;
 }
 
 .pos-details {
