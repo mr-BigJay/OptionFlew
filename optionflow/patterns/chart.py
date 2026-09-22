@@ -218,6 +218,19 @@ def _mark_signal_and_forward(
     ax.axvline(x_sig, color=edge, linewidth=1.2, linestyle=":", alpha=0.9, zorder=4)
 
 
+def _global_bar_idx(meta: dict[str, Any], idx: int, n_bars: int) -> int:
+    """start_i/end_i/touch بعد از shift سراسری‌اند؛ در detect محلی + window_offset."""
+    wo = int(meta.get("window_offset") or 0)
+    idx = int(idx)
+    if idx < 0:
+        return 0
+    if idx >= n_bars:
+        return n_bars - 1
+    if wo > 0 and idx < wo:
+        return min(n_bars - 1, wo + idx)
+    return idx
+
+
 def _trendline_y(meta: dict[str, Any], global_i: int) -> float | None:
     wo = int(meta.get("window_offset") or 0)
     i_loc = global_i - wo
@@ -336,7 +349,7 @@ def _mark_trendline_touches(
         return
     wo = int(meta.get("window_offset") or 0)
     for ti in meta.get("touch_highs") or []:
-        gi = wo + int(ti)
+        gi = _global_bar_idx(meta, int(ti), len(bars))
         if start <= gi < end:
             y = _trendline_y(meta, gi)
             py = y if y is not None else bars[gi].high
@@ -350,7 +363,7 @@ def _mark_trendline_touches(
                 linewidths=0.45,
             )
     for ti in meta.get("touch_lows") or []:
-        gi = wo + int(ti)
+        gi = _global_bar_idx(meta, int(ti), len(bars))
         if start <= gi < end:
             y = _trendline_y(meta, gi)
             py = y if y is not None else bars[gi].low
@@ -573,7 +586,8 @@ def _render_price_pattern(
     elif hit.category in ("trendline", "channel"):
         wo = int(meta.get("window_offset") or max(0, len(bars) - 120))
         i0, i1 = meta.get("start_i", 0), meta.get("end_i", len(bars) - wo - 1)
-        g0, g1 = wo + int(i0), wo + int(i1)
+        g0 = _global_bar_idx(meta, int(i0), len(bars))
+        g1 = _global_bar_idx(meta, int(i1), len(bars))
         exit_i = meta.get("exit_index") if hit.category == "trendline" else None
         if isinstance(exit_i, int) and 0 <= exit_i < len(bars):
             g1 = max(g1, exit_i)
