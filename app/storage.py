@@ -36,6 +36,7 @@ def users_db_path() -> Path:
 def connect() -> Iterator[sqlite3.Connection]:
     conn = sqlite3.connect(db_path())
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout = 5000")
     try:
         yield conn
         conn.commit()
@@ -114,6 +115,9 @@ def init_db() -> None:
     from app.pattern_store import init_pattern_events_db
 
     init_pattern_events_db()
+    from app.position_store import init_position_db
+
+    init_position_db()
 
 
 def _upsert_scheduled(conn: sqlite3.Connection, row: dict[str, Any]) -> int:

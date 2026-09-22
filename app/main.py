@@ -47,6 +47,20 @@ from app.jobs import (
     run_scheduled_behavior_scan,
 )
 from app.pattern_store import get_pattern_event, list_all_pattern_events, list_pattern_events
+from app.paper_engine import latest_btc_price, process_signals_for_user, unrealized_pnl
+from app.position_store import (
+    PATTERN_CATEGORIES,
+    REPORT_KINDS,
+    SCALP_SCENARIOS,
+    close_position,
+    deposit,
+    get_config,
+    get_wallet,
+    list_ledger,
+    list_positions,
+    locked_margin,
+    save_config,
+)
 from app.storage import (
     data_dir,
     ensure_report_chart,
@@ -194,6 +208,35 @@ def _category_fa(category: str) -> str:
         "ema50": "EMA50",
         "meaningful_behavior": "رفتار معنادار",
     }.get(category, category)
+
+
+def _position_status_fa(status: str) -> str:
+    return {
+        "open": "باز",
+        "closed_tp": "بسته — TP",
+        "closed_sl": "بسته — SL",
+        "closed_manual": "بسته — دستی",
+        "closed_liquidated": "لیکوئید",
+    }.get(status, status)
+
+
+def _position_source_fa(source_type: str) -> str:
+    return {
+        "pattern": "الگو",
+        "report": "گزارش",
+        "scalp": "اسکلپ",
+    }.get(source_type, source_type)
+
+
+def _ledger_kind_fa(kind: str) -> str:
+    return {
+        "deposit": "واریز",
+        "fee_open": "کارمزد باز",
+        "fee_close": "کارمزد بست",
+        "margin_lock": "قفل مارجین",
+        "margin_release": "آزاد مارجین",
+        "pnl": "سود/زیان",
+    }.get(kind, kind)
 
 
 BACKTEST_TABS = ("triangle", "flag", "divergence", "trendline", "channel", "ema50")
@@ -1058,6 +1101,120 @@ async def patterns_refresh(category: str = Form("triangle")):
         invalidate_pattern_cache()
         get_cached_scan(_patterns_dir)
     return RedirectResponse(f"/patterns/{category}", status_code=303)
+
+
+@app.get("/position", response_class=HTMLResponse)
+async def position_page(request: Request, tab: str = "wallet", msg: str = "", err: str = ""):
+    user = current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    uid = int(user["id"])
+    if tab not in ("wallet", "settings", "open", "report"):
+        tab = "wallet"
+    process_signals_for_user(uid)
+    wallet = get_wallet(uid)
+    cfg = get_config(uid)
+    mark = latest_btc_price()
+    open_pos = list_positions(uid, status="open", limit=30)
+    closed = [p for p in list_positions(uid, limit=80) if p.get("status") != "open"]
+    ledger = list_ledger(uid, limit=40)
+    return templates.TemplateResponse(
+        request,
+        "position.html",
+        _page_ctx(
+            request,
+            active="position",
+            tab=tab,
+            msg=msg,
+            err=err,
+            wallet=wallet,
+            config=cfg,
+            locked_margin=locked_margin(uid),
+            mark_price=mark,
+            open_positions=open_pos,
+            closed_positions=closed,
+            ledger=ledger,
+            pattern_categories=PATTERN_CATEGORIES,
+            scalp_scenarios=SCALP_SCENARIOS,
+            report_kinds=REPORT_KINDS,
+            category_fa=_category_fa,
+            status_fa=_position_status_fa,
+            source_fa=_position_source_fa,
+            ledger_fa=_ledger_kind_fa,
+            unrealized=unrealized_pnl,
+        ),
+    )
+
+
+@app.post("/position/wallet/deposit")
+async def position_deposit(request: Request, amount: str = Form(...)):
+    user = current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    try:
+        val = float(amount.replace(",", "."))
+        deposit(int(user["id"]), val)
+        return RedirectResponse("/position?tab=wallet&msg=واریز+انجام+شد", status_code=303)
+    except (ValueError, TypeError):
+        return RedirectResponse("/position?tab=wallet&err=مبلغ+نامعتبر", status_code=303)
+
+
+@app.post("/position/settings")
+async def position_settings_save(request: Request):
+    user = current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    form = await request.form()
+    uid = int(user["id"])
+    try:
+        save_config(
+            uid,
+            enabled=form.get("enabled") == "1",
+            margin_usdt=float(form.get("margin_usdt") or 100),
+            leverage=float(form.get("leverage") or 5),
+            stop_loss_pct=float(form.get("stop_loss_pct") or 1),
+            take_profit_pct=float(form.get("take_profit_pct") or 0.5),
+            fee_rate=float(form.get("fee_rate") or 0.0004),
+            pattern_categories=form.getlist("pattern_categories"),
+            scalp_scenarios=form.getlist("scalp_scenarios"),
+            report_kinds=form.getlist("report_kinds"),
+        )
+        return RedirectResponse("/position?tab=settings&msg=ذخیره+شد", status_code=303)
+    except (ValueError, TypeError):
+        return RedirectResponse("/position?tab=settings&err=ورودی+نامعتبر", status_code=303)
+
+
+@app.post("/position/run")
+async def position_run_scan(request: Request):
+    user = current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    uid = int(user["id"])
+    stats = process_signals_for_user(uid)
+    msg = f"باز+{stats['opened']}+·+بسته+{stats['closed']}"
+    return RedirectResponse(f"/position?tab=open&msg={msg}", status_code=303)
+
+
+@app.post("/position/close/{position_id}")
+async def position_close_manual(request: Request, position_id: int):
+    user = current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    uid = int(user["id"])
+    cfg = get_config(uid)
+    mark = latest_btc_price()
+    if mark is None:
+        return RedirectResponse("/position?tab=open&err=قیمت+نامشخص", status_code=303)
+    ok = close_position(
+        uid,
+        position_id,
+        exit_price=mark,
+        status="closed_manual",
+        fee_rate=float(cfg["fee_rate"]),
+    )
+    if not ok:
+        return RedirectResponse("/position?tab=open&err=پوزیشن+پیدا+نشد", status_code=303)
+    return RedirectResponse("/position?tab=report&msg=بسته+شد", status_code=303)
 
 
 @app.get("/telegram", response_class=HTMLResponse)
