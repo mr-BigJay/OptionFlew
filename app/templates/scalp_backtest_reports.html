@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}گزارش بکتست اسکلپ — OptionFlow{% endblock %}
+{% block header %}<span class="header-title">بکتست اسکلپ</span>{% endblock %}
+{% block subheader %}
+<nav class="backtest-subnav">
+  <a href="/scalp/backtest">بکتست جدید</a>
+  <a href="/scalp">اسکلپ</a>
+</nav>
+{% endblock %}
+
+{% block content %}
+<section class="pattern-section">
+  <h2 class="section-title">اجراهای اخیر</h2>
+  {% if runs %}
+  {% for r in runs %}
+  <a href="/scalp/backtest/reports/{{ r.id }}" class="bt-archive-row status-{{ r.status }}">
+    <span>#{{ r.id }} · {{ scenario_labels.get(r.scenario_id, r.scenario_id) }}</span>
+    <span>{{ r.timeframe }} · {{ fmt_date(r.from_iso) }} – {{ fmt_date(r.to_iso) }}</span>
+    <span>{{ r.status }} · ✓{{ r.success_count }} ✗{{ r.fail_count }}</span>
+  </a>
+  {% endfor %}
+  {% else %}
+  <div class="empty card"><p>هنوز بکتست اسکلپ اجرا نشده.</p></div>
+  {% endif %}
+</section>
+{% endblock %}

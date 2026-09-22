@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}اسکلپ — OptionFlow{% endblock %}
+{% block header %}<span class="header-title">⚡ اسکلپ</span>{% endblock %}
+{% block subheader %}
+<p class="home-schedule muted">سناریوهای کوتاه‌مدت · ورود / استاپ / TP · مستقل از الگوها</p>
+{% endblock %}
+
+{% block content %}
+<section class="pattern-section" aria-labelledby="scalp-scenarios-head">
+  <h2 id="scalp-scenarios-head" class="section-title">سناریوها</h2>
+  {% if is_admin %}
+  <p class="muted bt-hint"><a href="/scalp/backtest">بکتست اسکلپ</a> · <a href="/scalp/backtest/reports">آرشیو بکتست</a></p>
+  {% endif %}
+  <div class="pattern-nav-grid">
+    {% for sc in scenarios %}
+    <a href="/scalp/scenario/{{ sc.scenario_id }}" class="pattern-nav-card pattern-nav-card-compact">
+      <span class="pattern-nav-title">{{ sc.title_fa }}</span>
+      <span class="muted" style="font-size:0.75rem;display:block;margin-top:0.25rem">
+        {% if sc.enabled %}فعال{% else %}غیرفعال{% endif %}
+        · {{ sc.timeframes|join(' / ') }}
+      </span>
+    </a>
+    {% endfor %}
+  </div>
+</section>
+
+<form class="patterns-refresh" method="post" action="/scalp/refresh">
+  <button type="submit" class="btn secondary">به‌روزرسانی اسکن اسکلپ</button>
+</form>
+
+<section class="pattern-section" aria-labelledby="scalp-feed-head">
+  <h2 id="scalp-feed-head" class="section-title">۲۴ ساعت گذشته · سیگنال‌ها</h2>
+  {% if grouped_recent %}
+  {% for day_key, items in grouped_recent %}
+  <section class="timeline-section">
+    <h2 class="timeline-day-title">
+      <span class="cal-icon" aria-hidden="true">📅</span>
+      {{ fmt_date_header(items[0].created_at) }}
+    </h2>
+    <div class="timeline">
+      {% for r in items %}
+      {% set meta = r.meta or {} %}
+      <div class="timeline-item kind-pattern">
+        <div class="timeline-rail">
+          <span class="timeline-time">{{ fmt_time(r.created_at) }}</span>
+          <span class="timeline-dot" aria-hidden="true"></span>
+        </div>
+        <a href="/scalp/event/{{ r.id }}" class="timeline-card">
+          <span class="timeline-play" aria-hidden="true">▶</span>
+          <div class="timeline-body">
+            <div class="timeline-top">
+              <span class="kind-pill">{{ r.title_fa }}</span>
+              <span class="kind-pill">{{ r.timeframe }}</span>
+              {% if meta.get('direction') == 'up' %}
+              <span class="bias-mini bias-bull">↑</span>
+              {% elif meta.get('direction') == 'down' %}
+              <span class="bias-mini bias-bear">↓</span>
+              {% endif %}
+            </div>
+            <p class="timeline-preview">{{ r.summary_fa[:160] }}{% if r.summary_fa|length > 160 %}…{% endif %}</p>
+          </div>
+        </a>
+      </div>
+      {% endfor %}
+      <div class="timeline-end-cap" aria-hidden="true"></div>
+    </div>
+  </section>
+  {% endfor %}
+  {% else %}
+  <div class="empty card"><p>هنوز سیگنال اسکلپ ثبت نشده. سناریو را فعال کنید و «به‌روزرسانی اسکن» بزنید.</p></div>
+  {% endif %}
+</section>
+{% endblock %}

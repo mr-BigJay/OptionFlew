@@ -39,6 +39,18 @@ from app.auth_store import (
 )
 from app.backtest_jobs import request_cancel_backtest, start_backtest_job
 from app.backtest_store import get_backtest_run, list_backtest_runs
+from app.scalp_backtest_jobs import (
+    request_cancel_scalp_backtest,
+    start_scalp_backtest_job,
+)
+from app.scalp_backtest_store import get_scalp_backtest_run, list_scalp_backtest_runs
+from app.scalp_store import (
+    get_scalp_event,
+    get_scenario,
+    list_scalp_events,
+    list_scenarios,
+    update_scenario_settings,
+)
 from app.history_jobs import history_download_state, start_history_download
 from app.jobs import (
     run_scheduled_4h_report,
@@ -96,6 +108,11 @@ from optionflow.patterns.service import (
 )
 from optionflow.patterns.ohlc import OhlcBar, load_btcusdt
 from optionflow.patterns.types import PatternHit
+from optionflow.scalp.service import (
+    get_cached_scalp_scan,
+    invalidate_scalp_cache,
+    scalp_cache_timestamp,
+)
 from optionflow.price_levels import fetch_price_levels
 from optionflow.tehran_time import (
     CRON_4H_HOURS,
@@ -1132,6 +1149,213 @@ async def backtest_start(
         target_profit_pct=tp,
     )
     return RedirectResponse(f"/backtest?tab={tab}&run_id={run_id}", status_code=303)
+
+
+SCALP_BT_TF_LABELS = {
+    "5m": "۵ دقیقه",
+    "15m": "۱۵ دقیقه",
+    "1h": "۱ ساعت",
+    "4h": "۴ ساعت",
+}
+
+
+def _scalp_scenario_labels() -> dict[str, str]:
+    return {s["scenario_id"]: s["title_fa"] for s in list_scenarios()}
+
+
+@app.get("/scalp", response_class=HTMLResponse)
+async def scalp_menu(request: Request):
+    try:
+        get_cached_scalp_scan(_patterns_dir, list_scenarios(enabled_only=True))
+    except Exception:
+        logger.exception("scalp menu scan failed")
+    start_iso = (
+        datetime.now(timezone.utc) - timedelta(hours=24)
+    ).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    recent = list_scalp_events(start_iso=start_iso, limit=200)
+    grouped_recent = _group_by_date(recent)
+    return templates.TemplateResponse(
+        request,
+        "scalp_menu.html",
+        _page_ctx(
+            request,
+            active="scalp",
+            scenarios=list_scenarios(),
+            grouped_recent=grouped_recent,
+        ),
+    )
+
+
+@app.get("/scalp/scenario/{scenario_id}", response_class=HTMLResponse)
+async def scalp_scenario_page(request: Request, scenario_id: str):
+    scenario = get_scenario(scenario_id)
+    if not scenario:
+        return RedirectResponse("/scalp", status_code=302)
+    items = list_scalp_events(scenario_id=scenario_id, limit=120)
+    grouped = _group_by_date(items)
+    return templates.TemplateResponse(
+        request,
+        "scalp_scenario.html",
+        _page_ctx(
+            request,
+            active="scalp",
+            scenario=scenario,
+            grouped=grouped,
+        ),
+    )
+
+
+@app.post("/scalp/scenario/{scenario_id}/settings")
+async def scalp_scenario_settings(
+    request: Request,
+    scenario_id: str,
+    enabled: str = Form(""),
+    tp_rr: float = Form(1.5),
+    stop_atr_mult: float = Form(0.4),
+    max_hold_bars: int = Form(24),
+):
+    user = current_user(request)
+    if not user or not user.get("is_admin"):
+        return RedirectResponse("/scalp", status_code=303)
+    sc = get_scenario(scenario_id)
+    if not sc:
+        return RedirectResponse("/scalp", status_code=303)
+    params = dict(sc.get("params") or {})
+    params["tp_rr"] = tp_rr
+    params["stop_atr_mult"] = stop_atr_mult
+    params["max_hold_bars"] = max_hold_bars
+    update_scenario_settings(
+        scenario_id, enabled=bool(enabled), params=params
+    )
+    invalidate_scalp_cache()
+    return RedirectResponse(f"/scalp/scenario/{scenario_id}", status_code=303)
+
+
+@app.get("/scalp/event/{event_id}", response_class=HTMLResponse)
+async def scalp_event_detail(request: Request, event_id: int):
+    event = get_scalp_event(event_id)
+    if not event:
+        return RedirectResponse("/scalp", status_code=302)
+    return templates.TemplateResponse(
+        request,
+        "scalp_event.html",
+        _page_ctx(
+            request,
+            active="scalp",
+            event=event,
+            cache_ts=scalp_cache_timestamp(),
+        ),
+    )
+
+
+@app.post("/scalp/refresh")
+async def scalp_refresh():
+    invalidate_scalp_cache()
+    get_cached_scalp_scan(_patterns_dir, list_scenarios(enabled_only=True))
+    return RedirectResponse("/scalp", status_code=303)
+
+
+@app.get("/scalp/backtest", response_class=HTMLResponse)
+async def scalp_backtest_page(
+    request: Request,
+    scenario_id: str = "range_break",
+    run_id: int = 0,
+):
+    scenarios = list_scenarios()
+    ids = {s["scenario_id"] for s in scenarios}
+    if scenario_id not in ids:
+        scenario_id = scenarios[0]["scenario_id"] if scenarios else "range_break"
+    active_run = get_scalp_backtest_run(run_id) if run_id else None
+    return templates.TemplateResponse(
+        request,
+        "scalp_backtest.html",
+        _page_ctx(
+            request,
+            active="scalp",
+            scenarios=scenarios,
+            scenario_id=scenario_id,
+            run_id=run_id,
+            active_run=active_run,
+            bt_tf_labels=SCALP_BT_TF_LABELS,
+        ),
+    )
+
+
+@app.get("/scalp/backtest/reports", response_class=HTMLResponse)
+async def scalp_backtest_reports(request: Request):
+    runs = list_scalp_backtest_runs(limit=60)
+    return templates.TemplateResponse(
+        request,
+        "scalp_backtest_reports.html",
+        _page_ctx(
+            request,
+            active="scalp",
+            runs=runs,
+            scenario_labels=_scalp_scenario_labels(),
+        ),
+    )
+
+
+@app.get("/scalp/backtest/reports/{run_id}", response_class=HTMLResponse)
+async def scalp_backtest_report_detail(request: Request, run_id: int):
+    run = get_scalp_backtest_run(run_id)
+    if not run:
+        return RedirectResponse("/scalp/backtest/reports", status_code=302)
+    labels = _scalp_scenario_labels()
+    return templates.TemplateResponse(
+        request,
+        "scalp_backtest_report_detail.html",
+        _page_ctx(
+            request,
+            active="scalp",
+            run=run,
+            scenario_label=labels.get(run["scenario_id"], run["scenario_id"]),
+        ),
+    )
+
+
+@app.get("/scalp/backtest/api/run/{run_id}")
+async def scalp_backtest_run_api(run_id: int):
+    run = get_scalp_backtest_run(run_id)
+    if not run:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return JSONResponse(
+        {
+            "id": run["id"],
+            "status": run["status"],
+            "progress_pct": run.get("progress_pct", 0),
+            "success_count": run.get("success_count", 0),
+            "fail_count": run.get("fail_count", 0),
+            "findings_count": run.get("findings_count", 0),
+            "error_message": run.get("error_message") or "",
+        }
+    )
+
+
+@app.post("/scalp/backtest/api/run/{run_id}/cancel")
+async def scalp_backtest_cancel(request: Request, run_id: int):
+    request_cancel_scalp_backtest(run_id)
+    referer = request.headers.get("referer") or "/scalp/backtest/reports"
+    return RedirectResponse(referer, status_code=303)
+
+
+@app.post("/scalp/backtest/start")
+async def scalp_backtest_start(
+    scenario_id: str = Form(...),
+    timeframe: str = Form(...),
+    date_from: str = Form(...),
+    date_to: str = Form(...),
+):
+    if get_scenario(scenario_id) is None:
+        return RedirectResponse("/scalp/backtest", status_code=303)
+    run_id = start_scalp_backtest_job(
+        scenario_id=scenario_id,
+        timeframe=timeframe,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    q = urlencode({"scenario_id": scenario_id, "run_id": run_id})
+    return RedirectResponse(f"/scalp/backtest?{q}", status_code=303)
 
 
 @app.post("/patterns/refresh")
