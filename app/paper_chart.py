@@ -5,7 +5,8 @@ import logging
 from typing import Any
 
 from app.pattern_store import get_pattern_event_by_key
-from optionflow.patterns.trendline import WINDOW
+from optionflow.patterns.ohlc import OhlcBar
+from optionflow.patterns.trendline import WINDOW, detect_channel, detect_trendline
 from optionflow.scenario_chart import fetch_btcusdt_klines
 
 logger = logging.getLogger("optionflow.paper.chart")
@@ -30,6 +31,26 @@ def _pattern_meta(pos: dict[str, Any]) -> tuple[str | None, dict[str, Any] | Non
         return cat, None
     meta = ev.get("meta")
     return cat, meta if isinstance(meta, dict) else None
+
+
+def _klines_to_bars(candles) -> list[OhlcBar]:
+    return [
+        OhlcBar(c.ts, c.open, c.high, c.low, c.close, 0.0)
+        for c in candles
+    ]
+
+
+def _redetect_meta(bars: list[OhlcBar], interval: str, category: str) -> dict[str, Any] | None:
+    """ترندلاین روی همان پنجرهٔ کندل فعلی (هم‌تراز با قیمت)."""
+    if category == "trendline":
+        hit = detect_trendline(bars, interval, allow_early=True)
+    elif category == "channel":
+        hit = detect_channel(bars, interval, allow_early=True)
+    else:
+        return None
+    if not hit or not hit.meta:
+        return None
+    return dict(hit.meta)
 
 
 def _trendline_slice(n: int, meta: dict[str, Any]) -> tuple[int, int]:
@@ -69,17 +90,15 @@ def _draw_trendline_overlay(
     import matplotlib.dates as mdates
 
     slice_len = len(candles)
-    wi0 = max(int(meta.get("start_i") or 0), chart_start)
-    wi1 = int(meta.get("end_i") or (chart_start + slice_len - 1))
-    wi1 = max(wi0, min(wi1, chart_start + slice_len - 1))
-    di0 = _slice_index(chart_start, wi0, slice_len)
-    di1 = _slice_index(chart_start, wi1, slice_len)
-    if di0 is None or di1 is None:
+    wi_left = chart_start
+    wi_right = chart_start + slice_len - 1
+    di0, di1 = 0, slice_len - 1
+    if slice_len < 2:
         return
 
     def plot_seg(upper: bool, color: str, label: str) -> None:
-        y0 = _line_at(meta, wi0, upper=upper)
-        y1 = _line_at(meta, wi1, upper=upper)
+        y0 = _line_at(meta, wi_left, upper=upper)
+        y1 = _line_at(meta, wi_right, upper=upper)
         if y0 is None or y1 is None:
             return
         ax.plot(
@@ -151,9 +170,15 @@ def render_paper_position_chart(pos: dict[str, Any], *, mark: float | None = Non
         return None
 
     category, meta = _pattern_meta(pos)
+    bars_all = _klines_to_bars(candles_all)
+    draw_meta = meta
+    if category in ("trendline", "channel"):
+        fresh = _redetect_meta(bars_all, interval, category)
+        if fresh:
+            draw_meta = fresh
     chart_start = 0
-    if meta and category in ("trendline", "channel"):
-        chart_start, chart_end = _trendline_slice(len(candles_all), meta)
+    if draw_meta and category in ("trendline", "channel"):
+        chart_start, chart_end = _trendline_slice(len(candles_all), draw_meta)
         candles = candles_all[chart_start:chart_end]
     else:
         candles = candles_all
@@ -190,9 +215,9 @@ def render_paper_position_chart(pos: dict[str, Any], *, mark: float | None = Non
             )
         )
 
-    if meta and category in ("trendline", "channel"):
+    if draw_meta and category in ("trendline", "channel"):
         _draw_trendline_overlay(
-            ax, candles, xs, meta, chart_start=chart_start, category=category
+            ax, candles, xs, draw_meta, chart_start=chart_start, category=category
         )
 
     ax.axhline(entry, color="#fbbf24", linewidth=1.2, linestyle="-", label=f"Entry {entry:,.0f}")
@@ -200,6 +225,22 @@ def render_paper_position_chart(pos: dict[str, Any], *, mark: float | None = Non
     ax.axhline(tp, color="#34d399", linewidth=1.0, linestyle="--", label=f"TP {tp:,.0f}")
     if mark is not None and mark > 0:
         ax.axhline(mark, color="#60a5fa", linewidth=1.0, linestyle=":", label=f"Mark {mark:,.0f}")
+
+    y_vals: list[float] = [entry, sl, tp]
+    if mark is not None and mark > 0:
+        y_vals.append(mark)
+    for c in candles:
+        y_vals.extend([c.high, c.low])
+    if draw_meta and category in ("trendline", "channel"):
+        for wi in range(chart_start, chart_start + len(candles)):
+            for upper in (True, False):
+                y = _line_at(draw_meta, wi, upper=upper)
+                if y is not None:
+                    y_vals.append(y)
+    lo, hi = min(y_vals), max(y_vals)
+    span = max(hi - lo, hi * 0.001, 1.0)
+    pad = span * 0.08
+    ax.set_ylim(lo - pad, hi + pad)
 
     side = "Long" if direction == "long" else "Short"
     ax.set_title(f"{title} · {side} · {interval}", color="#e2e8f0", fontsize=10)
