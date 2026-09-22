@@ -84,10 +84,10 @@ def test_put_surge_target_is_below_spot() -> None:
         strikes=[88_000.0, 79_000.0],
         pattern_id="put_surge",
     )
-    assert "نزول" in text
+    assert "نزول" in text or "پایین" in text
     assert "79,000" in text
     assert "88,000" in text
-    assert "نه هدف صعود" in text
+    assert "بیمه" in text or "ضرر" in text
 
 
 def test_put_path_eval_down_to_strike() -> None:

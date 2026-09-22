@@ -105,6 +105,35 @@ def _flow_target_price(
     return strikes[0], f"strike {strikes[0]:,.0f}"
 
 
+def behavior_summary_fa(
+    *,
+    pattern_id: str,
+    burst_min: int,
+    burst_btc: float,
+    baseline_burst_btc: float,
+    strikes_s: str,
+    spot: float,
+) -> str:
+    """خلاصهٔ ساده برای کاربر تازه‌کار."""
+    ratio = burst_btc / baseline_burst_btc if baseline_burst_btc > 0 else 0.0
+    if ratio >= 1.5:
+        cmp_phrase = f"خیلی بیشتر از حالت عادی (حدود {ratio:.1f} برابر)"
+    elif ratio >= 1.1:
+        cmp_phrase = "بیشتر از حالت عادی"
+    else:
+        cmp_phrase = "نسبت به حالت عادی"
+    if pattern_id == "put_surge":
+        kind = "پوت (شرط «قیمت بیاید پایین»)"
+    else:
+        kind = "کال (شرط «قیمت برود بالا»)"
+    return (
+        f"در {burst_min} دقیقهٔ گذشته، خرید {kind} حدود {burst_btc:,.0f} BTC بود؛ "
+        f"در حالت عادی همان بازه حدود {baseline_burst_btc:,.0f} BTC است — {cmp_phrase}.\n"
+        f"قیمت بیت‌کوین الان حدود {spot:,.0f} دلار است.\n"
+        f"بیشترین حجم روی این سطح‌ها بوده: {strikes_s}."
+    )
+
+
 def behavior_forecast_fa(
     *,
     direction: str,
@@ -113,38 +142,40 @@ def behavior_forecast_fa(
     strikes: list[float],
     pattern_id: str,
 ) -> str:
-    """متن روشن: جهت spot + strike هدف + نقش strikeهای دیگر."""
+    """پیش‌بینی ساده: جهت spot + توضیح strikeها."""
     if tp_px is None or spot <= 0:
-        return "جهت نامشخص — strike هدف محاسبه نشد."
+        return "جهت روشن نیست — دادهٔ strike کافی نبود."
     move_pct = (tp_px - spot) / spot * 100.0
     if pattern_id == "put_surge" or direction == "down":
-        below = [s for s in strikes if s < spot]
-        above = [s for s in strikes if s > spot]
-        core = (
-            f"جهت پیش‌بینی spot: نزول کوتاه‌مدت (فلو خرید پوت = پوشش/شرط‌بندی نزولی). "
-            f"از ~{spot:,.0f} مسیر محتمل به ~{tp_px:,.0f} "
-            f"({move_pct:+.1f}٪ — strike پوت زیر قیمت)."
+        above = sorted((s for s in strikes if s > spot), reverse=True)
+        above_s = "، ".join(f"{int(s):,}" for s in above) if above else "—"
+        return (
+            "معنی سیگنال: کوتاه‌مدت بیشتر «نگرانی از پایین آمدن قیمت» دیده می‌شود "
+            "(خرید زیاد پوت).\n"
+            f"مسیر محتمل قیمت: از حدود {spot:,.0f} به سمت {tp_px:,.0f} "
+            f"(تقریباً {abs(move_pct):.0f}٪ پایین‌تر).\n"
+            f"سطح {above_s} (بالای قیمت الان): آنجا هم پوت زیاد خریده شده — "
+            "بیشتر شبیه «بیمه / اگر بازار بد شد ضرر کم شود»؛ "
+            "یعنی لازم نیست قیمت برود آن بالا.\n"
+            f"سطح {tp_px:,.0f} (زیر قیمت الان): در این تحلیل «سمت پایین» نشان داده می‌شود."
         )
-        if above:
-            extra = "، ".join(f"{int(s):,}" for s in sorted(above, reverse=True))
-            core += (
-                f" strikeهای بالاتر از قیمت ({extra}) = تمرکز پوت/پوشش، "
-                "نه هدف صعود spot."
-            )
-        return core
     if pattern_id == "call_surge" or direction == "up":
-        above = [s for s in strikes if s > spot]
-        below = [s for s in strikes if s < spot]
-        core = (
-            f"جهت پیش‌بینی spot: صعود کوتاه‌مدت (فلو خرید کال). "
-            f"از ~{spot:,.0f} مسیر محتمل به ~{tp_px:,.0f} "
-            f"({move_pct:+.1f}٪ — strike کال بالای قیمت)."
+        below = sorted((s for s in strikes if s < spot), reverse=True)
+        below_s = "، ".join(f"{int(s):,}" for s in below) if below else "—"
+        return (
+            "معنی سیگنال: کوتاه‌مدت بیشتر «امید به بالا رفتن قیمت» دیده می‌شود "
+            "(خرید زیاد کال).\n"
+            f"مسیر محتمل قیمت: از حدود {spot:,.0f} به سمت {tp_px:,.0f} "
+            f"(تقریباً {abs(move_pct):.0f}٪ بالاتر).\n"
+            + (
+                f"سطح {below_s} (پایین‌تر از قیمت): معاملهٔ زیاد آنجا بیشتر «پوشش» است، "
+                "نه هدف نزول قیمت.\n"
+                if below
+                else ""
+            )
+            + f"سطح {tp_px:,.0f}: در این تحلیل «سمت بالا» نشان داده می‌شود."
         )
-        if below:
-            extra = "، ".join(f"{int(s):,}" for s in sorted(below, reverse=True))
-            core += f" strikeهای پایین‌تر ({extra}) = پشتیبان/هج، نه هدف نزول."
-        return core
-    return f"جهت {direction}; هدف spot ≈ {tp_px:,.0f}."
+    return f"جهت {direction}; هدف حدود {tp_px:,.0f}."
 
 
 def evaluate_behavior_path(
@@ -262,6 +293,7 @@ def detect_meaningful_behavior(
             "dominant_strikes": top,
         }
         tp_px, _ = _flow_target_price(meta_pre, spot)
+        baseline_burst = base_bc / baseline_minutes * burst_min
         forecast = behavior_forecast_fa(
             direction="up",
             spot=spot,
@@ -269,18 +301,21 @@ def detect_meaningful_behavior(
             strikes=_parse_dominant_strikes(meta_pre),
             pattern_id="call_surge",
         )
+        summary = behavior_summary_fa(
+            pattern_id="call_surge",
+            burst_min=burst_min,
+            burst_btc=b_bc,
+            baseline_burst_btc=baseline_burst,
+            strikes_s=strikes_s,
+            spot=spot,
+        )
         hit = PatternHit(
             category="meaningful_behavior",
             timeframe=timeframe,
             pattern_id="call_surge",
-            title_fa="ورود معنادار خرید کال",
+            title_fa="سیگنال: خرید زیاد کال",
             status_fa="فعال",
-            summary_fa=(
-                f"در {burst_min} دقیقهٔ اخیر حدود {b_bc:,.1f} BTC خرید کال "
-                f"(نسبت به میانگین ~{base_bc / baseline_minutes * burst_min:.1f} BTC در همان مدت، "
-                f"baseline {window_hours:g}h). "
-                f"strikeهای پرحجم: {strikes_s}. شاخص ~{spot:,.0f}."
-            ),
+            summary_fa=summary,
             forecast_fa=forecast,
             meta={
                 "direction": "up",
@@ -309,6 +344,7 @@ def detect_meaningful_behavior(
             "dominant_strikes": top,
         }
         tp_px, _ = _flow_target_price(meta_pre, spot)
+        baseline_burst = base_bp / baseline_minutes * burst_min
         forecast = behavior_forecast_fa(
             direction="down",
             spot=spot,
@@ -316,18 +352,21 @@ def detect_meaningful_behavior(
             strikes=_parse_dominant_strikes(meta_pre),
             pattern_id="put_surge",
         )
+        summary = behavior_summary_fa(
+            pattern_id="put_surge",
+            burst_min=burst_min,
+            burst_btc=b_bp,
+            baseline_burst_btc=baseline_burst,
+            strikes_s=strikes_s,
+            spot=spot,
+        )
         hit = PatternHit(
             category="meaningful_behavior",
             timeframe=timeframe,
             pattern_id="put_surge",
-            title_fa="ورود معنادار خرید پوت",
+            title_fa="سیگنال: خرید زیاد پوت",
             status_fa="فعال",
-            summary_fa=(
-                f"در {burst_min} دقیقهٔ اخیر حدود {b_bp:,.1f} BTC خرید پوت "
-                f"(نسبت به میانگین ~{base_bp / baseline_minutes * burst_min:.1f} BTC در همان مدت، "
-                f"baseline {window_hours:g}h). "
-                f"strikeهای پرحجم: {strikes_s}. شاخص ~{spot:,.0f}."
-            ),
+            summary_fa=summary,
             forecast_fa=forecast,
             meta={
                 "direction": "down",
