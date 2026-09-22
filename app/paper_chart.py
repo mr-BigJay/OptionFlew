@@ -5,8 +5,11 @@ import logging
 from typing import Any
 
 from app.pattern_store import get_pattern_event_by_key
+from optionflow.patterns.chart import DIVERGENCE_BEFORE_PAD, render_pattern_chart
+from optionflow.patterns.divergence import detect_rsi_divergence
 from optionflow.patterns.ohlc import OhlcBar
 from optionflow.patterns.trendline import WINDOW, detect_channel, detect_trendline
+from optionflow.patterns.types import PatternHit
 from optionflow.scenario_chart import fetch_btcusdt_klines
 
 logger = logging.getLogger("optionflow.paper.chart")
@@ -19,18 +22,18 @@ def _pick_interval(timeframe: str) -> str:
     return "15m"
 
 
-def _pattern_meta(pos: dict[str, Any]) -> tuple[str | None, dict[str, Any] | None]:
+def _pattern_meta(pos: dict[str, Any]) -> tuple[str | None, dict[str, Any] | None, dict[str, Any] | None]:
     if str(pos.get("source_type") or "") != "pattern":
-        return None, None
+        return None, None, None
     sk = str(pos.get("source_key") or "")
     cat = sk.split(":", 1)[0] if ":" in sk else ""
-    if cat not in ("trendline", "channel"):
-        return cat or None, None
+    if cat not in ("trendline", "channel", "divergence"):
+        return cat or None, None, None
     ev = get_pattern_event_by_key(sk)
     if not ev:
-        return cat, None
+        return cat, None, None
     meta = ev.get("meta")
-    return cat, meta if isinstance(meta, dict) else None
+    return cat, meta if isinstance(meta, dict) else None, ev
 
 
 def _klines_to_bars(candles) -> list[OhlcBar]:
@@ -51,6 +54,44 @@ def _redetect_meta(bars: list[OhlcBar], interval: str, category: str) -> dict[st
     if not hit or not hit.meta:
         return None
     return dict(hit.meta)
+
+
+def _divergence_hit(
+    bars: list[OhlcBar],
+    interval: str,
+    ev: dict[str, Any] | None,
+    pos: dict[str, Any],
+) -> PatternHit | None:
+    meta = (ev or {}).get("meta") if ev else None
+    if isinstance(meta, dict) and meta.get("pivot_a") and meta.get("pivot_b"):
+        ia = int(meta["pivot_a"][0])
+        ib = int(meta["pivot_b"][0])
+        if 0 <= ia < len(bars) and 0 <= ib < len(bars):
+            return PatternHit(
+                category="divergence",
+                timeframe=str((ev or {}).get("timeframe") or interval),
+                pattern_id=str((ev or {}).get("pattern_id") or "rsi_div"),
+                title_fa=str((ev or {}).get("title_fa") or pos.get("signal_title") or "واگرایی RSI"),
+                status_fa=str((ev or {}).get("status_fa") or ""),
+                summary_fa=str((ev or {}).get("summary_fa") or ""),
+                forecast_fa=str((ev or {}).get("forecast_fa") or ""),
+                meta=meta,
+            )
+    return detect_rsi_divergence(bars, interval, allow_early=True)
+
+
+def _paper_hlines(pos: dict[str, Any], mark: float | None) -> list[tuple[float, str, str, str]]:
+    entry = float(pos["entry_price"])
+    sl = float(pos["sl_price"])
+    tp = float(pos["tp_price"])
+    lines: list[tuple[float, str, str, str]] = [
+        (entry, "#fbbf24", "-", f"Entry {entry:,.0f}"),
+        (sl, "#f87171", "--", f"SL {sl:,.0f}"),
+        (tp, "#34d399", "--", f"TP {tp:,.0f}"),
+    ]
+    if mark is not None and mark > 0:
+        lines.append((mark, "#60a5fa", ":", f"Mark {mark:,.0f}"))
+    return lines
 
 
 def _trendline_slice(n: int, meta: dict[str, Any]) -> tuple[int, int]:
@@ -160,7 +201,13 @@ def render_paper_position_chart(pos: dict[str, Any], *, mark: float | None = Non
         return None
 
     interval = _pick_interval(str(pos.get("timeframe") or ""))
+    category, meta, ev = _pattern_meta(pos)
+    if ev and ev.get("timeframe"):
+        interval = _pick_interval(str(ev["timeframe"]))
+
     win_n = WINDOW.get(interval, 120)
+    if category == "divergence":
+        win_n = max(win_n, 132)
     try:
         candles_all = fetch_btcusdt_klines(interval=interval, limit=win_n)
     except Exception as e:
@@ -169,8 +216,23 @@ def render_paper_position_chart(pos: dict[str, Any], *, mark: float | None = Non
     if len(candles_all) < 5:
         return None
 
-    category, meta = _pattern_meta(pos)
     bars_all = _klines_to_bars(candles_all)
+    if category == "divergence":
+        hit = _divergence_hit(bars_all, interval, ev, pos)
+        if hit:
+            sig = hit.meta.get("confirm_index") or hit.meta["pivot_b"][0]
+            half_pad = max(6, DIVERGENCE_BEFORE_PAD // 2)
+            png = render_pattern_chart(
+                bars_all,
+                hit,
+                signal_index=int(sig) if sig is not None else None,
+                forward_bars=12,
+                before_signal_pad=half_pad,
+                extra_hlines=_paper_hlines(pos, mark),
+            )
+            if png:
+                return png
+
     draw_meta = meta
     if category in ("trendline", "channel"):
         fresh = _redetect_meta(bars_all, interval, category)

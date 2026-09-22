@@ -18,6 +18,8 @@ FORWARD_BARS_DEFAULT = {
     "1d": 8,
 }
 CHART_AFTER_RATIO = 3
+DIVERGENCE_BEFORE_PAD = 24
+HLine = tuple[float, str, str, str]  # price, color, linestyle, label
 
 
 def chart_window_end(n: int, sig: int, start: int, *, tail_pad: int = 0) -> int:
@@ -33,6 +35,8 @@ def render_pattern_chart(
     signal_index: int | None = None,
     forward_bars: int | None = None,
     outcome_success: bool | None = None,
+    before_signal_pad: int | None = None,
+    extra_hlines: list[HLine] | None = None,
 ) -> bytes | None:
     try:
         import matplotlib
@@ -55,12 +59,19 @@ def render_pattern_chart(
         fwd = FORWARD_BARS_DEFAULT.get(hit.timeframe, 18)
 
     if hit.category == "divergence":
+        pad = (
+            before_signal_pad
+            if before_signal_pad is not None
+            else DIVERGENCE_BEFORE_PAD
+        )
         return _render_divergence(
             bars,
             hit,
             signal_index=signal_index,
             forward_bars=fwd or 0,
             outcome_success=outcome_success,
+            before_signal_pad=pad,
+            extra_hlines=extra_hlines,
         )
     return _render_price_pattern(
         bars,
@@ -860,6 +871,8 @@ def _render_divergence(
     signal_index: int | None,
     forward_bars: int,
     outcome_success: bool | None,
+    before_signal_pad: int = DIVERGENCE_BEFORE_PAD,
+    extra_hlines: list[HLine] | None = None,
 ) -> bytes | None:
     import matplotlib.dates as mdates
     import matplotlib.pyplot as plt
@@ -875,7 +888,7 @@ def _render_divergence(
     if isinstance(final_ix, int):
         idxs.append(final_ix)
     sig_ix = sig if isinstance(sig, int) else ib
-    start = max(0, min(idxs) - 24)
+    start = max(0, min(idxs) - before_signal_pad)
     end = chart_window_end(len(bars), sig_ix, start)
     slice_bars = bars[start:end]
     if len(slice_bars) < 10:
@@ -945,6 +958,10 @@ def _render_divergence(
     ax2.plot([x_a, x_b], [meta["rsi_a"], meta["rsi_b"]], color=line_color, linestyle="--", linewidth=1.2, alpha=0.9)
 
     _mark_early_entry(ax1, bars, meta, start, end)
+
+    if extra_hlines:
+        for price, color, ls, label in extra_hlines:
+            ax1.axhline(price, color=color, linewidth=1.1, linestyle=ls, label=label)
 
     if sig is not None and 0 <= sig < len(bars):
         _mark_signal_and_forward(ax1, xs, slice_bars, sig, start, forward_bars, outcome_success)
