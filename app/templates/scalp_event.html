@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}{{ event.title_fa }} — اسکلپ{% endblock %}
+{% block header %}<span class="header-title">{{ event.title_fa }}</span>{% endblock %}
+{% block subheader %}
+<p class="home-schedule muted">{{ event.timeframe }} · {{ fmt_dt(event.created_at) }}</p>
+{% endblock %}
+
+{% block content %}
+<p class="patterns-back"><a href="/scalp/scenario/{{ event.scenario_id }}">← سناریو</a></p>
+
+{% set meta = event.meta or {} %}
+<article class="home-report-card kind-pattern">
+  <header class="home-report-head">
+    <div class="home-report-badges">
+      <span class="type-pill">{{ event.timeframe }}</span>
+      <span class="bias-pill bias-neutral">{{ event.status_fa }}</span>
+    </div>
+  </header>
+
+  <div class="home-report-body report-prose">
+    {% if event.chart_file %}
+    <figure class="scenario-chart">
+      <div class="scenario-chart-frame">
+        <img
+          class="chart-preview"
+          src="/pattern-charts/{{ event.chart_file }}?v={{ cache_ts }}"
+          alt="چارت اسکلپ"
+          loading="lazy"
+        />
+      </div>
+    </figure>
+    {% endif %}
+    <p class="home-paragraph paragraph-justify">{{ event.summary_fa }}</p>
+    <p class="home-paragraph paragraph-justify"><strong>پیش‌بینی:</strong> {{ event.forecast_fa }}</p>
+  </div>
+
+  <footer class="home-metrics home-metrics-dense">
+    {% if meta.get('entry_px') %}
+    <div class="metric-box metric-spot">
+      <span class="metric-label">ورود</span>
+      <span class="metric-val">{{ "{:,.0f}".format(meta.entry_px) }}</span>
+    </div>
+    {% endif %}
+    {% if meta.get('stop_px') %}
+    <div class="metric-box">
+      <span class="metric-label">استاپ</span>
+      <span class="metric-val">{{ "{:,.0f}".format(meta.stop_px) }}</span>
+    </div>
+    {% endif %}
+    {% if meta.get('tp_px') %}
+    <div class="metric-box">
+      <span class="metric-label">TP</span>
+      <span class="metric-val">{{ "{:,.0f}".format(meta.tp_px) }}</span>
+    </div>
+    {% endif %}
+    {% if meta.get('tp_rr') %}
+    <div class="metric-box">
+      <span class="metric-label">R</span>
+      <span class="metric-val">×{{ meta.tp_rr }}</span>
+    </div>
+    {% endif %}
+    {% if meta.get('path_pct') is not none %}
+    <div class="metric-box">
+      <span class="metric-label">مسیر</span>
+      <span class="metric-val">{{ "{:+.2f}".format(meta.path_pct * 100) }}٪</span>
+    </div>
+    {% endif %}
+    {% if meta.get('exit_reason') %}
+    <div class="metric-box">
+      <span class="metric-label">خروج</span>
+      <span class="metric-val" style="font-size:0.72rem">{{ meta.exit_reason }}</span>
+    </div>
+    {% endif %}
+  </footer>
+</article>
+{% endblock %}

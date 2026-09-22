@@ -521,6 +521,85 @@ def _render_price_pattern(
         if isinstance(meta.get("exit_index"), int):
             _mark_trendline_path(ax, xs, start, meta, outcome_success)
 
+    elif hit.category == "scalp":
+        import matplotlib.dates as mdates
+
+        entry_px = meta.get("entry_px")
+        stop_px = meta.get("stop_px")
+        tp_px = meta.get("tp_px")
+        ei = meta.get("entry_index", sig)
+        if isinstance(ei, int) and start <= ei < min(end, len(bars)):
+            x_e = mdates.date2num(bars[ei].ts)
+            ax.scatter(
+                [x_e],
+                [bars[ei].close],
+                c="#fbbf24",
+                s=55,
+                zorder=8,
+                edgecolors="#fff",
+                linewidths=0.5,
+                label="ورود",
+            )
+        x0, x1 = xs[0], xs[-1]
+        if isinstance(entry_px, (int, float)):
+            ax.hlines(
+                float(entry_px),
+                x0,
+                x1,
+                colors="#90caf9",
+                linestyles="--",
+                linewidth=1.0,
+                alpha=0.9,
+                label="ورود",
+            )
+        if isinstance(stop_px, (int, float)):
+            ax.hlines(
+                float(stop_px),
+                x0,
+                x1,
+                colors="#ef5350",
+                linestyles="--",
+                linewidth=1.0,
+                alpha=0.85,
+                label="استاپ",
+            )
+        if isinstance(tp_px, (int, float)):
+            ax.hlines(
+                float(tp_px),
+                x0,
+                x1,
+                colors="#66bb6a",
+                linestyles="--",
+                linewidth=1.1,
+                alpha=0.85,
+                label="TP",
+            )
+        rh = meta.get("range_high")
+        rl = meta.get("range_low")
+        if isinstance(rh, (int, float)) and isinstance(rl, (int, float)):
+            ax.hlines(
+                float(rh),
+                x0,
+                x1,
+                colors="#ffa726",
+                linestyles="-.",
+                linewidth=0.9,
+                alpha=0.7,
+                label="4H RH",
+            )
+            ax.hlines(
+                float(rl),
+                x0,
+                x1,
+                colors="#ffa726",
+                linestyles="-.",
+                linewidth=0.9,
+                alpha=0.7,
+                label="4H RL",
+            )
+        if isinstance(meta.get("exit_index"), int):
+            _mark_trendline_path(ax, xs, start, meta, outcome_success)
+
     elif hit.category == "meaningful_behavior":
         import matplotlib.dates as mdates
 
@@ -591,6 +670,7 @@ def _render_price_pattern(
         "trendline",
         "ema50",
         "meaningful_behavior",
+        "scalp",
     ) and isinstance(hit.meta.get("exit_index"), int)
     if sig is not None and not path_drawn:
         _mark_signal_and_forward(ax, xs, slice_bars, sig, start, forward_bars, outcome_success)
