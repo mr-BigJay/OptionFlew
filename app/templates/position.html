@@ -152,33 +152,37 @@
   {% if open_positions %}
   {% for p in open_positions %}
   <article class="pos-trade {% if p.direction == 'long' %}long{% else %}short{% endif %}" data-pos-id="{{ p.id }}">
-    <a href="/position/open/{{ p.id }}" class="pos-trade-body">
-      <div class="pos-trade-top">
-        <span class="pos-dir">{{ p.direction == 'long' and '▲ لانگ' or '▼ شورت' }}</span>
-        <span class="pos-lev">{{ p.leverage|int }}×</span>
-        <span class="pos-src">{{ source_fa(p.source_type) }}</span>
-      </div>
-      <p class="pos-trade-title">{{ p.signal_title }}</p>
-      <div class="pos-trade-meta">
-        <span>ورود {{ "{:,.0f}".format(p.entry_price) }}</span>
-        <span>SL {{ "{:,.0f}".format(p.sl_price) }}</span>
-        <span>TP {{ "{:,.0f}".format(p.tp_price) }}</span>
-      </div>
-      <p class="pos-trade-pnl pos-live-pnl {% if mark_price and unrealized(p, mark_price) >= 0 %}pos{% elif mark_price %}neg{% endif %}">
-        {% if mark_price %}{{ "{:+,.2f}".format(unrealized(p, mark_price)) }} USDT{% else %}—{% endif %}
-      </p>
-      <span class="pos-trade-hint">برای چارت بزنید</span>
-    </a>
-    <form method="post" action="/position/close/{{ p.id }}" class="pos-trade-close" onclick="event.stopPropagation();">
-      <button type="submit" class="btn secondary sm">بستن</button>
-    </form>
+    <div class="pos-trade-row">
+      <a href="/position/open/{{ p.id }}" class="pos-trade-main">
+        <div class="pos-trade-top">
+          <span class="pos-dir">{{ p.direction == 'long' and '▲ لانگ' or '▼ شورت' }}</span>
+          <span class="pos-lev">{{ p.leverage|int }}×</span>
+          <span class="pos-src">{{ source_fa(p.source_type) }}</span>
+        </div>
+        <p class="pos-trade-title">{{ p.signal_title }}</p>
+        <div class="pos-trade-meta">
+          <span>ورود {{ "{:,.0f}".format(p.entry_price) }}</span>
+          <span>SL {{ "{:,.0f}".format(p.sl_price) }}</span>
+          <span>TP {{ "{:,.0f}".format(p.tp_price) }}</span>
+        </div>
+        <div class="pos-trade-foot">
+          <p class="pos-trade-pnl pos-live-pnl {% if mark_price and unrealized(p, mark_price) >= 0 %}pos{% elif mark_price %}neg{% endif %}">
+            <span dir="ltr" class="pos-num">{% if mark_price %}{{ "{:+,.2f}".format(unrealized(p, mark_price)) }} USDT{% else %}—{% endif %}</span>
+          </p>
+          <span class="pos-trade-hint">مشاهده چارت ←</span>
+        </div>
+      </a>
+      <form method="post" action="/position/close/{{ p.id }}" class="pos-trade-close">
+        <button type="submit" class="btn secondary sm">بستن</button>
+      </form>
+    </div>
   </article>
   {% endfor %}
   {% else %}
   <p class="pos-empty">پوزیشن بازی نیست.</p>
   {% endif %}
 </section>
-<script src="/static/position-live.js?v=1" defer></script>
+<script src="/static/position-live.js?v=2" defer></script>
 {% endif %}
 
 {% if tab == 'report' %}

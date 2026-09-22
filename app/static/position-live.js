@@ -41,7 +41,9 @@
             card.classList.add("pos-trade-gone");
             return;
           }
-          pnlEl.textContent = fmtPnl(p.pnl_usdt);
+          var num = pnlEl.querySelector(".pos-num");
+          if (num) num.textContent = fmtPnl(p.pnl_usdt);
+          else pnlEl.textContent = fmtPnl(p.pnl_usdt);
           applyPnlClass(pnlEl, p.pnl_usdt);
         });
         if (data.closed > 0) {
