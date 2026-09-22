@@ -112,8 +112,10 @@ def init_db() -> None:
             "ON reports(report_code) WHERE report_code IS NOT NULL AND report_code != ''"
         )
     from app.pattern_store import init_pattern_events_db
+    from app.scalp_store import init_scalp_db
 
     init_pattern_events_db()
+    init_scalp_db()
 
 
 def _upsert_scheduled(conn: sqlite3.Connection, row: dict[str, Any]) -> int:

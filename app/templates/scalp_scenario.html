@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}{{ scenario.title_fa }} — اسکلپ{% endblock %}
+{% block header %}<span class="header-title">{{ scenario.title_fa }}</span>{% endblock %}
+{% block subheader %}
+<p class="home-schedule muted">{{ scenario.description_fa }}</p>
+{% endblock %}
+
+{% block content %}
+<p class="patterns-back"><a href="/scalp">← اسکلپ</a></p>
+
+{% if is_admin %}
+<form class="filter-card" method="post" action="/scalp/scenario/{{ scenario.scenario_id }}/settings">
+  <h3 class="pattern-form-title">تنظیم سناریو</h3>
+  <label class="checkbox-row">
+    <input type="checkbox" name="enabled" value="1" {% if scenario.enabled %}checked{% endif %}>
+    فعال برای اسکن زنده
+  </label>
+  <label>نسبت R (TP)</label>
+  <input type="number" name="tp_rr" step="0.1" min="0.5" max="5" value="{{ scenario.params.tp_rr }}">
+  <label>استاپ (× ATR)</label>
+  <input type="number" name="stop_atr_mult" step="0.05" min="0.1" max="2" value="{{ scenario.params.stop_atr_mult }}">
+  <label>حداکثر نگه‌داری (کندل)</label>
+  <input type="number" name="max_hold_bars" min="6" max="120" value="{{ scenario.params.max_hold_bars }}">
+  <button type="submit" class="btn primary full">ذخیره</button>
+</form>
+{% endif %}
+
+<section class="pattern-section">
+  <h2 class="section-title">سیگنال‌های اخیر</h2>
+  {% if grouped %}
+  {% for day_key, items in grouped %}
+  <section class="timeline-section">
+    <h2 class="timeline-day-title">{{ fmt_date_header(items[0].created_at) }}</h2>
+    <div class="timeline">
+      {% for r in items %}
+      <div class="timeline-item kind-pattern">
+        <div class="timeline-rail">
+          <span class="timeline-time">{{ fmt_time(r.created_at) }}</span>
+          <span class="timeline-dot"></span>
+        </div>
+        <a href="/scalp/event/{{ r.id }}" class="timeline-card">
+          <div class="timeline-body">
+            <p class="timeline-preview"><strong>{{ r.timeframe }}</strong> — {{ r.summary_fa[:140] }}…</p>
+          </div>
+        </a>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endfor %}
+  {% else %}
+  <div class="empty card"><p>برای این سناریو هنوز سیگنالی ثبت نشده.</p></div>
+  {% endif %}
+</section>
+{% endblock %}

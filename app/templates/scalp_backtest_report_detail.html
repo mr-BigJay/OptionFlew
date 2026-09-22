@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}بکتست اسکلپ #{{ run.id }}{% endblock %}
+{% block header %}<span class="header-title">بکتست #{{ run.id }}</span>{% endblock %}
+{% block subheader %}
+<nav class="backtest-subnav">
+  <a href="/scalp/backtest/reports">آرشیو</a>
+  <a href="/scalp/backtest">جدید</a>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="bt-run-meta card">
+  <div class="bt-meta-row">
+    <span class="bt-meta-label">سناریو</span>
+    <span class="bt-meta-value">{{ scenario_label }}</span>
+  </div>
+  <div class="bt-meta-row">
+    <span class="bt-meta-label">تایم‌فریم</span>
+    <span class="bt-meta-value"><bdi dir="ltr">{{ run.timeframe }}</bdi></span>
+  </div>
+  <div class="bt-meta-row">
+    <span class="bt-meta-label">بازه</span>
+    <span class="bt-meta-value">{{ fmt_date(run.from_iso) }} – {{ fmt_date(run.to_iso) }}</span>
+  </div>
+</div>
+{% set active_run = run %}
+{% set hide_bt_summary = true %}
+{% include "scalp_backtest_findings_partial.html" %}
+{% endblock %}
