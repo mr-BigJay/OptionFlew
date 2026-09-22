@@ -11,7 +11,7 @@ from app.position_store import (
 
 def test_has_open_pattern_category_blocks_duplicate() -> None:
     init_position_db()
-    uid = 9999201
+    uid = 9999202
     deposit(uid, 1000.0)
     cfg = get_config(uid)
     assert has_open_pattern_category(uid, "trendline") is False
