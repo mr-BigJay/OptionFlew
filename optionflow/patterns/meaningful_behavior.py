@@ -86,22 +86,65 @@ def _parse_dominant_strikes(meta: dict[str, Any]) -> list[float]:
 def _flow_target_price(
     meta: dict[str, Any], entry_px: float
 ) -> tuple[float | None, str]:
-    """هدف spot = strike اصلی که قراردادهای جدید روی آن متمرکز شده‌اند."""
+    """هدف حرکت spot در جهت سیگنال — نزدیک‌ترین strike مناسب زیر/بالای قیمت."""
     direction = meta.get("direction")
     strikes = _parse_dominant_strikes(meta)
     if not strikes or entry_px <= 0:
         return None, "strike هدف مشخص نشد"
-    # top_strikes: اولین = پرحجم‌ترین
-    primary = strikes[0]
     if direction == "up":
-        above = [s for s in strikes if s > entry_px]
+        above = sorted(s for s in strikes if s > entry_px)
         tp = above[0] if above else max(strikes)
         return tp, f"رسیدن به strike کال {tp:,.0f}"
     if direction == "down":
-        below = [s for s in strikes if s < entry_px]
-        tp = below[0] if below else min(strikes)
+        below = sorted((s for s in strikes if s < entry_px), reverse=True)
+        if below:
+            tp = below[0]
+        else:
+            tp = min(strikes)
         return tp, f"رسیدن به strike پوت {tp:,.0f}"
-    return primary, f"strike {primary:,.0f}"
+    return strikes[0], f"strike {strikes[0]:,.0f}"
+
+
+def behavior_forecast_fa(
+    *,
+    direction: str,
+    spot: float,
+    tp_px: float | None,
+    strikes: list[float],
+    pattern_id: str,
+) -> str:
+    """متن روشن: جهت spot + strike هدف + نقش strikeهای دیگر."""
+    if tp_px is None or spot <= 0:
+        return "جهت نامشخص — strike هدف محاسبه نشد."
+    move_pct = (tp_px - spot) / spot * 100.0
+    if pattern_id == "put_surge" or direction == "down":
+        below = [s for s in strikes if s < spot]
+        above = [s for s in strikes if s > spot]
+        core = (
+            f"جهت پیش‌بینی spot: نزول کوتاه‌مدت (فلو خرید پوت = پوشش/شرط‌بندی نزولی). "
+            f"از ~{spot:,.0f} مسیر محتمل به ~{tp_px:,.0f} "
+            f"({move_pct:+.1f}٪ — strike پوت زیر قیمت)."
+        )
+        if above:
+            extra = "، ".join(f"{int(s):,}" for s in sorted(above, reverse=True))
+            core += (
+                f" strikeهای بالاتر از قیمت ({extra}) = تمرکز پوت/پوشش، "
+                "نه هدف صعود spot."
+            )
+        return core
+    if pattern_id == "call_surge" or direction == "up":
+        above = [s for s in strikes if s > spot]
+        below = [s for s in strikes if s < spot]
+        core = (
+            f"جهت پیش‌بینی spot: صعود کوتاه‌مدت (فلو خرید کال). "
+            f"از ~{spot:,.0f} مسیر محتمل به ~{tp_px:,.0f} "
+            f"({move_pct:+.1f}٪ — strike کال بالای قیمت)."
+        )
+        if below:
+            extra = "، ".join(f"{int(s):,}" for s in sorted(below, reverse=True))
+            core += f" strikeهای پایین‌تر ({extra}) = پشتیبان/هج، نه هدف نزول."
+        return core
+    return f"جهت {direction}; هدف spot ≈ {tp_px:,.0f}."
 
 
 def evaluate_behavior_path(
@@ -158,6 +201,9 @@ def evaluate_behavior_path(
     meta["exit_reason"] = reason
     meta["tp_px"] = tp_px
     meta["target_strike"] = tp_px
+    meta["direction_label_fa"] = (
+        "صعود" if direction == "up" else "نزول" if direction == "down" else "—"
+    )
     ok = (direction == "up" and exit_px >= tp_px) or (
         direction == "down" and exit_px <= tp_px
     )
@@ -211,7 +257,18 @@ def detect_meaningful_behavior(
         top = top_strikes(b_calls, 2)
         strikes_s = "، ".join(f"{int(k):,}" for k, _ in top) if top else "—"
         alert_key = _alert_key(timeframe, "call_surge", end_ms, b_bc)
-        tp_hint = int(top[0][0]) if top else int(spot)
+        meta_pre = {
+            "direction": "up",
+            "dominant_strikes": top,
+        }
+        tp_px, _ = _flow_target_price(meta_pre, spot)
+        forecast = behavior_forecast_fa(
+            direction="up",
+            spot=spot,
+            tp_px=tp_px,
+            strikes=_parse_dominant_strikes(meta_pre),
+            pattern_id="call_surge",
+        )
         hit = PatternHit(
             category="meaningful_behavior",
             timeframe=timeframe,
@@ -224,10 +281,7 @@ def detect_meaningful_behavior(
                 f"baseline {window_hours:g}h). "
                 f"strikeهای پرحجم: {strikes_s}. شاخص ~{spot:,.0f}."
             ),
-            forecast_fa=(
-                "تمایل صعودی کوتاه‌مدت در فلو؛ "
-                f"هدف spot ≈ strike متمرکز خرید کال ({tp_hint:,})."
-            ),
+            forecast_fa=forecast,
             meta={
                 "direction": "up",
                 "stage": "confirmed",
@@ -241,6 +295,7 @@ def detect_meaningful_behavior(
                 "signal_end_ms": end_ms,
                 "alert_key": alert_key,
                 "early_side": "low",
+                "target_strike_preview": tp_px,
             },
         )
         candidates.append((b_bc, hit))
@@ -249,7 +304,18 @@ def detect_meaningful_behavior(
         top = top_strikes(b_puts, 2)
         strikes_s = "، ".join(f"{int(k):,}" for k, _ in top) if top else "—"
         alert_key = _alert_key(timeframe, "put_surge", end_ms, b_bp)
-        tp_hint = int(top[0][0]) if top else int(spot)
+        meta_pre = {
+            "direction": "down",
+            "dominant_strikes": top,
+        }
+        tp_px, _ = _flow_target_price(meta_pre, spot)
+        forecast = behavior_forecast_fa(
+            direction="down",
+            spot=spot,
+            tp_px=tp_px,
+            strikes=_parse_dominant_strikes(meta_pre),
+            pattern_id="put_surge",
+        )
         hit = PatternHit(
             category="meaningful_behavior",
             timeframe=timeframe,
@@ -262,10 +328,7 @@ def detect_meaningful_behavior(
                 f"baseline {window_hours:g}h). "
                 f"strikeهای پرحجم: {strikes_s}. شاخص ~{spot:,.0f}."
             ),
-            forecast_fa=(
-                "تمایل محافظتی/نزولی کوتاه‌مدت؛ "
-                f"هدف spot ≈ strike متمرکز خرید پوت ({tp_hint:,})."
-            ),
+            forecast_fa=forecast,
             meta={
                 "direction": "down",
                 "stage": "confirmed",
@@ -279,6 +342,7 @@ def detect_meaningful_behavior(
                 "signal_end_ms": end_ms,
                 "alert_key": alert_key,
                 "early_side": "high",
+                "target_strike_preview": tp_px,
             },
         )
         candidates.append((b_bp, hit))

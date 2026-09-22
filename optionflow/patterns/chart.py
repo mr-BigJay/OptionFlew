@@ -180,6 +180,15 @@ def _visible_price_range(
         px = float(entry_px)
         lo = min(lo, px)
         hi = max(hi, px)
+    if hit.category == "meaningful_behavior":
+        for item in (hit.meta or {}).get("dominant_strikes") or []:
+            if isinstance(item, (list, tuple)) and item:
+                try:
+                    s = float(item[0])
+                    lo = min(lo, s)
+                    hi = max(hi, s)
+                except (TypeError, ValueError):
+                    pass
     return lo, hi
 
 
@@ -366,6 +375,114 @@ def _mark_index_arrow(
             arrowstyle="-|>", color=color, lw=1.6, mutation_scale=12
         ),
         zorder=9,
+    )
+
+
+def _mark_behavior_scenario(
+    ax: Any,
+    bars: list[OhlcBar],
+    meta: dict[str, Any],
+    start: int,
+    end: int,
+    xs: list[float],
+) -> None:
+    """مسیر پیش‌بینی spot + strikeهای فلو (هدف و پوشش)."""
+    import matplotlib.dates as mdates
+
+    entry_i = meta.get("entry_index")
+    tp = meta.get("tp_px")
+    direction = meta.get("direction")
+    strikes: list[float] = []
+    for item in meta.get("dominant_strikes") or []:
+        if isinstance(item, (list, tuple)) and item:
+            try:
+                strikes.append(float(item[0]))
+            except (TypeError, ValueError):
+                continue
+
+    up = direction == "up"
+    down = direction == "down"
+    target_col = "#66bb6a" if up else "#ef5350" if down else "#90caf9"
+
+    for s in strikes:
+        is_tp = isinstance(tp, (int, float)) and abs(float(tp) - s) < 1.0
+        col = target_col if is_tp else "#78909c"
+        ax.hlines(
+            s,
+            xs[0],
+            xs[-1],
+            colors=col,
+            linestyles="--" if is_tp else ":",
+            linewidth=1.3 if is_tp else 0.85,
+            alpha=0.9 if is_tp else 0.45,
+            zorder=4,
+        )
+        ax.text(
+            xs[-1],
+            s,
+            f" {int(round(s)):,}",
+            color=col,
+            fontsize=7,
+            va="center",
+            ha="left",
+            clip_on=False,
+        )
+
+    if not isinstance(entry_i, int) or entry_i < start or entry_i >= min(end, len(bars)):
+        return
+    if not isinstance(tp, (int, float)):
+        return
+
+    x0 = mdates.date2num(bars[entry_i].ts)
+    y0 = float(bars[entry_i].close)
+    x1 = xs[-1]
+    y1 = float(tp)
+    ax.plot(
+        [x0, x1],
+        [y0, y1],
+        color=target_col,
+        linewidth=2.4,
+        linestyle="-",
+        alpha=0.82,
+        zorder=7,
+        solid_capstyle="round",
+    )
+    ax.scatter(
+        [x0],
+        [y0],
+        c="#fbbf24",
+        s=72,
+        zorder=9,
+        edgecolors="#fff",
+        linewidths=0.5,
+        label="ورود",
+    )
+    ax.scatter(
+        [x1],
+        [y1],
+        marker="v" if down else "^" if up else "o",
+        c=target_col,
+        s=95,
+        zorder=10,
+        edgecolors="#fff",
+        linewidths=0.55,
+    )
+    arrow = "↓" if down else "↑" if up else "→"
+    ax.text(
+        (x0 + x1) / 2,
+        (y0 + y1) / 2,
+        f"مسیر spot {arrow}",
+        color=target_col,
+        fontsize=8,
+        ha="center",
+        va="center",
+        zorder=11,
+        bbox={
+            "boxstyle": "round,pad=0.25",
+            "facecolor": "#0d1117dd",
+            "edgecolor": target_col,
+            "linewidth": 0.8,
+        },
     )
 
 
@@ -654,34 +771,7 @@ def _render_price_pattern(
             _mark_trendline_path(ax, xs, start, meta, outcome_success)
 
     elif hit.category == "meaningful_behavior":
-        import matplotlib.dates as mdates
-
-        entry = meta.get("entry_index", sig)
-        tp = meta.get("tp_px")
-        if isinstance(entry, int) and start <= entry < min(end, len(bars)):
-            x_e = mdates.date2num(bars[entry].ts)
-            ax.scatter(
-                [x_e],
-                [bars[entry].close],
-                c="#fbbf24",
-                s=55,
-                zorder=8,
-                edgecolors="#fff",
-                linewidths=0.5,
-                label="ورود",
-            )
-        if isinstance(tp, (int, float)):
-            ax.hlines(
-                float(tp),
-                xs[0],
-                xs[-1],
-                colors="#66bb6a" if meta.get("direction") == "up" else "#ef5350",
-                linestyles="--",
-                linewidth=1.1,
-                alpha=0.85,
-                label="strike هدف",
-            )
-        _mark_early_entry(ax, bars, meta, start, end, color="#fbbf24")
+        _mark_behavior_scenario(ax, bars, meta, start, end, xs)
         if isinstance(meta.get("exit_index"), int):
             _mark_trendline_path(ax, xs, start, meta, outcome_success)
 
