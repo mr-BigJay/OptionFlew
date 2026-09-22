@@ -547,7 +547,7 @@ def _render_price_pattern(
                 linestyles="--",
                 linewidth=1.1,
                 alpha=0.85,
-                label="هدف ۰.۵٪",
+                label="strike هدف",
             )
         _mark_early_entry(ax, bars, meta, start, end, color="#fbbf24")
         if isinstance(meta.get("exit_index"), int):
