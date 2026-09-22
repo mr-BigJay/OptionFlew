@@ -290,10 +290,32 @@ def _detect_impulse_pullback(
     return None
 
 
+def _detect_four_h_rr(
+    bars: list[OhlcBar],
+    timeframe: str,
+    scenario: dict[str, Any],
+    params: dict[str, Any],
+) -> PatternHit | None:
+    if timeframe != "5m":
+        return None
+    from optionflow.patterns.ohlc import load_btcusdt
+    from optionflow.scalp.four_h_rr import detect_4hrr_live
+
+    bars_4h = load_btcusdt("4h", limit=500)
+    row = {
+        "scenario_id": scenario["scenario_id"],
+        "title_fa": scenario.get("title_fa", "4HRR"),
+    }
+    return detect_4hrr_live(
+        bars, bars_4h, scenario=row, params=params, timeframe=timeframe
+    )
+
+
 _DETECTORS = {
     "range_break": _detect_range_break,
     "sweep_reclaim": _detect_sweep_reclaim,
     "impulse_pullback": _detect_impulse_pullback,
+    "four_h_rr": _detect_four_h_rr,
 }
 
 
