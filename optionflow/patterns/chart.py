@@ -91,7 +91,11 @@ def _slice_range(
         extra0 = early if isinstance(early, int) else i0
         start = max(0, min(i0, extra0, sig) - 8)
         exit_i = meta.get("exit_index") if hit.category == "trendline" else None
-        if isinstance(exit_i, int):
+        if hit.category == "trendline":
+            end = chart_window_end(n, sig, start, tail_pad=8)
+            if isinstance(exit_i, int) and start <= exit_i < n:
+                end = min(n, max(end, min(exit_i + 8, sig + 96)))
+        elif isinstance(exit_i, int):
             end = min(n, max(chart_window_end(n, sig, start), exit_i + 8))
         else:
             end = chart_window_end(n, sig, start)
@@ -127,6 +131,74 @@ def chart_forward_bars(
 ) -> int:
     start, end, _ = _slice_range(bars, hit, sig_ix, forward_bars=0)
     return max(6, end - 1 - sig_ix)
+
+
+def _visible_price_range(
+    bars: list[OhlcBar],
+    hit: PatternHit,
+    start: int,
+    end: int,
+) -> tuple[float, float]:
+    """محدودهٔ قیمت برای محور Y — فقط کندل‌ها + خط ساختار (مثل مثلث)، نه نقاط پرت."""
+    slice_bars = bars[start:end]
+    if not slice_bars:
+        return 0.0, 1.0
+    lo = min(b.low for b in slice_bars)
+    hi = max(b.high for b in slice_bars)
+    meta = hit.meta
+    if hit.category in ("triangle", "trendline", "channel"):
+        wo = int(meta.get("window_offset") or 0)
+        i0 = int(meta.get("start_i", 0))
+        i1 = int(meta.get("end_i", i0))
+        g0, g1 = wo + i0, wo + i1
+        if g1 >= start and g0 < end:
+            li0 = max(i0, start - wo)
+            li1 = min(i1, end - 1 - wo)
+            if li1 >= li0:
+                for sl, ic in (
+                    (meta.get("upper_slope"), meta.get("upper_intercept")),
+                    (meta.get("lower_slope"), meta.get("lower_intercept")),
+                ):
+                    if sl is None or ic is None:
+                        continue
+                    y0 = float(sl) * li0 + float(ic)
+                    y1 = float(sl) * li1 + float(ic)
+                    lo = min(lo, y0, y1)
+                    hi = max(hi, y0, y1)
+        for ti in (meta.get("touch_highs") or []) + (meta.get("touch_lows") or []):
+            gi = wo + int(ti)
+            if start <= gi < end:
+                lo = min(lo, bars[gi].low)
+                hi = max(hi, bars[gi].high)
+    tp_px = meta.get("tp_px")
+    if isinstance(tp_px, (int, float)):
+        px = float(tp_px)
+        lo = min(lo, px)
+        hi = max(hi, px)
+    entry_px = meta.get("entry_blended_px") or meta.get("entry_px")
+    if isinstance(entry_px, (int, float)):
+        px = float(entry_px)
+        lo = min(lo, px)
+        hi = max(hi, px)
+    return lo, hi
+
+
+def _apply_price_ylim(
+    ax: Any,
+    bars: list[OhlcBar],
+    hit: PatternHit,
+    start: int,
+    end: int,
+    *,
+    extra_top_frac: float = 0.0,
+) -> None:
+    lo, hi = _visible_price_range(bars, hit, start, end)
+    span = hi - lo
+    if span <= 0:
+        span = max(abs(hi) * 0.002, 1.0)
+    pad = span * 0.10
+    top = hi + pad + span * extra_top_frac
+    ax.set_ylim(lo - pad, top)
 
 
 def _candle_widths(xs: list[float]) -> list[float]:
@@ -241,25 +313,59 @@ def _mark_trendline_path(
     ax.axvline(x1, color=edge, linewidth=1.1, linestyle=":", alpha=0.85, zorder=4)
     if not isinstance(pct, (int, float)):
         return
-    ymin, ymax = ax.get_ylim()
-    pad = (ymax - ymin) * 0.07
-    ax.set_ylim(ymin, ymax + pad)
     ax.text(
         (x0 + x1) / 2,
-        ymax + pad * 0.42,
+        1.02,
         f"{pct * 100:+.1f}%",
         color=edge,
         fontsize=9,
         ha="center",
-        va="center",
+        va="bottom",
         zorder=12,
         fontweight="bold",
+        transform=ax.get_xaxis_transform(),
         bbox={
             "boxstyle": "round,pad=0.18",
             "facecolor": "#0d1117cc",
             "edgecolor": edge,
             "linewidth": 0.7,
         },
+    )
+
+
+def _mark_index_arrow(
+    ax: Any,
+    bars: list[OhlcBar],
+    index: int,
+    start: int,
+    end: int,
+    *,
+    side: str | None,
+    color: str,
+) -> None:
+    if index < start or index >= min(end, len(bars)):
+        return
+    import matplotlib.dates as mdates
+
+    bar = bars[index]
+    x = mdates.date2num(bar.ts)
+    window = bars[start:end]
+    span = max(b.high for b in window) - min(b.low for b in window)
+    pad = max(span * 0.012, bar.high * 0.0004)
+    if side == "low":
+        y_tip, y_head = bar.low - pad, bar.low - pad * 2.4
+    elif side == "high":
+        y_tip, y_head = bar.high + pad, bar.high + pad * 2.4
+    else:
+        y_tip, y_head = bar.close + pad, bar.close + pad * 2.4
+    ax.annotate(
+        "",
+        xy=(x, y_tip),
+        xytext=(x, y_head),
+        arrowprops=dict(
+            arrowstyle="-|>", color=color, lw=1.6, mutation_scale=12
+        ),
+        zorder=9,
     )
 
 
@@ -416,19 +522,18 @@ def _render_price_pattern(
         wo = meta.get("window_offset", max(0, len(bars) - 120))
         i0, i1 = meta["start_i"], meta["end_i"]
         g0, g1 = wo + i0, wo + i1
-        exit_i = meta.get("exit_index") if hit.category == "trendline" else None
-        if isinstance(exit_i, int) and 0 <= exit_i < len(bars):
-            g1 = max(g1, min(exit_i, end - 1))
-            i1 = g1 - wo
-        if 0 <= g0 < len(bars) and 0 <= g1 < len(bars):
+        g0 = max(start, min(g0, end - 1))
+        g1 = max(start, min(g1, end - 1))
+        if g1 >= g0 and 0 <= g0 < len(bars) and 0 <= g1 < len(bars):
             x0 = mdates.date2num(bars[g0].ts)
             x1 = mdates.date2num(bars[g1].ts)
+            li0, li1 = g0 - wo, g1 - wo
             su, iu = meta.get("upper_slope"), meta.get("upper_intercept")
             sl, il = meta.get("lower_slope"), meta.get("lower_intercept")
             if su is not None and iu is not None:
                 ax.plot(
                     [x0, x1],
-                    [su * i0 + iu, su * i1 + iu],
+                    [su * li0 + iu, su * li1 + iu],
                     color="#ffb74d",
                     linewidth=2,
                     label="مقاومت",
@@ -436,18 +541,19 @@ def _render_price_pattern(
             if sl is not None and il is not None:
                 ax.plot(
                     [x0, x1],
-                    [sl * i0 + il, sl * i1 + il],
+                    [sl * li0 + il, sl * li1 + il],
                     color="#81c784",
                     linewidth=2,
                     label="حمایت",
                 )
+            touch_c = "#eceff1" if hit.category == "trendline" else None
             for ti in meta.get("touch_highs") or []:
                 gi = wo + int(ti)
                 if start <= gi < end:
                     ax.scatter(
                         [mdates.date2num(bars[gi].ts)],
                         [bars[gi].high],
-                        c="#ffb74d",
+                        c=touch_c or "#ffb74d",
                         s=36,
                         zorder=6,
                         edgecolors="#fff",
@@ -459,15 +565,41 @@ def _render_price_pattern(
                     ax.scatter(
                         [mdates.date2num(bars[gi].ts)],
                         [bars[gi].low],
-                        c="#81c784",
+                        c=touch_c or "#81c784",
                         s=36,
                         zorder=6,
                         edgecolors="#fff",
                         linewidths=0.4,
                     )
-        _mark_early_entry(ax, bars, meta, start, end)
+        _mark_early_entry(
+            ax, bars, meta, start, end, color="#fbbf24" if hit.category == "trendline" else None
+        )
+        if hit.category == "trendline":
+            cf = meta.get("confirm_index")
+            side = meta.get("side")
+            if isinstance(cf, int):
+                _mark_index_arrow(
+                    ax, bars, cf, start, end, side=side, color="#42a5f5"
+                )
         if hit.category == "trendline" and isinstance(meta.get("exit_index"), int):
             _mark_trendline_path(ax, xs, start, meta, outcome_success)
+            exit_i = meta.get("exit_index")
+            tp_px = meta.get("tp_px")
+            if isinstance(exit_i, int) and start <= exit_i < min(end, len(bars)):
+                import matplotlib.dates as mdates
+
+                x_ex = mdates.date2num(bars[exit_i].ts)
+                y_ex = tp_px if isinstance(tp_px, (int, float)) else bars[exit_i].close
+                ax.scatter(
+                    [x_ex],
+                    [y_ex],
+                    marker="^" if meta.get("side") == "low" else "v",
+                    c="#66bb6a",
+                    s=70,
+                    zorder=11,
+                    edgecolors="#fff",
+                    linewidths=0.5,
+                )
 
     elif hit.category == "ema50":
         from optionflow.patterns.indicators import ema as ema_fn
@@ -598,6 +730,8 @@ def _render_price_pattern(
     _style_axes(ax, f"BTCUSDT {hit.timeframe} — {hit.title_fa}")
     ax.set_ylabel("USDT", color="#90a4ae", fontsize=8)
     ax.margins(x=0.02)
+    extra_top = 0.08 if isinstance(hit.meta.get("path_pct"), (int, float)) else 0.0
+    _apply_price_ylim(ax, bars, hit, start, end, extra_top_frac=extra_top)
 
     buf = io.BytesIO()
     fig.savefig(buf, format="png", facecolor=fig.get_facecolor())

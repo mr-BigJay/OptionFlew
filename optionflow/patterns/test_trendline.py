@@ -294,7 +294,8 @@ def test_no_valid_break_is_unknown() -> None:
         _set_close(bars, i, 98_200)
     hit = _support_hit(early=40, slope=0.0, intercept=98_000.0)
     ok, note = evaluate_trendline_path(bars, 70, hit)
-    assert ok is None
+    assert ok is False
+    assert "کندل" in note
     assert "۰.۵٪" in note
     assert "exit_index" not in hit.meta
 

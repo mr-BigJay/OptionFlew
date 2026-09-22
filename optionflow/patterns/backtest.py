@@ -241,10 +241,15 @@ def evaluate_outcome(
     *,
     target_profit_pct: float | None = None,
 ) -> tuple[bool | None, str]:
+    if hit.category == "trendline":
+        tp = None
+        if target_profit_pct is not None and target_profit_pct >= 0.1:
+            tp = target_profit_pct / 100.0
+        return evaluate_trendline_path(
+            bars, idx, hit, take_profit_pct=tp, timeframe=timeframe
+        )
     if target_profit_pct is not None and target_profit_pct >= 0.1:
         return evaluate_target_profit(bars, idx, hit, target_profit_pct)
-    if hit.category == "trendline":
-        return evaluate_trendline_path(bars, idx, hit)
     if hit.category == "ema50":
         return evaluate_ema50_path(bars, idx, hit)
     direction = expected_direction(hit)
@@ -290,8 +295,6 @@ def _shift_hit_bar_indices(hit: PatternHit, offset: int) -> None:
         "entry_index",
         "break_index",
         "pullback_index",
-        "start_i",
-        "end_i",
         "window_offset",
     ):
         v = meta.get(key)
@@ -301,12 +304,13 @@ def _shift_hit_bar_indices(hit: PatternHit, offset: int) -> None:
         t = meta.get(key)
         if isinstance(t, (list, tuple)) and len(t) >= 2:
             meta[key] = (int(t[0]) + offset, t[1])
-    for key in ("touch_highs", "touch_lows", "hi_idx", "lo_idx"):
-        lst = meta.get(key)
-        if isinstance(lst, list):
-            meta[key] = [
-                int(x) + offset for x in lst if isinstance(x, (int, float))
-            ]
+    if hit.category not in ("trendline", "channel"):
+        for key in ("touch_highs", "touch_lows", "hi_idx", "lo_idx"):
+            lst = meta.get(key)
+            if isinstance(lst, list):
+                meta[key] = [
+                    int(x) + offset for x in lst if isinstance(x, (int, float))
+                ]
 
 
 def _replay_divergence(

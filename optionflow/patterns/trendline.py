@@ -11,6 +11,7 @@ MAX_PIVOT_AGE = {"5m": 14, "15m": 12, "1h": 12, "4h": 8, "1d": 6}
 MIN_TOUCH_GAP = {"5m": 6, "15m": 5, "1h": 5, "4h": 4, "1d": 3}
 WINDOW = {"5m": 120, "15m": 120, "1h": 140, "4h": 120, "1d": 90}
 TAKE_PROFIT_PCT = 0.005  # بعد از ورود: بستن در ۰.۵٪ سود
+PATH_EVAL_BARS = {"5m": 48, "15m": 32, "1h": 24, "4h": 18, "1d": 12}
 
 
 def _y(slope: float, intercept: float, i: float) -> float:
@@ -132,14 +133,19 @@ def _consecutive_break(
     return False
 
 
-def _take_profit_px(entry_px: float, *, side: str) -> float:
+def _take_profit_px(
+    entry_px: float, *, side: str, pct: float | None = None
+) -> float:
+    move = TAKE_PROFIT_PCT if pct is None else pct
     if side == "low":
-        return entry_px * (1 + TAKE_PROFIT_PCT)
-    return entry_px * (1 - TAKE_PROFIT_PCT)
+        return entry_px * (1 + move)
+    return entry_px * (1 - move)
 
 
-def _take_profit_hit(bar: OhlcBar, *, side: str, entry_px: float) -> bool:
-    target = _take_profit_px(entry_px, side=side)
+def _take_profit_hit(
+    bar: OhlcBar, *, side: str, entry_px: float, pct: float | None = None
+) -> bool:
+    target = _take_profit_px(entry_px, side=side, pct=pct)
     if side == "low":
         return bar.high >= target
     return bar.low <= target
@@ -172,8 +178,11 @@ def evaluate_trendline_path(
     bars: list[OhlcBar],
     idx: int,
     hit: PatternHit,
+    *,
+    take_profit_pct: float | None = None,
+    timeframe: str = "15m",
 ) -> tuple[bool | None, str]:
-    """ورود = سیگنال اولیه؛ خروج = ۰.۵٪ سود یا شکست معتبر (هرکدام زودتر)."""
+    """ورود = سیگنال اولیه؛ خروج = سود هدف یا شکست معتبر (هرکدام زودتر)."""
     meta = hit.meta
     side = meta.get("side")
     if side == "low":
@@ -187,7 +196,14 @@ def evaluate_trendline_path(
 
     wo = int(meta.get("window_offset") or 0)
     early = meta.get("early_index")
-    entry_i = early if isinstance(early, int) else idx
+    confirm = meta.get("confirm_index")
+    stage = meta.get("stage")
+    if stage == "confirmed" and isinstance(confirm, int):
+        entry_i = confirm
+    elif isinstance(early, int):
+        entry_i = early
+    else:
+        entry_i = idx
     entry_i = max(0, min(entry_i, idx, len(bars) - 1))
     if idx + 1 >= len(bars):
         return None, "کندل کافی بعد از سیگنال برای شکست معتبر نبود."
@@ -206,15 +222,22 @@ def evaluate_trendline_path(
     if start >= len(bars):
         return None, "کندل کافی بعد از ورود برای ارزیابی نبود."
 
-    tp_px = _take_profit_px(entry_px, side=side)
+    tp_pct = TAKE_PROFIT_PCT if take_profit_pct is None else take_profit_pct
+    tp_px = _take_profit_px(entry_px, side=side, pct=tp_pct)
     exit_i: int | None = None
     exit_px: float | None = None
     reason = ""
     break_run = 0
-    for i in range(start, len(bars)):
+    if take_profit_pct is None or tp_pct == TAKE_PROFIT_PCT:
+        tp_label = "۰.۵٪"
+    else:
+        tp_label = f"{tp_pct * 100:g}٪"
+    max_fwd = PATH_EVAL_BARS.get(timeframe, 24)
+    scan_end = min(len(bars), max(entry_i + 1 + max_fwd, idx + max_fwd))
+    for i in range(start, scan_end):
         b = bars[i]
-        if _take_profit_hit(b, side=side, entry_px=entry_px):
-            exit_i, exit_px, reason = i, tp_px, "بستن در سود ۰.۵٪"
+        if _take_profit_hit(b, side=side, entry_px=entry_px, pct=tp_pct):
+            exit_i, exit_px, reason = i, tp_px, f"بستن در سود {tp_label}"
             break
         line = _y(float(slope), float(intercept), i - wo)
         hit = _beyond_line(bar=b, line=line, side=side, buf=buf)
@@ -224,7 +247,10 @@ def evaluate_trendline_path(
             break
 
     if exit_i is None or exit_px is None:
-        return None, "بعد از ورود نه سود ۰.۵٪ و نه شکست معتبر دیده نشد."
+        return (
+            False,
+            f"در {max_fwd} کندل بعد از ورود نه سود {tp_label} و نه شکست معتبر دیده شد.",
+        )
 
     if side == "low":
         pct = (exit_px - entry_px) / entry_px
@@ -235,6 +261,7 @@ def evaluate_trendline_path(
     meta["exit_index"] = exit_i
     meta["path_pct"] = pct
     meta["exit_reason"] = reason
+    meta["tp_px"] = tp_px
     ok = pct > 0
     note = (
         f"بازده مسیر سیگنال اولیه تا {reason}: {pct*100:+.2f}٪ "
@@ -493,6 +520,9 @@ def detect_trendline(
     if primary.get("testing"):
         summary += " کندل جاری خط را لمس کرده."
     early_ix = wo + primary["touches"][min(1, n_pri - 1)][0]
+    confirm_ix: int | None = None
+    if stage == "confirmed":
+        confirm_ix = wo + primary["touches"][-1][0]
     return _hit(
         category="trendline",
         timeframe=timeframe,
@@ -518,6 +548,7 @@ def detect_trendline(
             "touch_lows": touch_lows,
             "y_now": primary["y_now"],
             "early_index": early_ix,
+            "confirm_index": confirm_ix,
             "last_close": last.close,
         },
     )
