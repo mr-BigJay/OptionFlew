@@ -15,10 +15,8 @@ SURGE_RATIO = 2.2
 MIN_BURST_BTC = 28.0
 MIN_BASELINE_BTC = 8.0
 
-# burst = آخرین N دقیقه؛ baseline = کل پنجرهٔ قبل از burst
+# burst = آخرین N دقیقه؛ baseline = کل پنجرهٔ قبل از burst (فقط تایم‌فریم 1h)
 WINDOW_CFG: dict[str, tuple[int, float]] = {
-    "5m": (5, 1.0),
-    "15m": (15, 2.0),
     "1h": (20, 4.0),
 }
 
