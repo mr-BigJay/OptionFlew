@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}بکتست اسکلپ — OptionFlow{% endblock %}
+{% block header %}<span class="header-title">بکتست اسکلپ</span>{% endblock %}
+{% block subheader %}
+<nav class="backtest-subnav" aria-label="اسکلپ">
+  <a href="/scalp">← اسکلپ</a>
+  <a href="/scalp/backtest/reports">گزارش بکتست‌ها</a>
+</nav>
+{% endblock %}
+
+{% block content %}
+<section class="bt-cache-panel card">
+  <h2 class="bt-section-title">کندل تاریخی</h2>
+  <p class="muted bt-hint">همان ذخیرهٔ بکتست الگوها — در صورت نیاز از <a href="/backtest">بکتست الگو</a> دانلود کنید.</p>
+</section>
+
+<form class="filter-card pattern-bt-form" method="post" action="/scalp/backtest/start">
+  <input type="hidden" name="scenario_id" value="{{ scenario_id }}">
+  <h3 class="pattern-form-title">بکتست سناریو</h3>
+  <label>سناریو</label>
+  <select name="scenario_id" required>
+    {% for sc in scenarios %}
+    <option value="{{ sc.scenario_id }}" {% if sc.scenario_id == scenario_id %}selected{% endif %}>{{ sc.title_fa }}</option>
+    {% endfor %}
+  </select>
+  <label>تایم‌فریم</label>
+  <select name="timeframe" required>
+    {% for tf, label in bt_tf_labels.items() %}
+    <option value="{{ tf }}">{{ label }}</option>
+    {% endfor %}
+  </select>
+  <label>از تاریخ</label>
+  <input type="date" name="date_from" required>
+  <label>تا تاریخ</label>
+  <input type="date" name="date_to" required>
+  <p class="muted bt-hint">ارزیابی: اول استاپ، بعد TP؛ در غیر این صورت پایان مهلت نگه‌داری.</p>
+  <button type="submit" class="btn primary full">شروع بکتست</button>
+</form>
+
+<div id="bt-run-progress" class="bt-progress-wrap" {% if not run_id or (active_run and active_run.status != 'running') %}hidden{% endif %} data-run-id="{{ run_id }}">
+  <p class="bt-run-title">در حال بررسی…</p>
+  <div class="bt-progress-track">
+    <div class="bt-progress-bar" id="bt-run-bar" style="width: 0%"></div>
+  </div>
+  <span class="bt-progress-label" id="bt-run-label">۰٪</span>
+</div>
+{% if active_run and active_run.status == 'running' %}
+<form method="post" action="/scalp/backtest/api/run/{{ active_run.id }}/cancel" class="bt-run-cancel-form">
+  <button type="submit" class="btn secondary full">توقف</button>
+</form>
+{% endif %}
+
+<div id="bt-run-results" class="bt-results">
+  {% if active_run and active_run.status in ('done', 'error') %}
+  {% set run = active_run %}
+  {% set show_archive_link = true %}
+  {% include "scalp_backtest_findings_partial.html" %}
+  {% endif %}
+</div>
+
+<script src="/static/scalp_backtest.js?v=1" defer></script>
+{% endblock %}

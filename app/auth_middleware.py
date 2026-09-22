@@ -84,7 +84,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return RedirectResponse("/change-password", status_code=303)
 
         if not user.get("is_admin"):
-            if path.startswith("/backtest") or path == "/admin/run-now":
+            if (
+                path.startswith("/backtest")
+                or path.startswith("/scalp/backtest")
+                or path == "/admin/run-now"
+            ):
                 return RedirectResponse("/", status_code=303)
 
         return await call_next(request)
