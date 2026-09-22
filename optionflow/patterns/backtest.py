@@ -5,7 +5,7 @@ import logging
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Callable
 
 from optionflow.patterns.chart import render_pattern_chart, chart_forward_bars
 from optionflow.patterns.divergence import (
@@ -242,11 +242,6 @@ def evaluate_outcome(
     target_profit_pct: float | None = None,
 ) -> tuple[bool | None, str]:
     if target_profit_pct is not None and target_profit_pct >= 0.1:
-        if hit.category == "trendline":
-            tp_frac = target_profit_pct / 100.0
-            return evaluate_trendline_path(
-                bars, idx, hit, take_profit_pct=tp_frac
-            )
         return evaluate_target_profit(bars, idx, hit, target_profit_pct)
     if hit.category == "trendline":
         return evaluate_trendline_path(bars, idx, hit)
@@ -288,8 +283,6 @@ def _shift_hit_bar_indices(hit: PatternHit, offset: int) -> None:
     if offset <= 0:
         return
     meta = hit.meta
-    # start_i / end_i / touch_* نسبت به پنجرهٔ detect محلی می‌مانند.
-    # فقط اندیس‌های مطلق + window_offset با offset تکه جابه‌جا می‌شوند.
     for key in (
         "confirm_index",
         "early_index",
@@ -297,6 +290,8 @@ def _shift_hit_bar_indices(hit: PatternHit, offset: int) -> None:
         "entry_index",
         "break_index",
         "pullback_index",
+        "start_i",
+        "end_i",
         "window_offset",
     ):
         v = meta.get(key)
@@ -306,13 +301,12 @@ def _shift_hit_bar_indices(hit: PatternHit, offset: int) -> None:
         t = meta.get(key)
         if isinstance(t, (list, tuple)) and len(t) >= 2:
             meta[key] = (int(t[0]) + offset, t[1])
-    tps = meta.get("touch_points")
-    if isinstance(tps, list):
-        shifted: list[list[Any]] = []
-        for pt in tps:
-            if isinstance(pt, (list, tuple)) and len(pt) >= 2:
-                shifted.append([int(pt[0]) + offset, pt[1]])
-        meta["touch_points"] = shifted
+    for key in ("touch_highs", "touch_lows", "hi_idx", "lo_idx"):
+        lst = meta.get(key)
+        if isinstance(lst, list):
+            meta[key] = [
+                int(x) + offset for x in lst if isinstance(x, (int, float))
+            ]
 
 
 def _replay_divergence(
