@@ -7,6 +7,8 @@ from typing import Any
 from app.position_store import (
     close_position,
     get_config,
+    has_open_pattern_category,
+    has_open_report_kind,
     insert_open_position,
     list_positions,
     signal_seen,
@@ -111,6 +113,8 @@ def try_open_from_pattern_event(user_id: int, event: dict[str, Any]) -> int | No
     cat = str(event.get("category") or "")
     if cat not in (cfg.get("pattern_categories") or []):
         return None
+    if has_open_pattern_category(user_id, cat):
+        return None
     key = str(event.get("event_key") or f"pattern:{event.get('id')}")
     if signal_seen(user_id, key):
         return None
@@ -149,6 +153,8 @@ def try_open_from_report(user_id: int, report: dict[str, Any]) -> int | None:
         return None
     kind = str(report.get("report_kind") or "4h")
     if kind not in (cfg.get("report_kinds") or []):
+        return None
+    if has_open_report_kind(user_id, kind):
         return None
     rid = int(report["id"])
     key = f"report:{rid}"
@@ -216,3 +222,34 @@ def unrealized_pnl(pos: dict[str, Any], mark: float) -> float:
     if pos["direction"] == "long":
         return (mark - entry) / entry * notional
     return (entry - mark) / entry * notional
+
+
+def live_open_state(user_id: int) -> dict[str, Any]:
+    """قیمت مارک، PnL لحظه‌ای، و بستن خودکار SL/TP."""
+    mark = latest_btc_price()
+    closed = 0
+    if mark is not None:
+        closed = update_open_positions(user_id, mark)
+    rows = list_positions(user_id, status="open", limit=50)
+    items: list[dict[str, Any]] = []
+    for p in rows:
+        pnl = unrealized_pnl(p, mark) if mark is not None else None
+        items.append(
+            {
+                "id": int(p["id"]),
+                "direction": p["direction"],
+                "leverage": float(p["leverage"]),
+                "source_type": p["source_type"],
+                "signal_title": p.get("signal_title") or "",
+                "entry_price": float(p["entry_price"]),
+                "sl_price": float(p["sl_price"]),
+                "tp_price": float(p["tp_price"]),
+                "pnl_usdt": round(pnl, 2) if pnl is not None else None,
+            }
+        )
+    return {
+        "mark": round(mark, 2) if mark is not None else None,
+        "closed": closed,
+        "open_count": len(items),
+        "positions": items,
+    }

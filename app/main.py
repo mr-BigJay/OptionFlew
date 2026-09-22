@@ -12,7 +12,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -48,7 +48,13 @@ from app.jobs import (
 )
 from app.pattern_store import get_pattern_event, list_all_pattern_events, list_pattern_events
 from app.exchange_fee_profiles import fee_profile_summary_fa, list_fee_profiles
-from app.paper_engine import latest_btc_price, process_signals_for_user, unrealized_pnl
+from app.paper_chart import render_paper_position_chart
+from app.paper_engine import (
+    latest_btc_price,
+    live_open_state,
+    process_signals_for_user,
+    unrealized_pnl,
+)
 from app.position_store import (
     PATTERN_CATEGORIES,
     REPORT_KINDS,
@@ -56,6 +62,7 @@ from app.position_store import (
     close_position,
     deposit,
     get_config,
+    get_position,
     get_wallet,
     list_ledger,
     list_positions,
@@ -1218,6 +1225,57 @@ async def position_close_manual(request: Request, position_id: int):
     if not ok:
         return RedirectResponse("/position?tab=open&err=پوزیشن+پیدا+نشد", status_code=303)
     return RedirectResponse("/position?tab=report&msg=بسته+شد", status_code=303)
+
+
+@app.get("/position/api/live")
+async def position_live_api(request: Request):
+    user = current_user(request)
+    if not user:
+        return JSONResponse({"error": "auth"}, status_code=401)
+    uid = int(user["id"])
+    return JSONResponse(live_open_state(uid))
+
+
+@app.get("/position/open/{position_id}", response_class=HTMLResponse)
+async def position_open_detail(request: Request, position_id: int):
+    user = current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    uid = int(user["id"])
+    pos = get_position(uid, position_id)
+    if not pos:
+        return RedirectResponse("/position?tab=open&err=پوزیشن+پیدا+نشد", status_code=303)
+    mark = latest_btc_price()
+    pnl = unrealized_pnl(pos, mark) if mark is not None and pos.get("status") == "open" else pos.get("pnl_usdt")
+    return templates.TemplateResponse(
+        request,
+        "position_open.html",
+        _page_ctx(
+            request,
+            active="position",
+            pos=pos,
+            mark_price=mark,
+            pnl_usdt=pnl,
+            source_fa=_position_source_fa,
+            status_fa=_position_status_fa,
+        ),
+    )
+
+
+@app.get("/position/open/{position_id}/chart.png")
+async def position_open_chart_png(request: Request, position_id: int):
+    user = current_user(request)
+    if not user:
+        return Response(status_code=401)
+    uid = int(user["id"])
+    pos = get_position(uid, position_id)
+    if not pos:
+        return Response(status_code=404)
+    mark = latest_btc_price()
+    png = render_paper_position_chart(pos, mark=mark)
+    if not png:
+        return Response(status_code=503)
+    return Response(content=png, media_type="image/png")
 
 
 @app.get("/telegram", response_class=HTMLResponse)

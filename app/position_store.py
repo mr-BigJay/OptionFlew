@@ -301,6 +301,19 @@ def list_positions(
         return [dict(r) for r in conn.execute(q, params).fetchall()]
 
 
+def get_position(user_id: int, position_id: int) -> dict[str, Any] | None:
+    init_position_db()
+    with connect() as conn:
+        row = conn.execute(
+            """
+            SELECT * FROM paper_positions
+            WHERE id = ? AND user_id = ?
+            """,
+            (position_id, user_id),
+        ).fetchone()
+        return dict(row) if row else None
+
+
 def list_ledger(user_id: int, limit: int = 80) -> list[dict[str, Any]]:
     init_position_db()
     with connect() as conn:
@@ -332,6 +345,41 @@ def mark_signal_seen(user_id: int, signal_key: str) -> None:
             """,
             (user_id, signal_key, utc_now_iso()),
         )
+
+
+def has_open_pattern_category(user_id: int, category: str) -> bool:
+    """حداکثر یک پوزیشن باز به ازای هر دستهٔ الگو (مثلاً trendline)."""
+    cat = (category or "").strip()
+    if not cat:
+        return False
+    for p in list_positions(user_id, status="open", limit=80):
+        if str(p.get("source_type") or "") != "pattern":
+            continue
+        sk = str(p.get("source_key") or "")
+        if sk.startswith(f"{cat}:"):
+            return True
+        head = sk.split(":", 1)[0] if ":" in sk else ""
+        if head == cat:
+            return True
+    return False
+
+
+def has_open_report_kind(user_id: int, report_kind: str) -> bool:
+    kind = (report_kind or "").strip()
+    if not kind:
+        return False
+    init_position_db()
+    with connect() as conn:
+        row = conn.execute(
+            """
+            SELECT 1 FROM paper_positions
+            WHERE user_id = ? AND status = 'open' AND source_type = 'report'
+              AND timeframe = ?
+            LIMIT 1
+            """,
+            (user_id, kind),
+        ).fetchone()
+        return row is not None
 
 
 def insert_open_position(

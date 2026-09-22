@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}پوزیشن #{{ pos.id }} — OptionFlow{% endblock %}
+{% block header %}<span class="header-title">چارت پوزیشن</span>{% endblock %}
+{% block subheader %}
+<p class="muted patterns-sub pos-sub">{{ pos.signal_title }}</p>
+{% endblock %}
+
+{% block content %}
+<div class="pos-page">
+  <p class="pos-back"><a href="/position?tab=open">← بازگشت به پوزیشن‌های باز</a></p>
+
+  <section class="pos-panel pos-chart-panel">
+    <div class="pos-trade-top">
+      <span class="pos-dir">{{ pos.direction == 'long' and '▲ لانگ' or '▼ شورت' }}</span>
+      <span class="pos-lev">{{ pos.leverage|int }}×</span>
+      <span class="pos-src">{{ source_fa(pos.source_type) }}</span>
+      {% if pos.status != 'open' %}
+      <span class="pos-hist-st">{{ status_fa(pos.status) }}</span>
+      {% endif %}
+    </div>
+    <div class="pos-trade-meta">
+      <span>ورود {{ "{:,.0f}".format(pos.entry_price) }}</span>
+      <span>SL {{ "{:,.0f}".format(pos.sl_price) }}</span>
+      <span>TP {{ "{:,.0f}".format(pos.tp_price) }}</span>
+      {% if mark_price %}
+      <span>Mark {{ "{:,.0f}".format(mark_price) }}</span>
+      {% endif %}
+    </div>
+    {% if pnl_usdt is not none %}
+    <p class="pos-trade-pnl {% if pnl_usdt >= 0 %}pos{% else %}neg{% endif %}">
+      {{ "{:+,.2f}".format(pnl_usdt) }} USDT
+    </p>
+    {% endif %}
+
+    <img
+      class="pos-chart-img"
+      src="/position/open/{{ pos.id }}/chart.png?t={{ pos.opened_at }}"
+      alt="چارت پوزیشن"
+      loading="eager"
+    >
+
+    {% if pos.status == 'open' %}
+    <form method="post" action="/position/close/{{ pos.id }}" class="pos-chart-actions">
+      <button type="submit" class="btn secondary">بستن با قیمت Mark</button>
+    </form>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}
