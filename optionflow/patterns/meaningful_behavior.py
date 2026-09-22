@@ -198,6 +198,8 @@ def evaluate_behavior_path(
     tp_px, tp_label = _flow_target_price(meta, entry_px)
     if tp_px is None:
         return None, tp_label
+    meta["tp_px"] = tp_px
+    meta["target_strike"] = tp_px
 
     start = entry_i + 1
     if start >= len(bars):
@@ -230,7 +232,6 @@ def evaluate_behavior_path(
     meta["exit_index"] = exit_i
     meta["path_pct"] = pct
     meta["exit_reason"] = reason
-    meta["tp_px"] = tp_px
     meta["target_strike"] = tp_px
     meta["direction_label_fa"] = (
         "صعود" if direction == "up" else "نزول" if direction == "down" else "—"

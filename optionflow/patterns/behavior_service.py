@@ -144,12 +144,10 @@ def notify_new_behavior_hits(
         if not key or key in sent:
             continue
         caption = (
-            f"⚡ رفتار معنادار · {hit.title_fa}\n"
-            f"تایم‌فریم: {tf}\n"
-            f"{hit.summary_fa.replace('**', '')}\n"
-            f"ورود ~{hit.meta.get('entry_px') or hit.meta.get('spot_at_signal'):,.0f} · "
-            f"هدف TP ~{hit.meta.get('tp_px', 0):,.0f}\n"
-            f"{hit.forecast_fa}"
+            f"⚡ {hit.title_fa}\n"
+            f"تایم‌فریم: {tf}\n\n"
+            f"{hit.summary_fa}\n\n"
+            f"پیش‌بینی:\n{hit.forecast_fa}"
         )
         png: bytes | None = None
         if hit.chart_file:

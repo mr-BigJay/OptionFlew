@@ -950,6 +950,7 @@ a.pattern-nav-card:active {
   font-size: 0.88rem;
   line-height: 1.55;
   margin: 0 0 10px;
+  white-space: pre-line;
 }
 
 .pattern-empty {

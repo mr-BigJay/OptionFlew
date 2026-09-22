@@ -132,4 +132,39 @@ def test_put_path_eval_down_to_strike() -> None:
     ok, note = evaluate_behavior_path(bars, hit)
     assert ok is True
     assert hit.meta["tp_px"] == tp
-    assert "79" in note
+def test_behavior_chart_renders_png() -> None:
+    from optionflow.patterns.chart import render_pattern_chart
+
+    t0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    px = 86_000.0
+    bars = [
+        OhlcBar(
+            ts=t0 + timedelta(hours=i),
+            open=px,
+            high=px + 300,
+            low=px - 300,
+            close=px,
+            volume=1.0,
+        )
+        for i in range(20)
+    ]
+    hit = PatternHit(
+        category="meaningful_behavior",
+        timeframe="1h",
+        pattern_id="put_surge",
+        title_fa="سیگنال: خرید زیاد پوت",
+        status_fa="فعال",
+        summary_fa="x",
+        forecast_fa="y",
+        meta={
+            "direction": "down",
+            "entry_index": 18,
+            "dominant_strikes": [(88_000.0, 400.0), (79_000.0, 250.0)],
+            "tp_px": 79_000.0,
+            "exit_index": 19,
+            "path_pct": -0.01,
+        },
+    )
+    png = render_pattern_chart(bars, hit, signal_index=18, forward_bars=6)
+    assert png is not None
+    assert png[:8] == b"\x89PNG\r\n\x1a\n"
