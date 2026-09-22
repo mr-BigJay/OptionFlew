@@ -574,6 +574,29 @@ def _render_price_pattern(
                 alpha=0.85,
                 label="TP",
             )
+        rh = meta.get("range_high")
+        rl = meta.get("range_low")
+        if isinstance(rh, (int, float)) and isinstance(rl, (int, float)):
+            ax.hlines(
+                float(rh),
+                x0,
+                x1,
+                colors="#ffa726",
+                linestyles="-.",
+                linewidth=0.9,
+                alpha=0.7,
+                label="4H RH",
+            )
+            ax.hlines(
+                float(rl),
+                x0,
+                x1,
+                colors="#ffa726",
+                linestyles="-.",
+                linewidth=0.9,
+                alpha=0.7,
+                label="4H RL",
+            )
         if isinstance(meta.get("exit_index"), int):
             _mark_trendline_path(ax, xs, start, meta, outcome_success)
 

@@ -20,6 +20,7 @@ from optionflow.patterns.ohlc import OhlcBar
 from optionflow.patterns.types import PatternHit
 from optionflow.scalp.detect import detect_scalp_scenario
 from optionflow.scalp.evaluate import evaluate_scalp_path
+from optionflow.scalp.four_h_rr import scan_4hrr_backtest
 from optionflow.scalp.scenarios import BACKTEST_TIMEFRAMES
 
 logger = logging.getLogger("optionflow.scalp.backtest")
@@ -109,16 +110,34 @@ def run_scalp_backtest(
         result.error = "بازهٔ انتخابی کندل کافی ندارد."
         return result
 
-    pairs = _replay_scalp(
-        full,
-        scenario=scenario,
-        timeframe=timeframe,
-        scan_start=scan_start,
-        scan_end=scan_end,
-        stride=stride,
-        on_progress=on_progress,
-        should_cancel=should_cancel,
-    )
+    detector = scenario.get("detector_type") or scenario_id
+    if detector == "four_h_rr":
+        bars_4h = load_cached_bars(hist_dir, "4h")
+        if not bars_4h:
+            result.error = "کش 4h موجود نیست — از بکتست الگو دانلود کنید."
+            return result
+        pairs = scan_4hrr_backtest(
+            full,
+            bars_4h,
+            scenario=scenario,
+            params=scenario.get("params") or {},
+            start=start,
+            end=end,
+            timeframe=timeframe,
+        )
+        if on_progress:
+            on_progress(1, 1)
+    else:
+        pairs = _replay_scalp(
+            full,
+            scenario=scenario,
+            timeframe=timeframe,
+            scan_start=scan_start,
+            scan_end=scan_end,
+            stride=stride,
+            on_progress=on_progress,
+            should_cancel=should_cancel,
+        )
     result.bars_scanned = max(1, (scan_end - scan_start + 1) // stride)
     charts_left = max_charts
     for sig_ix, hit in pairs:

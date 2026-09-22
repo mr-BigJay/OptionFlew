@@ -55,6 +55,20 @@ BUILTIN: list[dict[str, Any]] = [
             "max_hold_bars": 32,
         },
     },
+    {
+        "scenario_id": "4hrr",
+        "title_fa": "4HRR",
+        "description_fa": (
+            "اولین کندل 4H روز NY = Range · ستاپ 5m بعد از بسته شدن Range · "
+            "Breakout با Close · بازگشت و Close داخل Range · استاپ اکسترمم Breakout · TP=2R · "
+            "حداکثر یک معامله باز در هر لحظه."
+        ),
+        "detector_type": "four_h_rr",
+        "timeframes": ["5m"],
+        "params": {
+            "tp_rr": 2.0,
+        },
+    },
 ]
 
 SCALP_TIMEFRAMES = ("5m", "15m", "1h")
