@@ -1,9 +1,8 @@
 from optionflow.patterns.chart_overlays import (
     build_live_chart_payload,
-    nearest_bar_index,
-    parse_iso_ts,
     pattern_overlays,
     reanchor_meta,
+    triangle_viewport,
 )
 from optionflow.patterns.ohlc import OhlcBar
 from datetime import datetime, timedelta, timezone
@@ -69,6 +68,19 @@ def test_triangle_converging_lines() -> None:
     ov = pattern_overlays("triangle", meta, bars)
     assert len(ov["segments"]) == 2
     assert len(ov["markers"]) >= 4
+    up, lo = ov["segments"][0], ov["segments"][1]
+    assert up["width"] == 1 and lo["width"] == 1
+    assert up["t1"] == lo["t1"]
+    assert abs(up["p1"] - lo["p1"]) < 0.01
+    vp = triangle_viewport(meta, bars)
+    assert vp is not None
+    payload = build_live_chart_payload(
+        timeframe="15m",
+        bars=bars,
+        category="triangle",
+        meta=meta,
+    )
+    assert payload.get("viewport") == vp
 
 
 def test_position_and_pattern_merge() -> None:

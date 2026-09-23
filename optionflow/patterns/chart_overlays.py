@@ -134,6 +134,7 @@ def _segment(
     *,
     color: str,
     label: str = "",
+    width: int = 1,
 ) -> dict[str, Any]:
     i0, i1 = _clamp_i(bars, i0), _clamp_i(bars, i1)
     return {
@@ -143,7 +144,41 @@ def _segment(
         "p1": float(p1),
         "color": color,
         "label": label,
+        "width": width,
     }
+
+
+def _apex_local_index(
+    meta: dict[str, Any], su: float, iu: float, sl: float, il: float
+) -> float | None:
+    ap = meta.get("apex_index")
+    if isinstance(ap, (int, float)):
+        return float(ap)
+    den = float(su) - float(sl)
+    if abs(den) < 1e-12:
+        return None
+    return (float(il) - float(iu)) / den
+
+
+def triangle_viewport(meta: dict[str, Any], bars: list[OhlcBar]) -> dict[str, int] | None:
+    wo = int(meta.get("window_offset") or 0)
+    i0 = meta.get("start_i")
+    i1 = meta.get("end_i")
+    if not isinstance(i0, int) or not isinstance(i1, int):
+        return None
+    su, iu = meta.get("upper_slope"), meta.get("upper_intercept")
+    sl, il = meta.get("lower_slope"), meta.get("lower_intercept")
+    li_end = int(i1)
+    if all(isinstance(x, (int, float)) for x in (su, iu, sl, il)):
+        ap = _apex_local_index(meta, float(su), float(iu), float(sl), float(il))
+        if ap is not None:
+            li_end = max(li_end, int(ap) + 2)
+    pad_left, pad_right = 10, 14
+    g0 = max(0, wo + int(i0) - pad_left)
+    g1 = min(len(bars) - 1, wo + li_end + pad_right)
+    if g1 <= g0:
+        return None
+    return {"from": bar_unix(bars[g0]), "to": bar_unix(bars[g1])}
 
 
 def _y_line(meta: dict[str, Any], bars: list[OhlcBar], *, upper: bool) -> list[dict[str, float | int]]:
@@ -212,17 +247,33 @@ def _triangle_lines(
     wo = int(meta.get("window_offset") or 0)
     li0, li1 = int(i0), int(i1)
     g0 = _clamp_i(bars, wo + li0)
-    g1 = _clamp_i(bars, wo + li1)
     y_u0 = float(su) * li0 + float(iu)
-    y_u1 = float(su) * li1 + float(iu)
     y_l0 = float(sl) * li0 + float(il)
-    y_l1 = float(sl) * li1 + float(il)
-    segments.append(
-        _segment(bars, g0, y_u0, g1, y_u1, color="#ffb74d", label="مقاومت")
-    )
-    segments.append(
-        _segment(bars, g0, y_l0, g1, y_l1, color="#81c784", label="حمایت")
-    )
+    ap = _apex_local_index(meta, float(su), float(iu), float(sl), float(il))
+    if ap is not None and ap > li0:
+        li_apex = float(ap)
+        g_apex = _clamp_i(bars, wo + int(round(li_apex)))
+        y_apex = float(su) * li_apex + float(iu)
+        segments.append(
+            _segment(
+                bars, g0, y_u0, g_apex, y_apex, color="#ffb74d", label="مقاومت", width=1
+            )
+        )
+        segments.append(
+            _segment(
+                bars, g0, y_l0, g_apex, y_apex, color="#81c784", label="حمایت", width=1
+            )
+        )
+    else:
+        g1 = _clamp_i(bars, wo + li1)
+        y_u1 = float(su) * li1 + float(iu)
+        y_l1 = float(sl) * li1 + float(il)
+        segments.append(
+            _segment(bars, g0, y_u0, g1, y_u1, color="#ffb74d", label="مقاومت", width=1)
+        )
+        segments.append(
+            _segment(bars, g0, y_l0, g1, y_l1, color="#81c784", label="حمایت", width=1)
+        )
     for ti in meta.get("touch_highs") or meta.get("hi_idx") or []:
         gi = wo + int(ti)
         if 0 <= gi < len(bars):
@@ -382,12 +433,17 @@ def build_live_chart_payload(
     if position:
         specs.append(position_overlays(position, mark=mark))
     overlays = merge_overlay_specs(*specs)
-    return {
+    payload: dict[str, Any] = {
         "timeframe": timeframe,
         "title": title,
         "candles": candles_payload(bars),
         "overlays": overlays,
     }
+    if (category or "").strip().lower() == "triangle" and m:
+        vp = triangle_viewport(m, bars)
+        if vp:
+            payload["viewport"] = vp
+    return payload
 
 
 def overlays_json(payload: dict[str, Any]) -> str:

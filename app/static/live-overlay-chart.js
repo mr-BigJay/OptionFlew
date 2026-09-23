@@ -68,7 +68,7 @@
       if (!seg || seg.t0 == null) return;
       var ls = chart.addLineSeries({
         color: seg.color || "#ef5350",
-        lineWidth: 2,
+        lineWidth: seg.width != null ? seg.width : 1,
         priceLineVisible: false,
         lastValueVisible: false,
       });
@@ -82,7 +82,7 @@
       if (!ln || !ln.points || !ln.points.length) return;
       var ls = chart.addLineSeries({
         color: ln.color || "#ffb74d",
-        lineWidth: 1.5,
+        lineWidth: ln.width != null ? ln.width : 1,
         priceLineVisible: false,
         lastValueVisible: false,
       });
@@ -93,7 +93,14 @@
       series.setMarkers(ov.markers);
     }
 
-    chart.timeScale().fitContent();
+    if (payload.viewport && payload.viewport.from != null && payload.viewport.to != null) {
+      chart.timeScale().setVisibleRange({
+        from: payload.viewport.from,
+        to: payload.viewport.to,
+      });
+    } else {
+      chart.timeScale().fitContent();
+    }
 
     var pollUrl = mount.getAttribute("data-poll-url");
     if (pollUrl) {
