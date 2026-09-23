@@ -110,6 +110,18 @@ def test_flat_stretch_short_early_then_wick_entry() -> None:
     assert hit.meta["direction"] == "down"
     assert hit.meta["exit_style"] == "ema_touch"
     assert "فاصله" in hit.title_fa
+    assert early.meta["alert_key"] == hit.meta["alert_key"]
+
+
+def test_ema50_event_key_ignores_entry_px_and_stage() -> None:
+    from app.pattern_store import event_key_for_hit
+
+    confirmed = detect_ema50(_flat_away_above(wick=True), "15m")
+    early_bars = _flat_away_above(wick=False)
+    early = detect_ema50(early_bars, "15m")
+    assert confirmed and early
+    early.meta["entry_px"] = float(early.meta["entry_px"]) + 100.0
+    assert event_key_for_hit(confirmed) == event_key_for_hit(early)
 
 
 def test_flat_stretch_long_wick_entry() -> None:

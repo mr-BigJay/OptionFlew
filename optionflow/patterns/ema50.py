@@ -92,6 +92,42 @@ def _touches_ema(bar: OhlcBar, ema_v: float) -> bool:
     return bar.low <= ema_v <= bar.high
 
 
+def _bar_ts_key(bars: list[OhlcBar], index: int) -> str:
+    i = max(0, min(int(index), len(bars) - 1))
+    ts = bars[i].ts
+    if hasattr(ts, "replace"):
+        ts = ts.replace(microsecond=0)
+    if hasattr(ts, "isoformat"):
+        return ts.isoformat()
+    return str(ts)
+
+
+def ema50_alert_key(
+    bars: list[OhlcBar],
+    *,
+    mode: str,
+    direction: str,
+    anchor_index: int,
+) -> str:
+    """هویت پایدار setup — بدون entry_px/stage که هر کندل عوض می‌شوند."""
+    return f"{mode}:{direction}:{_bar_ts_key(bars, anchor_index)}"
+
+
+def _last_touch_index(
+    bars: list[OhlcBar],
+    ema_vals: list[float | None],
+    n: int,
+    *,
+    lookback: int = 6,
+) -> int:
+    touch_i = n - 1
+    for i in range(max(EMA_LEN, n - lookback), n):
+        e = ema_vals[i]
+        if e is not None and _touches_ema(bars[i], float(e)):
+            touch_i = i
+    return touch_i
+
+
 def ema50_slice(n: int, sig: int, pullback: int, early: int) -> tuple[int, int]:
     start = max(0, min(int(pullback), int(early), sig) - LEFT_PAD)
     before = max(1, sig - start)
@@ -115,6 +151,7 @@ def _setup(
     sl_px: float,
     exit_style: str,
     stage: str,
+    touch_index: int | None = None,
 ) -> dict:
     return {
         "mode": mode,
@@ -123,6 +160,7 @@ def _setup(
         "confirm_index": entry_i,
         "break_index": entry_i if stage == "confirmed" else None,
         "pullback_index": pullback_i,
+        "touch_index": touch_index if touch_index is not None else pullback_i,
         "early_index": entry_i,
         "early_side": "low" if direction == "up" else "high",
         "entry_px": entry_px,
@@ -152,11 +190,13 @@ def _flat_stretch(
     direction = "down" if side == "above" else "up"
     sl = last.high + atr_now * 0.08 if direction == "down" else last.low - atr_now * 0.08
     wick_ok = _rejection_wick(last, above=(side == "above"))
+    pb = max(EMA_LEN, n - run)
     return _setup(
         mode="flat",
         direction=direction,
         entry_i=n - 1,
-        pullback_i=max(EMA_LEN, n - run),
+        pullback_i=pb,
+        touch_index=pb,
         entry_px=last.close,
         sl_px=sl,
         exit_style="ema_touch",
@@ -187,11 +227,13 @@ def _steep_trend(
         if not touched and abs(last.low - e) > near:
             return None
         with_trend = last.close > last.open
+        touch_i = _last_touch_index(bars, ema_vals, n)
         return _setup(
             mode="trend",
             direction="up",
             entry_i=n - 1,
             pullback_i=n - 4,
+            touch_index=touch_i,
             entry_px=last.close,
             sl_px=min(last.low, e) - atr_now * 0.08,
             exit_style="three_closes",
@@ -206,11 +248,13 @@ def _steep_trend(
     if not touched and abs(last.high - e) > near:
         return None
     with_trend = last.close < last.open
+    touch_i = _last_touch_index(bars, ema_vals, n)
     return _setup(
         mode="trend",
         direction="down",
         entry_i=n - 1,
         pullback_i=n - 4,
+        touch_index=touch_i,
         entry_px=last.close,
         sl_px=max(last.high, e) + atr_now * 0.08,
         exit_style="three_closes",
@@ -252,6 +296,13 @@ def _to_hit(
             f"{exits[setup['exit_style']]}."
         )
     summary = f"{titles[mode]}. قیمت {last.close:,.0f}."
+    anchor = int(setup.get("touch_index") or setup["pullback_index"])
+    alert_key = ema50_alert_key(
+        bars,
+        mode=mode,
+        direction=direction,
+        anchor_index=anchor,
+    )
     return PatternHit(
         category="ema50",
         timeframe=timeframe,
@@ -262,12 +313,14 @@ def _to_hit(
         forecast_fa=forecast,
         meta={
             "kind": "ema50",
+            "alert_key": alert_key,
             "mode": mode,
             "stage": stage,
             "direction": direction,
             "side": "low" if direction == "up" else "high",
             "early_side": setup["early_side"],
             "pullback_index": setup["pullback_index"],
+            "touch_index": setup.get("touch_index"),
             "confirm_index": setup["confirm_index"],
             "entry_index": setup["entry_index"],
             "early_index": setup["early_index"],
