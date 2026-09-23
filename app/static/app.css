@@ -1693,7 +1693,7 @@ bdi[dir="ltr"] {
 .pat-cat-triangle { background: rgba(167, 139, 250, 0.2); color: #c4b5fd; border: 1px solid rgba(167, 139, 250, 0.35); }
 .pat-cat-flag { background: rgba(251, 191, 36, 0.15); color: #fcd34d; border: 1px solid rgba(251, 191, 36, 0.35); }
 .pat-cat-divergence { background: rgba(244, 114, 182, 0.15); color: #f9a8d4; border: 1px solid rgba(244, 114, 182, 0.35); }
-.pat-cat-trendline { background: rgba(52, 211, 153, 0.15); color: #6ee7b7; border: 1px solid rgba(52, 211, 153, 0.35); }
+.pat-cat-trendline { background: rgba(129, 140, 248, 0.16); color: #a5b4fc; border: 1px solid rgba(129, 140, 248, 0.38); }
 .pat-cat-channel { background: rgba(34, 211, 238, 0.12); color: #67e8f9; border: 1px solid rgba(34, 211, 238, 0.35); }
 .pat-cat-ema50 { background: rgba(96, 165, 250, 0.15); color: #93c5fd; border: 1px solid rgba(96, 165, 250, 0.35); }
 .pat-cat-meaningful_behavior { background: rgba(251, 146, 60, 0.15); color: #fdba74; border: 1px solid rgba(251, 146, 60, 0.35); }
@@ -1724,12 +1724,12 @@ bdi[dir="ltr"] {
   color: #fca5a5;
   border: 1px solid rgba(248, 113, 113, 0.4);
 }
-.pat-status-break-up {
+.pat-status-break_up {
   background: rgba(52, 211, 153, 0.15);
   color: #6ee7b7;
   border: 1px solid rgba(52, 211, 153, 0.38);
 }
-.pat-status-break-down {
+.pat-status-break_down {
   background: rgba(248, 113, 113, 0.14);
   color: #fca5a5;
   border: 1px solid rgba(248, 113, 113, 0.4);
