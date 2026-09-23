@@ -91,7 +91,7 @@ def detect_three_rp(bars: list[OhlcBar], timeframe: str) -> PatternHit | None:
                 continue
             status = {
                 "confirmed": "تأییدشده",
-                "detected": "سیگنال ۳RP",
+                "detected": "سیگنال ۳BRP",
                 "failed": "رد شده",
             }[stage]
             kind = "enhanced" if enhanced else "normal"
@@ -99,7 +99,7 @@ def detect_three_rp(bars: list[OhlcBar], timeframe: str) -> PatternHit | None:
                 category="three_rp",
                 timeframe=timeframe,
                 pattern_id="three_rp_bull",
-                title_fa="۳RP صعودی (Three Bar Reversal)",
+                title_fa="۳BRP صعودی (Three Bar Reversal)",
                 status_fa=status,
                 summary_fa=(
                     f"برگشت سه‌کندلی صعودی ({kind})؛ "
@@ -134,7 +134,7 @@ def detect_three_rp(bars: list[OhlcBar], timeframe: str) -> PatternHit | None:
                 continue
             status = {
                 "confirmed": "تأییدشده",
-                "detected": "سیگنال ۳RP",
+                "detected": "سیگنال ۳BRP",
                 "failed": "رد شده",
             }[stage]
             kind = "enhanced" if enhanced else "normal"
@@ -142,7 +142,7 @@ def detect_three_rp(bars: list[OhlcBar], timeframe: str) -> PatternHit | None:
                 category="three_rp",
                 timeframe=timeframe,
                 pattern_id="three_rp_bear",
-                title_fa="۳RP نزولی (Three Bar Reversal)",
+                title_fa="۳BRP نزولی (Three Bar Reversal)",
                 status_fa=status,
                 summary_fa=(
                     f"برگشت سه‌کندلی نزولی ({kind})؛ "

@@ -215,7 +215,7 @@ def _category_fa(category: str) -> str:
         "channel": "کانال",
         "ema50": "EMA50",
         "meaningful_behavior": "رفتار معنادار",
-        "three_rp": "3RP",
+        "three_rp": "3BRP",
     }.get(category, category)
 
 
