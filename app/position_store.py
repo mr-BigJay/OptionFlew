@@ -20,6 +20,7 @@ PATTERN_CATEGORIES = (
     "channel",
     "ema50",
     "meaningful_behavior",
+    "three_rp",
 )
 
 SCALP_SCENARIOS = (

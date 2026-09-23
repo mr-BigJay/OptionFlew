@@ -130,6 +130,10 @@ def _slice_range(
             end = min(n, max(chart_window_end(n, entry, start), exit_i + 8))
         else:
             end = chart_window_end(n, entry, start)
+    elif hit.category == "three_rp":
+        bf = meta.get("bar_first", max(0, sig - 2))
+        start = max(0, int(bf) - 10)
+        end = chart_window_end(n, sig, start)
     else:
         start = max(0, sig - 60)
         end = chart_window_end(n, sig, start)
@@ -785,6 +789,60 @@ def _render_price_pattern(
         _mark_behavior_scenario(ax, bars, meta, start, end, xs)
         if isinstance(meta.get("exit_index"), int):
             _mark_trendline_path(ax, xs, start, meta, outcome_success)
+
+    elif hit.category == "three_rp":
+        import matplotlib.dates as mdates
+
+        si = meta.get("signal_index", sig)
+        bf = meta.get("bar_first")
+        if isinstance(si, int) and isinstance(bf, int) and 0 <= bf < len(bars):
+            bull = meta.get("direction") == "up"
+            ac = "#2962ff" if bull else "#ff9800"
+            x_left = mdates.date2num(bars[bf].ts)
+            x_right = xs[-1]
+            level = meta.get("pattern_high") if bull else meta.get("pattern_low")
+            edge = meta.get("support_line") if bull else meta.get("resistance_line")
+            if isinstance(level, (int, float)):
+                ax.hlines(
+                    level,
+                    x_left,
+                    x_right,
+                    colors=ac,
+                    linewidth=1.8,
+                    alpha=0.9,
+                    label="سطح الگو",
+                )
+            if isinstance(edge, (int, float)):
+                ax.hlines(
+                    edge,
+                    x_left,
+                    x_right,
+                    colors=ac,
+                    linewidth=1.2,
+                    linestyles="--",
+                    alpha=0.55,
+                )
+            if start <= si < end:
+                y_mark = bars[si].low * 0.999 if bull else bars[si].high * 1.001
+                ax.scatter(
+                    [mdates.date2num(bars[si].ts)],
+                    [y_mark],
+                    marker="^" if bull else "v",
+                    c=ac,
+                    s=90,
+                    zorder=8,
+                    edgecolors="#fff",
+                    linewidths=0.5,
+                )
+            for idx in (bf, meta.get("bar_middle"), si):
+                if isinstance(idx, int) and start <= idx < end:
+                    ax.axvline(
+                        mdates.date2num(bars[idx].ts),
+                        color=ac,
+                        alpha=0.12,
+                        linewidth=1.0,
+                        zorder=1,
+                    )
 
     elif hit.category == "flag":
         ps, pe = meta["pole_start"], meta["pole_end"]

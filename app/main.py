@@ -215,6 +215,7 @@ def _category_fa(category: str) -> str:
         "channel": "کانال",
         "ema50": "EMA50",
         "meaningful_behavior": "رفتار معنادار",
+        "three_rp": "3RP",
     }.get(category, category)
 
 
@@ -282,7 +283,7 @@ def _ledger_kind_fa(kind: str) -> str:
 
 
 BACKTEST_TABS = ("triangle", "flag", "divergence", "trendline", "channel", "ema50")
-PATTERN_TABS = BACKTEST_TABS + ("meaningful_behavior",)
+PATTERN_TABS = BACKTEST_TABS + ("meaningful_behavior", "three_rp")
 
 PATTERN_HINTS: dict[str, str] = {
     "triangle": "BTCUSDT · شکست مثلث · 5m / 15m / 1h",
@@ -292,6 +293,7 @@ PATTERN_HINTS: dict[str, str] = {
     "channel": "BTCUSDT · کانال قیمت",
     "ema50": "BTCUSDT · کراس EMA50",
     "meaningful_behavior": "Deribit · surge کال/پوت · هشدار تلگرام",
+    "three_rp": "BTCUSDT · LuxAlgo 3-Bar Reversal · فقط ۱h",
 }
 
 

@@ -1697,6 +1697,7 @@ bdi[dir="ltr"] {
 .pat-cat-channel { background: rgba(34, 211, 238, 0.12); color: #67e8f9; border: 1px solid rgba(34, 211, 238, 0.35); }
 .pat-cat-ema50 { background: rgba(96, 165, 250, 0.15); color: #93c5fd; border: 1px solid rgba(96, 165, 250, 0.35); }
 .pat-cat-meaningful_behavior { background: rgba(251, 146, 60, 0.15); color: #fdba74; border: 1px solid rgba(251, 146, 60, 0.35); }
+.pat-cat-three_rp { background: rgba(41, 98, 255, 0.14); color: #93c5fd; border: 1px solid rgba(41, 98, 255, 0.38); }
 
 .pat-tf-5m { background: rgba(45, 212, 191, 0.12); color: #5eead4; border: 1px solid rgba(45, 212, 191, 0.3); }
 .pat-tf-15m { background: rgba(56, 189, 248, 0.12); color: #7dd3fc; border: 1px solid rgba(56, 189, 248, 0.3); }
