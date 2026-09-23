@@ -938,6 +938,35 @@ a.pattern-nav-card:active {
   text-decoration: none;
 }
 
+/* Live overlay chart (الگو / پوزیشن) */
+.live-ov-panel {
+  margin: 12px 0 16px;
+  padding: 12px 12px 8px;
+  background: var(--surface);
+  border: 1px solid #2a3441;
+  border-radius: var(--radius);
+}
+
+.live-ov-title {
+  margin: 0 0 4px;
+  font-size: 0.95rem;
+  font-weight: 650;
+}
+
+.live-ov-hint {
+  margin: 0 0 10px;
+  font-size: 0.72rem;
+}
+
+.live-ov-chart-mount {
+  width: 100%;
+  min-height: 340px;
+  height: min(52dvh, 420px);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #0d1117;
+}
+
 .patterns-refresh {
   margin-top: 12px;
   margin-bottom: 16px;

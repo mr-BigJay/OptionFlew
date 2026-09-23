@@ -32,6 +32,8 @@
     </p>
     {% endif %}
 
+    {% include "partials/live_overlay_chart.html" %}
+
     <figure class="scenario-chart pattern-chart">
       <div class="scenario-chart-frame">
         <img
@@ -50,4 +52,9 @@
     {% endif %}
   </section>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js" crossorigin="anonymous"></script>
+<script src="/static/live-overlay-chart.js?v=1"></script>
 {% endblock %}
