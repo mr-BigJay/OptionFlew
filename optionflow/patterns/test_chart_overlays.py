@@ -67,7 +67,7 @@ def test_triangle_converging_lines() -> None:
     }
     ov = pattern_overlays("triangle", meta, bars)
     assert len(ov["segments"]) == 2
-    assert len(ov["markers"]) >= 4
+    assert len(ov["markers"]) == 0
     up, lo = ov["segments"][0], ov["segments"][1]
     assert up["width"] == 1 and lo["width"] == 1
     assert up["t1"] == lo["t1"]
@@ -80,7 +80,7 @@ def test_triangle_converging_lines() -> None:
         category="triangle",
         meta=meta,
     )
-    assert len(payload["candles"]) < len(bars)
+    assert len(payload["candles"]) >= 55
     pvp = payload.get("viewport")
     assert pvp is not None
     assert pvp.get("fitTime") == 1

@@ -217,9 +217,15 @@ def _triangle_range(
         ap = _apex_local_index(meta, float(su), float(iu), float(sl), float(il))
         if ap is not None:
             li_end = max(li_end, ap + 2.0)
-    pad_left, pad_right = 4, 6
-    g0 = max(0, wo + int(i0) - pad_left)
-    g1 = min(len(bars) - 1, wo + int(li_end) + pad_right)
+    pad_right = 6
+    core_g0 = wo + int(i0)
+    core_g1 = wo + int(li_end)
+    core_len = max(1, core_g1 - core_g0 + 1)
+    # ~۲۰٪ زوم کمتر: حدود ۱۰٪ حاشیه در هر طرف + سابقهٔ قبل از الگو
+    zoom_out = max(6, int(core_len * 0.10))
+    history = max(14, int((int(i1) - int(i0)) * 0.35))
+    g0 = max(0, core_g0 - history - zoom_out)
+    g1 = min(len(bars) - 1, core_g1 + pad_right + zoom_out)
     if g1 <= g0:
         return None
     return g0, g1, ap
@@ -265,7 +271,7 @@ def triangle_viewport(meta: dict[str, Any], bars: list[OhlcBar]) -> dict[str, fl
     if not prices:
         return {"from": t_from, "to": t_to, "fitTime": 1}
     lo_p, hi_p = min(prices), max(prices)
-    pad = max(30.0, (hi_p - lo_p) * 0.1)
+    pad = max(30.0, (hi_p - lo_p) * 0.12)
     return {
         "from": t_from,
         "to": t_to,
@@ -368,18 +374,6 @@ def _triangle_lines(
         segments.append(
             _segment_times(t0, y_l0, t1, y_l1, color="#81c784", label="حمایت", width=1)
         )
-    for ti in meta.get("touch_highs") or meta.get("hi_idx") or []:
-        gi = wo + int(ti)
-        if 0 <= gi < len(bars):
-            markers.append(
-                _marker(bars, gi, text="▲", color="#ffb74d", position="aboveBar")
-            )
-    for ti in meta.get("touch_lows") or meta.get("lo_idx") or []:
-        gi = wo + int(ti)
-        if 0 <= gi < len(bars):
-            markers.append(
-                _marker(bars, gi, text="▼", color="#81c784", position="belowBar")
-            )
     return segments, markers
 
 

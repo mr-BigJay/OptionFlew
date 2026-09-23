@@ -5,7 +5,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
-from optionflow.patterns.chart_overlays import time_at_local_index
+from optionflow.patterns.chart_overlays import _triangle_range, time_at_local_index
 from optionflow.patterns.ohlc import OhlcBar
 from optionflow.patterns.types import PatternHit
 
@@ -99,6 +99,11 @@ def _slice_range(
     if hit.category in ("triangle", "trendline", "channel"):
         wo = meta.get("window_offset", max(0, n - 120))
         if hit.category == "triangle":
+            rng = _triangle_range(meta, bars)
+            if rng:
+                g0, g1, _ = rng
+                sig = max(0, min(sig, n - 1))
+                return g0, min(n, g1 + 1), sig
             i0l = int(meta.get("start_i") or 0)
             i1l = int(meta.get("end_i") or max(0, sig - wo))
             li_end = float(i1l)
@@ -634,30 +639,6 @@ def _render_price_pattern(
                 y_apex = y_u1
             ax.plot([x0, x1], [y_u0, y_apex], color="#ffb74d", linewidth=1.0, label="مقاومت")
             ax.plot([x0, x1], [y_l0, y_apex], color="#81c784", linewidth=1.0, label="حمایت")
-            for ti in meta.get("touch_highs") or []:
-                gi = wo + int(ti)
-                if 0 <= gi < len(bars):
-                    ax.scatter(
-                        [mdates.date2num(bars[gi].ts)],
-                        [bars[gi].high],
-                        c="#ffb74d",
-                        s=36,
-                        zorder=6,
-                        edgecolors="#fff",
-                        linewidths=0.4,
-                    )
-            for ti in meta.get("touch_lows") or []:
-                gi = wo + int(ti)
-                if 0 <= gi < len(bars):
-                    ax.scatter(
-                        [mdates.date2num(bars[gi].ts)],
-                        [bars[gi].low],
-                        c="#81c784",
-                        s=36,
-                        zorder=6,
-                        edgecolors="#fff",
-                        linewidths=0.4,
-                    )
             if sig is not None:
                 j = wo + min(i1, max(i0, sig - wo)) if sig >= wo else i1
                 j = min(max(j, i0), i1)
