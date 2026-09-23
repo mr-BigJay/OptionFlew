@@ -201,7 +201,9 @@ def _apex_local_index(
     return (float(il) - float(iu)) / den
 
 
-def triangle_viewport(meta: dict[str, Any], bars: list[OhlcBar]) -> dict[str, float | int] | None:
+def _triangle_range(
+    meta: dict[str, Any], bars: list[OhlcBar]
+) -> tuple[int, int, float | None] | None:
     wo = int(meta.get("window_offset") or 0)
     i0 = meta.get("start_i")
     i1 = meta.get("end_i")
@@ -215,30 +217,61 @@ def triangle_viewport(meta: dict[str, Any], bars: list[OhlcBar]) -> dict[str, fl
         ap = _apex_local_index(meta, float(su), float(iu), float(sl), float(il))
         if ap is not None:
             li_end = max(li_end, ap + 2.0)
-    pad_left, pad_right = 6, 8
-    li_start = max(0.0, float(i0) - pad_left)
-    li_to = li_end + pad_right
-    t_from = time_at_local_index(bars, wo, li_start)
-    t_to = time_at_local_index(bars, wo, li_to)
-    if t_to <= t_from:
-        return None
+    pad_left, pad_right = 4, 6
     g0 = max(0, wo + int(i0) - pad_left)
-    g1 = min(len(bars) - 1, wo + int(i1) + 2)
+    g1 = min(len(bars) - 1, wo + int(li_end) + pad_right)
+    if g1 <= g0:
+        return None
+    return g0, g1, ap
+
+
+def _meta_for_sliced_bars(meta: dict[str, Any], g0: int) -> dict[str, Any]:
+    m = dict(meta)
+    wo = int(m.get("window_offset") or 0)
+    m["window_offset"] = wo - g0
+    for key in (
+        "confirm_index",
+        "early_index",
+        "entry_index",
+        "final_index",
+        "break_index",
+        "pullback_index",
+        "signal_index",
+    ):
+        v = m.get(key)
+        if isinstance(v, int):
+            m[key] = v - g0
+    return m
+
+
+def triangle_viewport(meta: dict[str, Any], bars: list[OhlcBar]) -> dict[str, float | int] | None:
+    rng = _triangle_range(meta, bars)
+    if rng is None:
+        return None
+    g0, g1, ap = rng
+    wo = int(meta.get("window_offset") or 0)
+    su, iu = meta.get("upper_slope"), meta.get("upper_intercept")
+    sl, il = meta.get("lower_slope"), meta.get("lower_intercept")
+    t_from = bar_unix(bars[0])
+    t_to = bar_unix(bars[-1])
+    if len(bars) > 1 and ap is not None:
+        t_to = max(t_to, time_at_local_index(bars, wo, ap + 1.0))
     prices: list[float] = []
-    for gi in range(g0, g1 + 1):
+    for gi in range(0, len(bars)):
         prices.append(float(bars[gi].high))
         prices.append(float(bars[gi].low))
     if ap is not None and all(isinstance(x, (int, float)) for x in (su, iu, sl, il)):
         prices.append(float(su) * ap + float(iu))
     if not prices:
-        return {"from": t_from, "to": t_to}
+        return {"from": t_from, "to": t_to, "fitTime": 1}
     lo_p, hi_p = min(prices), max(prices)
-    pad = max(40.0, (hi_p - lo_p) * 0.12)
+    pad = max(30.0, (hi_p - lo_p) * 0.1)
     return {
         "from": t_from,
         "to": t_to,
         "priceMin": lo_p - pad,
         "priceMax": hi_p + pad,
+        "fitTime": 1,
     }
 
 
@@ -488,20 +521,29 @@ def build_live_chart_payload(
     m = dict(meta or {})
     if created_at:
         m = reanchor_meta(bars, m, created_at=created_at, category=category)
+    cat = (category or "").strip().lower()
+    chart_bars = bars
+    m_chart = m
+    if cat == "triangle" and m:
+        rng = _triangle_range(m, bars)
+        if rng:
+            g0, g1, _ap = rng
+            chart_bars = bars[g0 : g1 + 1]
+            m_chart = _meta_for_sliced_bars(m, g0)
     specs: list[dict[str, Any]] = []
-    if category and m:
-        specs.append(pattern_overlays(category, m, bars))
+    if category and m_chart:
+        specs.append(pattern_overlays(category, m_chart, chart_bars))
     if position:
         specs.append(position_overlays(position, mark=mark))
     overlays = merge_overlay_specs(*specs)
     payload: dict[str, Any] = {
         "timeframe": timeframe,
         "title": title,
-        "candles": candles_payload(bars),
+        "candles": candles_payload(chart_bars),
         "overlays": overlays,
     }
-    if (category or "").strip().lower() == "triangle" and m:
-        vp = triangle_viewport(m, bars)
+    if cat == "triangle" and m_chart:
+        vp = triangle_viewport(m_chart, chart_bars)
         if vp:
             payload["viewport"] = vp
     return payload

@@ -80,9 +80,11 @@ def test_triangle_converging_lines() -> None:
         category="triangle",
         meta=meta,
     )
-    assert payload.get("viewport") == vp
-    assert vp.get("priceMin") is not None
-    assert vp.get("priceMax") is not None
+    assert len(payload["candles"]) < len(bars)
+    pvp = payload.get("viewport")
+    assert pvp is not None
+    assert pvp.get("fitTime") == 1
+    assert pvp.get("priceMin") is not None
 
 
 def test_position_and_pattern_merge() -> None:

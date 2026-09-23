@@ -99,11 +99,7 @@
 
     function applyViewport() {
       var vp = payload.viewport;
-      if (!vp || vp.from == null || vp.to == null) {
-        chart.timeScale().fitContent();
-        return;
-      }
-      if (vp.priceMin != null && vp.priceMax != null) {
+      if (vp && vp.priceMin != null && vp.priceMax != null) {
         series.applyOptions({
           autoscaleInfoProvider: function () {
             return {
@@ -115,10 +111,22 @@
           },
         });
       }
-      chart.timeScale().setVisibleRange({
-        from: vp.from,
-        to: vp.to,
-      });
+      if (vp && vp.fitTime) {
+        chart.timeScale().fitContent();
+        return;
+      }
+      if (!vp || vp.from == null || vp.to == null) {
+        chart.timeScale().fitContent();
+        return;
+      }
+      try {
+        chart.timeScale().setVisibleRange({
+          from: vp.from,
+          to: vp.to,
+        });
+      } catch (e) {
+        chart.timeScale().fitContent();
+      }
     }
 
     requestAnimationFrame(function () {
