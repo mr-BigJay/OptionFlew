@@ -1,0 +1,318 @@
+from __future__ import annotations
+
+import json
+from datetime import datetime, timezone
+from typing import Any
+
+from optionflow.patterns.ohlc import OhlcBar
+
+
+def bar_unix(b: OhlcBar) -> int:
+    ts = b.ts
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    return int(ts.timestamp())
+
+
+def candles_payload(bars: list[OhlcBar]) -> list[dict[str, float | int]]:
+    out: list[dict[str, float | int]] = []
+    for b in bars:
+        out.append(
+            {
+                "time": bar_unix(b),
+                "open": float(b.open),
+                "high": float(b.high),
+                "low": float(b.low),
+                "close": float(b.close),
+            }
+        )
+    return out
+
+
+def parse_iso_ts(raw: str) -> datetime | None:
+    s = (raw or "").strip()
+    if not s:
+        return None
+    try:
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except ValueError:
+        return None
+
+
+def nearest_bar_index(bars: list[OhlcBar], ts: datetime) -> int:
+    best_i = len(bars) - 1
+    best_d = float("inf")
+    for i, b in enumerate(bars):
+        bt = b.ts
+        if bt.tzinfo is None:
+            bt = bt.replace(tzinfo=timezone.utc)
+        d = abs((bt - ts).total_seconds())
+        if d < best_d:
+            best_d = d
+            best_i = i
+    return best_i
+
+
+def reanchor_meta(bars: list[OhlcBar], meta: dict[str, Any], *, created_at: str | None) -> dict[str, Any]:
+    """هم‌تراز کردن اندیس‌های الگو با سری کندل فعلی (مثل paper_chart)."""
+    ts = parse_iso_ts(created_at or "")
+    if ts is None or not bars:
+        return dict(meta)
+    idx = nearest_bar_index(bars, ts)
+    m = dict(meta)
+    end_i = int(m.get("end_i") or len(bars) - 1)
+    old_wo = int(m.get("window_offset") or 0)
+    ref = m.get("confirm_index")
+    if not isinstance(ref, int):
+        ref = m.get("early_index")
+    if not isinstance(ref, int):
+        ref = old_wo + end_i
+    shift = idx - ref
+    m["window_offset"] = max(0, old_wo + shift)
+    for key in (
+        "confirm_index",
+        "early_index",
+        "entry_index",
+        "final_index",
+        "break_index",
+        "pullback_index",
+        "signal_index",
+    ):
+        v = m.get(key)
+        if isinstance(v, int):
+            m[key] = v + shift
+    for key in ("pivot_a", "pivot_b", "pivot_mid"):
+        t = m.get(key)
+        if isinstance(t, (list, tuple)) and len(t) >= 2:
+            try:
+                m[key] = (int(t[0]) + shift, t[1])
+            except (TypeError, ValueError):
+                pass
+    for key in ("touch_highs", "touch_lows", "hi_idx", "lo_idx"):
+        lst = m.get(key)
+        if isinstance(lst, list):
+            m[key] = [int(x) + shift for x in lst if isinstance(x, (int, float))]
+    return m
+
+
+def _clamp_i(bars: list[OhlcBar], i: int) -> int:
+    return max(0, min(int(i), len(bars) - 1))
+
+
+def _hline(price: float, *, color: str, label: str, style: str = "dashed") -> dict[str, Any]:
+    return {
+        "price": float(price),
+        "color": color,
+        "label": label,
+        "style": style,
+    }
+
+
+def _marker(bars: list[OhlcBar], i: int, *, text: str, color: str, position: str) -> dict[str, Any]:
+    i = _clamp_i(bars, i)
+    return {
+        "time": bar_unix(bars[i]),
+        "position": position,
+        "color": color,
+        "text": text,
+    }
+
+
+def _segment(
+    bars: list[OhlcBar],
+    i0: int,
+    p0: float,
+    i1: int,
+    p1: float,
+    *,
+    color: str,
+    label: str = "",
+) -> dict[str, Any]:
+    i0, i1 = _clamp_i(bars, i0), _clamp_i(bars, i1)
+    return {
+        "t0": bar_unix(bars[i0]),
+        "p0": float(p0),
+        "t1": bar_unix(bars[i1]),
+        "p1": float(p1),
+        "color": color,
+        "label": label,
+    }
+
+
+def _y_line(meta: dict[str, Any], bars: list[OhlcBar], *, upper: bool) -> list[dict[str, float | int]]:
+    sk = "upper_slope" if upper else "lower_slope"
+    ik = "upper_intercept" if upper else "lower_intercept"
+    slope, intercept = meta.get(sk), meta.get(ik)
+    if not isinstance(slope, (int, float)) or not isinstance(intercept, (int, float)):
+        return []
+    wo = int(meta.get("window_offset") or 0)
+    i0 = max(0, len(bars) - 90)
+    i1 = len(bars) - 1
+    pts: list[dict[str, float | int]] = []
+    for gi in range(i0, i1 + 1):
+        li = gi - wo
+        y = float(slope) * li + float(intercept)
+        pts.append({"time": bar_unix(bars[gi]), "value": y})
+    return pts
+
+
+def position_overlays(pos: dict[str, Any], *, mark: float | None = None) -> dict[str, Any]:
+    hlines = [
+        _hline(float(pos["entry_price"]), color="#fbbf24", label="Entry", style="solid"),
+        _hline(float(pos["sl_price"]), color="#f87171", label="SL"),
+        _hline(float(pos["tp_price"]), color="#34d399", label="TP"),
+    ]
+    if mark is not None and mark > 0:
+        hlines.append(_hline(float(mark), color="#60a5fa", label="Mark", style="dotted"))
+    return {"hlines": hlines, "segments": [], "lines": [], "markers": []}
+
+
+def pattern_overlays(
+    category: str,
+    meta: dict[str, Any],
+    bars: list[OhlcBar],
+) -> dict[str, Any]:
+    hlines: list[dict[str, Any]] = []
+    segments: list[dict[str, Any]] = []
+    lines: list[dict[str, Any]] = []
+    markers: list[dict[str, Any]] = []
+    cat = (category or "").strip().lower()
+
+    if cat == "divergence":
+        pa, pb = meta.get("pivot_a"), meta.get("pivot_b")
+        if isinstance(pa, (list, tuple)) and isinstance(pb, (list, tuple)) and len(pa) >= 2 and len(pb) >= 2:
+            ia, ib = int(pa[0]), int(pb[0])
+            segments.append(
+                _segment(
+                    bars,
+                    ia,
+                    float(pa[1]),
+                    ib,
+                    float(pb[1]),
+                    color="#ef5350" if meta.get("direction") == "down" else "#66bb6a",
+                    label="واگرایی",
+                )
+            )
+            markers.append(_marker(bars, ib, text="B", color="#ef5350", position="aboveBar"))
+            markers.append(_marker(bars, ia, text="A", color="#90caf9", position="belowBar"))
+        cf = meta.get("confirm_index")
+        if isinstance(cf, int):
+            markers.append(_marker(bars, cf, text="تأیید", color="#78909c", position="aboveBar"))
+        ei = meta.get("entry_index")
+        if isinstance(ei, int):
+            markers.append(_marker(bars, ei, text="ورود", color="#fbbf24", position="belowBar"))
+
+    elif cat in ("trendline", "channel"):
+        up_pts = _y_line(meta, bars, upper=True)
+        lo_pts = _y_line(meta, bars, upper=False)
+        if up_pts:
+            lines.append({"color": "#ffb74d", "label": "مقاومت", "points": up_pts})
+        if lo_pts:
+            lines.append({"color": "#81c784", "label": "حمایت", "points": lo_pts})
+        for ti in meta.get("touch_highs") or []:
+            if isinstance(ti, int):
+                markers.append(_marker(bars, ti, text="▲", color="#ffb74d", position="aboveBar"))
+        for ti in meta.get("touch_lows") or []:
+            if isinstance(ti, int):
+                markers.append(_marker(bars, ti, text="▼", color="#81c784", position="belowBar"))
+        ei = meta.get("entry_index", meta.get("early_index"))
+        if isinstance(ei, int):
+            markers.append(_marker(bars, ei, text="ورود", color="#fbbf24", position="belowBar"))
+
+    elif cat == "ema50":
+        ep, sl = meta.get("entry_px"), meta.get("sl_px")
+        if isinstance(ep, (int, float)):
+            hlines.append(_hline(float(ep), color="#fbbf24", label="ورود", style="solid"))
+        if isinstance(sl, (int, float)):
+            hlines.append(_hline(float(sl), color="#f87171", label="SL"))
+        tp = meta.get("tp_px") or meta.get("ema_now")
+        if isinstance(tp, (int, float)):
+            hlines.append(_hline(float(tp), color="#42a5f5", label="EMA50"))
+        pb = meta.get("pullback_index")
+        if isinstance(pb, int):
+            markers.append(_marker(bars, pb, text="PB", color="#90caf9", position="belowBar"))
+
+    elif cat == "three_rp":
+        ep = meta.get("entry_px")
+        if isinstance(ep, (int, float)):
+            hlines.append(_hline(float(ep), color="#fbbf24", label="ورود", style="solid"))
+        ei = meta.get("entry_index")
+        if isinstance(ei, int):
+            markers.append(_marker(bars, ei, text="ورود", color="#fbbf24", position="belowBar"))
+
+    elif cat in ("triangle", "flag"):
+        u, lo = meta.get("upper_now"), meta.get("lower_now")
+        if isinstance(u, (int, float)):
+            hlines.append(_hline(float(u), color="#ffb74d", label="سقف"))
+        if isinstance(lo, (int, float)):
+            hlines.append(_hline(float(lo), color="#81c784", label="کف"))
+
+    elif cat == "meaningful_behavior":
+        strike = meta.get("strike") or meta.get("tp_px")
+        spot = meta.get("spot_at_signal")
+        if isinstance(strike, (int, float)):
+            hlines.append(_hline(float(strike), color="#a78bfa", label="Strike"))
+        if isinstance(spot, (int, float)):
+            hlines.append(_hline(float(spot), color="#60a5fa", label="Spot"))
+
+    else:
+        ep = meta.get("entry_px")
+        if isinstance(ep, (int, float)):
+            hlines.append(_hline(float(ep), color="#fbbf24", label="ورود"))
+
+    return {
+        "hlines": hlines,
+        "segments": segments,
+        "lines": lines,
+        "markers": markers,
+    }
+
+
+def merge_overlay_specs(*specs: dict[str, Any]) -> dict[str, Any]:
+    out: dict[str, Any] = {
+        "hlines": [],
+        "segments": [],
+        "lines": [],
+        "markers": [],
+    }
+    for s in specs:
+        if not s:
+            continue
+        for k in out:
+            out[k].extend(s.get(k) or [])
+    return out
+
+
+def build_live_chart_payload(
+    *,
+    timeframe: str,
+    bars: list[OhlcBar],
+    category: str,
+    meta: dict[str, Any] | None,
+    created_at: str | None = None,
+    title: str = "",
+    position: dict[str, Any] | None = None,
+    mark: float | None = None,
+) -> dict[str, Any]:
+    m = dict(meta or {})
+    if created_at:
+        m = reanchor_meta(bars, m, created_at=created_at)
+    specs: list[dict[str, Any]] = []
+    if category and m:
+        specs.append(pattern_overlays(category, m, bars))
+    if position:
+        specs.append(position_overlays(position, mark=mark))
+    overlays = merge_overlay_specs(*specs)
+    return {
+        "timeframe": timeframe,
+        "title": title,
+        "candles": candles_payload(bars),
+        "overlays": overlays,
+    }
+
+
+def overlays_json(payload: dict[str, Any]) -> str:
+    return json.dumps(payload, ensure_ascii=False)

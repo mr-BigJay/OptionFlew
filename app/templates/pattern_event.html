@@ -8,6 +8,8 @@
 {% block content %}
 <p class="patterns-back"><a href="/patterns/{{ event.category }}">← {{ category_label }}</a></p>
 
+{% include "partials/live_overlay_chart.html" %}
+
 {% set meta = event.meta or {} %}
 <article class="home-report-card kind-pattern">
   <header class="home-report-head">
@@ -72,4 +74,9 @@
     </div>
   </footer>
 </article>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js" crossorigin="anonymous"></script>
+<script src="/static/live-overlay-chart.js?v=1"></script>
 {% endblock %}

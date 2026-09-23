@@ -6,6 +6,8 @@
 {% endblock %}
 
 {% block content %}
+{% include "partials/live_overlay_chart.html" %}
+
 <section class="pattern-section" aria-labelledby="pattern-types-head">
   <h2 id="pattern-types-head" class="section-title">نوع الگو</h2>
   <div class="pattern-nav-grid">
@@ -56,4 +58,9 @@
   <div class="empty card"><p>در ۲۴ ساعت گذشته تشخیصی ثبت نشده. یک الگو را باز کنید و «به‌روزرسانی اسکن» بزنید.</p></div>
   {% endif %}
 </section>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js" crossorigin="anonymous"></script>
+<script src="/static/live-overlay-chart.js?v=1"></script>
 {% endblock %}

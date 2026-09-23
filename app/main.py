@@ -61,6 +61,12 @@ from app.jobs import (
 from app.pattern_store import get_pattern_event, list_all_pattern_events, list_pattern_events
 from app.exchange_fee_profiles import fee_profile_summary_fa, list_fee_profiles
 from app.paper_chart import render_paper_position_chart
+from app.chart_live import (
+    json_for_template,
+    payload_from_pattern_event,
+    payload_from_pattern_hit,
+    payload_from_position,
+)
 from app.paper_engine import (
     REPORT_FRESH_MINUTES,
     latest_btc_price,
@@ -440,6 +446,46 @@ def _filter_pattern_timeline(
         for r in out
         if _row_meets_min_profit(r, min_profit_pct, bars_cache)
     ]
+
+
+def _live_chart_ctx(
+    payload: dict[str, Any] | None,
+    *,
+    dom_id: str,
+    title: str = "",
+    hint: str = "",
+    poll_url: str = "",
+) -> dict[str, Any]:
+    if not payload or not payload.get("candles"):
+        return {
+            "chart_payload": None,
+            "chart_payload_id": dom_id,
+            "chart_payload_json": "{}",
+            "chart_title": title,
+            "chart_hint": hint,
+            "chart_poll_url": poll_url,
+        }
+    return {
+        "chart_payload": payload,
+        "chart_payload_id": dom_id,
+        "chart_payload_json": json_for_template(payload),
+        "chart_title": title or payload.get("title") or "چارت زنده BTCUSDT",
+        "chart_hint": hint,
+        "chart_poll_url": poll_url,
+    }
+
+
+def _first_live_hit_for_category(
+    scan: dict[str, dict[str, Any]], category: str
+):
+    from optionflow.patterns.types import PatternHit
+
+    tf_map = scan.get(category) or {}
+    for tf in ("15m", "1h", "5m"):
+        hit = tf_map.get(tf)
+        if isinstance(hit, PatternHit):
+            return hit
+    return None
 
 
 def _page_ctx(request: Request, **extra: Any) -> dict[str, Any]:
@@ -869,6 +915,26 @@ async def patterns_menu(request: Request):
     recent = list_all_pattern_events(start_iso=start_iso, limit=300)
     grouped_recent = _group_by_date(recent)
 
+    live_scan_payload = None
+    try:
+        scan_data = get_cached_scan(_patterns_dir)
+        for cat in PATTERN_TABS:
+            if cat == "meaningful_behavior":
+                continue
+            hit = _first_live_hit_for_category(scan_data, cat)
+            if hit is not None:
+                live_scan_payload = payload_from_pattern_hit(hit)
+                break
+    except Exception:
+        pass
+    live_ctx = _live_chart_ctx(
+        live_scan_payload,
+        dom_id="live-ov-patterns-home",
+        title="اسکن زنده · BTCUSDT",
+        hint="اولین سیگنال فعال از اسکن الگوها — برای جزئیات هر نوع وارد همان دسته شوید",
+        poll_url="/api/chart/live/patterns/scan",
+    )
+
     return templates.TemplateResponse(
         request,
         "patterns_menu.html",
@@ -878,6 +944,7 @@ async def patterns_menu(request: Request):
             menu_items=_pattern_menu_items(),
             grouped_recent=grouped_recent,
             recent_count=len(recent),
+            **live_ctx,
         ),
     )
 
@@ -888,6 +955,14 @@ async def pattern_event_detail(request: Request, event_id: int):
     if not event:
         return RedirectResponse("/patterns", status_code=302)
     cache_ts = pattern_cache_timestamp()
+    chart_payload = payload_from_pattern_event(event)
+    live_ctx = _live_chart_ctx(
+        chart_payload,
+        dom_id=f"live-ov-ev-{event_id}",
+        title=f"چارت زنده · {event.get('title_fa', '')}",
+        hint="خطوط واگرایی / ترند / ورود و SL·TP روی کندل‌های به‌روز",
+        poll_url=f"/api/chart/live/pattern/event/{event_id}",
+    )
     return templates.TemplateResponse(
         request,
         "pattern_event.html",
@@ -897,6 +972,7 @@ async def pattern_event_detail(request: Request, event_id: int):
             event=event,
             category_label=_category_fa(event["category"]),
             cache_ts=cache_ts,
+            **live_ctx,
         ),
     )
 
@@ -952,6 +1028,19 @@ async def pattern_category_page(
         if category == "meaningful_behavior"
         else "BTCUSDT · ۵m / ۱۵m / ۱h"
     )
+    live_scan_payload = None
+    if category != "meaningful_behavior":
+        scan_data = get_cached_scan(_patterns_dir)
+        live_hit = _first_live_hit_for_category(scan_data, category)
+        if live_hit is not None:
+            live_scan_payload = payload_from_pattern_hit(live_hit)
+    live_ctx = _live_chart_ctx(
+        live_scan_payload,
+        dom_id=f"live-ov-cat-{category}",
+        title=f"اسکن زنده · {_category_fa(category)}",
+        hint="سیگنال فعلی روی کندل‌های لحظه‌ای — خطوط ساختار همان منطق بخش الگو",
+        poll_url=f"/api/chart/live/pattern/category/{category}",
+    )
 
     return templates.TemplateResponse(
         request,
@@ -974,6 +1063,7 @@ async def pattern_category_page(
             count=len(items),
             raw_count=raw_count,
             subheader=sub,
+            **live_ctx,
         ),
     )
 
@@ -1522,6 +1612,78 @@ async def position_live_api(request: Request):
     return JSONResponse(live_open_state(uid))
 
 
+@app.get("/api/chart/live/patterns/scan")
+async def api_live_chart_patterns_scan(request: Request):
+    user = current_user(request)
+    if not user:
+        return JSONResponse({"error": "auth"}, status_code=401)
+    scan_data = get_cached_scan(_patterns_dir)
+    for cat in PATTERN_TABS:
+        if cat == "meaningful_behavior":
+            continue
+        hit = _first_live_hit_for_category(scan_data, cat)
+        if hit is not None:
+            payload = payload_from_pattern_hit(hit)
+            if payload:
+                return JSONResponse(
+                    {"candles": payload["candles"], "overlays": payload["overlays"]}
+                )
+    return JSONResponse({"candles": [], "overlays": {}})
+
+
+@app.get("/api/chart/live/pattern/event/{event_id}")
+async def api_live_chart_pattern_event(request: Request, event_id: int):
+    user = current_user(request)
+    if not user:
+        return JSONResponse({"error": "auth"}, status_code=401)
+    event = get_pattern_event(event_id)
+    if not event:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    payload = payload_from_pattern_event(event)
+    if not payload:
+        return JSONResponse({"error": "no_data"}, status_code=503)
+    return JSONResponse({"candles": payload["candles"], "overlays": payload["overlays"]})
+
+
+@app.get("/api/chart/live/pattern/category/{category}")
+async def api_live_chart_pattern_category(request: Request, category: str):
+    user = current_user(request)
+    if not user:
+        return JSONResponse({"error": "auth"}, status_code=401)
+    if category not in PATTERN_TABS or category == "meaningful_behavior":
+        return JSONResponse({"error": "bad_category"}, status_code=400)
+    scan_data = get_cached_scan(_patterns_dir)
+    hit = _first_live_hit_for_category(scan_data, category)
+    if hit is None:
+        return JSONResponse({"candles": [], "overlays": {}})
+    payload = payload_from_pattern_hit(hit)
+    if not payload:
+        return JSONResponse({"error": "no_data"}, status_code=503)
+    return JSONResponse({"candles": payload["candles"], "overlays": payload["overlays"]})
+
+
+@app.get("/api/chart/live/position/{position_id}")
+async def api_live_chart_position(request: Request, position_id: int):
+    user = current_user(request)
+    if not user:
+        return JSONResponse({"error": "auth"}, status_code=401)
+    uid = int(user["id"])
+    pos = get_position(uid, position_id)
+    if not pos:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    mark = latest_btc_price()
+    payload = payload_from_position(pos, mark=mark)
+    if not payload:
+        return JSONResponse({"error": "no_data"}, status_code=503)
+    return JSONResponse(
+        {
+            "candles": payload["candles"],
+            "overlays": payload["overlays"],
+            "mark": mark,
+        }
+    )
+
+
 @app.get("/position/open/{position_id}", response_class=HTMLResponse)
 async def position_open_detail(request: Request, position_id: int):
     user = current_user(request)
@@ -1533,6 +1695,14 @@ async def position_open_detail(request: Request, position_id: int):
         return RedirectResponse("/position?tab=open&err=پوزیشن+پیدا+نشد", status_code=303)
     mark = latest_btc_price()
     pnl = unrealized_pnl(pos, mark) if mark is not None and pos.get("status") == "open" else pos.get("pnl_usdt")
+    chart_payload = payload_from_position(pos, mark=mark)
+    live_ctx = _live_chart_ctx(
+        chart_payload,
+        dom_id=f"live-ov-pos-{position_id}",
+        title="چارت زنده پوزیشن",
+        hint="Entry · SL · TP · Mark و در صورت وجود خطوط الگوی منبع",
+        poll_url=f"/api/chart/live/position/{position_id}",
+    )
     return templates.TemplateResponse(
         request,
         "position_open.html",
@@ -1544,6 +1714,7 @@ async def position_open_detail(request: Request, position_id: int):
             pnl_usdt=pnl,
             source_fa=_position_source_fa,
             status_fa=_position_status_fa,
+            **live_ctx,
         ),
     )
 
