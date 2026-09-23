@@ -20,8 +20,7 @@ def test_replay_three_rp_finds_enhanced_on_bar_index() -> None:
     bars = [
         _bar(100, 100, 90, 92, 0),
         _bar(91, 94, 88, 90, 1),
-        _bar(90, 105, 89, 102, 2),
-        _bar(102, 103, 101, 101.5, 3),
+        _bar(102, 103, 96, 101, 3),
     ]
     hits = replay_category(
         bars,
