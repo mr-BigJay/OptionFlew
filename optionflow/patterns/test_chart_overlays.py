@@ -81,6 +81,8 @@ def test_triangle_converging_lines() -> None:
         meta=meta,
     )
     assert payload.get("viewport") == vp
+    assert vp.get("priceMin") is not None
+    assert vp.get("priceMax") is not None
 
 
 def test_position_and_pattern_merge() -> None:

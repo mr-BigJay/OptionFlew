@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import io
 import logging
+from datetime import datetime, timezone
 from typing import Any
 
-from optionflow.patterns.indicators import rsi
+from optionflow.patterns.chart_overlays import time_at_local_index
 from optionflow.patterns.ohlc import OhlcBar
 from optionflow.patterns.types import PatternHit
 
@@ -97,6 +98,24 @@ def _slice_range(
 
     if hit.category in ("triangle", "trendline", "channel"):
         wo = meta.get("window_offset", max(0, n - 120))
+        if hit.category == "triangle":
+            i0l = int(meta.get("start_i") or 0)
+            i1l = int(meta.get("end_i") or max(0, sig - wo))
+            li_end = float(i1l)
+            ap = meta.get("apex_index")
+            if isinstance(ap, (int, float)):
+                li_end = max(li_end, float(ap) + 2.0)
+            else:
+                su, iu = meta.get("upper_slope"), meta.get("upper_intercept")
+                sl, il = meta.get("lower_slope"), meta.get("lower_intercept")
+                if all(isinstance(x, (int, float)) for x in (su, iu, sl, il)):
+                    den = float(su) - float(sl)
+                    if abs(den) >= 1e-12:
+                        li_end = max(li_end, (float(il) - float(iu)) / den + 2.0)
+            start = max(0, wo + i0l - 8)
+            end = min(n, wo + int(li_end) + 12)
+            sig = max(0, min(sig, n - 1))
+            return start, end, sig
         i0 = wo + meta.get("start_i", 0)
         i1 = wo + meta.get("end_i", sig)
         early = meta.get("early_index")
@@ -589,14 +608,32 @@ def _render_price_pattern(
         su, iu = meta["upper_slope"], meta["upper_intercept"]
         sl, il = meta["lower_slope"], meta["lower_intercept"]
         i0, i1 = meta["start_i"], meta["end_i"]
-        g0, g1 = wo + i0, wo + i1
-        if 0 <= g0 < len(bars) and 0 <= g1 < len(bars):
-            x0 = mdates.date2num(bars[g0].ts)
-            x1 = mdates.date2num(bars[g1].ts)
-            y_u0, y_u1 = su * i0 + iu, su * i1 + iu
-            y_l0, y_l1 = sl * i0 + il, sl * i1 + il
-            ax.plot([x0, x1], [y_u0, y_u1], color="#ffb74d", linewidth=2, label="مقاومت")
-            ax.plot([x0, x1], [y_l0, y_l1], color="#81c784", linewidth=2, label="حمایت")
+        g0 = wo + i0
+        if g0 < len(bars):
+            x0 = mdates.date2num(bars[max(0, g0)].ts)
+            ap = meta.get("apex_index")
+            if not isinstance(ap, (int, float)):
+                den = float(su) - float(sl)
+                ap = (float(il) - float(iu)) / den if abs(den) >= 1e-12 else None
+            if isinstance(ap, (int, float)) and float(ap) > float(i0):
+                li_apex = float(ap)
+                x1 = mdates.date2num(
+                    datetime.fromtimestamp(
+                        time_at_local_index(bars, int(wo), li_apex), tz=timezone.utc
+                    )
+                )
+                y_u0 = su * i0 + iu
+                y_apex = su * li_apex + iu
+                y_l0 = sl * i0 + il
+            else:
+                g1 = wo + i1
+                g1 = max(0, min(g1, len(bars) - 1))
+                x1 = mdates.date2num(bars[g1].ts)
+                y_u0, y_u1 = su * i0 + iu, su * i1 + iu
+                y_l0, y_l1 = sl * i0 + il, sl * i1 + il
+                y_apex = y_u1
+            ax.plot([x0, x1], [y_u0, y_apex], color="#ffb74d", linewidth=1.0, label="مقاومت")
+            ax.plot([x0, x1], [y_l0, y_apex], color="#81c784", linewidth=1.0, label="حمایت")
             for ti in meta.get("touch_highs") or []:
                 gi = wo + int(ti)
                 if 0 <= gi < len(bars):

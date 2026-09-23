@@ -69,6 +69,8 @@
       var ls = chart.addLineSeries({
         color: seg.color || "#ef5350",
         lineWidth: seg.width != null ? seg.width : 1,
+        lineStyle: 0,
+        crosshairMarkerVisible: false,
         priceLineVisible: false,
         lastValueVisible: false,
       });
@@ -83,6 +85,8 @@
       var ls = chart.addLineSeries({
         color: ln.color || "#ffb74d",
         lineWidth: ln.width != null ? ln.width : 1,
+        lineStyle: 0,
+        crosshairMarkerVisible: false,
         priceLineVisible: false,
         lastValueVisible: false,
       });
@@ -93,14 +97,33 @@
       series.setMarkers(ov.markers);
     }
 
-    if (payload.viewport && payload.viewport.from != null && payload.viewport.to != null) {
+    function applyViewport() {
+      var vp = payload.viewport;
+      if (!vp || vp.from == null || vp.to == null) {
+        chart.timeScale().fitContent();
+        return;
+      }
+      if (vp.priceMin != null && vp.priceMax != null) {
+        series.applyOptions({
+          autoscaleInfoProvider: function () {
+            return {
+              priceRange: {
+                minValue: vp.priceMin,
+                maxValue: vp.priceMax,
+              },
+            };
+          },
+        });
+      }
       chart.timeScale().setVisibleRange({
-        from: payload.viewport.from,
-        to: payload.viewport.to,
+        from: vp.from,
+        to: vp.to,
       });
-    } else {
-      chart.timeScale().fitContent();
     }
+
+    requestAnimationFrame(function () {
+      requestAnimationFrame(applyViewport);
+    });
 
     var pollUrl = mount.getAttribute("data-poll-url");
     if (pollUrl) {

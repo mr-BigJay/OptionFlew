@@ -106,6 +106,47 @@ def _clamp_i(bars: list[OhlcBar], i: int) -> int:
     return max(0, min(int(i), len(bars) - 1))
 
 
+def _bar_step_seconds(bars: list[OhlcBar]) -> int:
+    if len(bars) < 2:
+        return 900
+    step = bar_unix(bars[-1]) - bar_unix(bars[-2])
+    return max(60, int(step))
+
+
+def time_at_local_index(bars: list[OhlcBar], wo: int, li: float) -> int:
+    """زمان کندل برای اندیس محلی؛ اگر apex بعد از آخرین کندل باشد، خارج از داده extrapolate می‌شود."""
+    if not bars:
+        return 0
+    gi = wo + int(round(li))
+    if gi < 0:
+        gi = 0
+    if gi < len(bars):
+        return bar_unix(bars[gi])
+    last = len(bars) - 1
+    return int(bar_unix(bars[last]) + (gi - last) * _bar_step_seconds(bars))
+
+
+def _segment_times(
+    t0: int,
+    p0: float,
+    t1: int,
+    p1: float,
+    *,
+    color: str,
+    label: str = "",
+    width: int = 1,
+) -> dict[str, Any]:
+    return {
+        "t0": int(t0),
+        "p0": float(p0),
+        "t1": int(t1),
+        "p1": float(p1),
+        "color": color,
+        "label": label,
+        "width": width,
+    }
+
+
 def _hline(price: float, *, color: str, label: str, style: str = "dashed") -> dict[str, Any]:
     return {
         "price": float(price),
@@ -160,7 +201,7 @@ def _apex_local_index(
     return (float(il) - float(iu)) / den
 
 
-def triangle_viewport(meta: dict[str, Any], bars: list[OhlcBar]) -> dict[str, int] | None:
+def triangle_viewport(meta: dict[str, Any], bars: list[OhlcBar]) -> dict[str, float | int] | None:
     wo = int(meta.get("window_offset") or 0)
     i0 = meta.get("start_i")
     i1 = meta.get("end_i")
@@ -168,17 +209,37 @@ def triangle_viewport(meta: dict[str, Any], bars: list[OhlcBar]) -> dict[str, in
         return None
     su, iu = meta.get("upper_slope"), meta.get("upper_intercept")
     sl, il = meta.get("lower_slope"), meta.get("lower_intercept")
-    li_end = int(i1)
+    li_end = float(i1)
+    ap: float | None = None
     if all(isinstance(x, (int, float)) for x in (su, iu, sl, il)):
         ap = _apex_local_index(meta, float(su), float(iu), float(sl), float(il))
         if ap is not None:
-            li_end = max(li_end, int(ap) + 2)
-    pad_left, pad_right = 10, 14
-    g0 = max(0, wo + int(i0) - pad_left)
-    g1 = min(len(bars) - 1, wo + li_end + pad_right)
-    if g1 <= g0:
+            li_end = max(li_end, ap + 2.0)
+    pad_left, pad_right = 6, 8
+    li_start = max(0.0, float(i0) - pad_left)
+    li_to = li_end + pad_right
+    t_from = time_at_local_index(bars, wo, li_start)
+    t_to = time_at_local_index(bars, wo, li_to)
+    if t_to <= t_from:
         return None
-    return {"from": bar_unix(bars[g0]), "to": bar_unix(bars[g1])}
+    g0 = max(0, wo + int(i0) - pad_left)
+    g1 = min(len(bars) - 1, wo + int(i1) + 2)
+    prices: list[float] = []
+    for gi in range(g0, g1 + 1):
+        prices.append(float(bars[gi].high))
+        prices.append(float(bars[gi].low))
+    if ap is not None and all(isinstance(x, (int, float)) for x in (su, iu, sl, il)):
+        prices.append(float(su) * ap + float(iu))
+    if not prices:
+        return {"from": t_from, "to": t_to}
+    lo_p, hi_p = min(prices), max(prices)
+    pad = max(40.0, (hi_p - lo_p) * 0.12)
+    return {
+        "from": t_from,
+        "to": t_to,
+        "priceMin": lo_p - pad,
+        "priceMax": hi_p + pad,
+    }
 
 
 def _y_line(meta: dict[str, Any], bars: list[OhlcBar], *, upper: bool) -> list[dict[str, float | int]]:
@@ -246,33 +307,33 @@ def _triangle_lines(
         return segments, markers
     wo = int(meta.get("window_offset") or 0)
     li0, li1 = int(i0), int(i1)
-    g0 = _clamp_i(bars, wo + li0)
     y_u0 = float(su) * li0 + float(iu)
     y_l0 = float(sl) * li0 + float(il)
+    t0 = time_at_local_index(bars, wo, li0)
     ap = _apex_local_index(meta, float(su), float(iu), float(sl), float(il))
     if ap is not None and ap > li0:
         li_apex = float(ap)
-        g_apex = _clamp_i(bars, wo + int(round(li_apex)))
         y_apex = float(su) * li_apex + float(iu)
+        t1 = time_at_local_index(bars, wo, li_apex)
         segments.append(
-            _segment(
-                bars, g0, y_u0, g_apex, y_apex, color="#ffb74d", label="مقاومت", width=1
+            _segment_times(
+                t0, y_u0, t1, y_apex, color="#ffb74d", label="مقاومت", width=1
             )
         )
         segments.append(
-            _segment(
-                bars, g0, y_l0, g_apex, y_apex, color="#81c784", label="حمایت", width=1
+            _segment_times(
+                t0, y_l0, t1, y_apex, color="#81c784", label="حمایت", width=1
             )
         )
     else:
-        g1 = _clamp_i(bars, wo + li1)
         y_u1 = float(su) * li1 + float(iu)
         y_l1 = float(sl) * li1 + float(il)
+        t1 = time_at_local_index(bars, wo, li1)
         segments.append(
-            _segment(bars, g0, y_u0, g1, y_u1, color="#ffb74d", label="مقاومت", width=1)
+            _segment_times(t0, y_u0, t1, y_u1, color="#ffb74d", label="مقاومت", width=1)
         )
         segments.append(
-            _segment(bars, g0, y_l0, g1, y_l1, color="#81c784", label="حمایت", width=1)
+            _segment_times(t0, y_l0, t1, y_l1, color="#81c784", label="حمایت", width=1)
         )
     for ti in meta.get("touch_highs") or meta.get("hi_idx") or []:
         gi = wo + int(ti)
