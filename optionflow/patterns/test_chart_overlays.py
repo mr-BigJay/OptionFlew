@@ -1,4 +1,10 @@
-from optionflow.patterns.chart_overlays import build_live_chart_payload, pattern_overlays
+from optionflow.patterns.chart_overlays import (
+    build_live_chart_payload,
+    nearest_bar_index,
+    parse_iso_ts,
+    pattern_overlays,
+    reanchor_meta,
+)
 from optionflow.patterns.ohlc import OhlcBar
 from datetime import datetime, timedelta, timezone
 
@@ -13,6 +19,24 @@ def _bar(i: int, c: float) -> OhlcBar:
         close=c,
         volume=1.0,
     )
+
+
+def test_reanchor_preserves_triangle_local_indices() -> None:
+    bars = [_bar(i, 84_400.0) for i in range(100)]
+    meta = {
+        "window_offset": 20,
+        "start_i": 10,
+        "end_i": 70,
+        "confirm_index": 90,
+        "touch_highs": [25, 45, 60],
+    }
+    ts = bars[85].ts.isoformat().replace("+00:00", "Z")
+    m2 = reanchor_meta(bars, dict(meta), created_at=ts, category="triangle")
+    assert m2["start_i"] == 10
+    assert m2["end_i"] == 70
+    assert m2["touch_highs"] == [25, 45, 60]
+    assert m2["confirm_index"] == 85
+    assert m2["window_offset"] == 15
 
 
 def test_divergence_overlay_has_segment() -> None:

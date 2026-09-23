@@ -56,8 +56,14 @@ def nearest_bar_index(bars: list[OhlcBar], ts: datetime) -> int:
     return best_i
 
 
-def reanchor_meta(bars: list[OhlcBar], meta: dict[str, Any], *, created_at: str | None) -> dict[str, Any]:
-    """هم‌تراز کردن اندیس‌های الگو با سری کندل فعلی (مثل paper_chart)."""
+def reanchor_meta(
+    bars: list[OhlcBar],
+    meta: dict[str, Any],
+    *,
+    created_at: str | None,
+    category: str | None = None,
+) -> dict[str, Any]:
+    """هم‌تراز کردن متای الگو — start_i و touchها اندیس محلی پنجره‌اند."""
     ts = parse_iso_ts(created_at or "")
     if ts is None or not bars:
         return dict(meta)
@@ -80,24 +86,19 @@ def reanchor_meta(bars: list[OhlcBar], meta: dict[str, Any], *, created_at: str 
         "break_index",
         "pullback_index",
         "signal_index",
-        "start_i",
-        "end_i",
-        "apex_index",
     ):
         v = m.get(key)
         if isinstance(v, int):
             m[key] = v + shift
-    for key in ("pivot_a", "pivot_b", "pivot_mid"):
-        t = m.get(key)
-        if isinstance(t, (list, tuple)) and len(t) >= 2:
-            try:
-                m[key] = (int(t[0]) + shift, t[1])
-            except (TypeError, ValueError):
-                pass
-    for key in ("touch_highs", "touch_lows", "hi_idx", "lo_idx"):
-        lst = m.get(key)
-        if isinstance(lst, list):
-            m[key] = [int(x) + shift for x in lst if isinstance(x, (int, float))]
+    cat = (category or str(m.get("kind") or "")).lower()
+    if cat == "divergence" or m.get("pivot_a"):
+        for key in ("pivot_a", "pivot_b", "pivot_mid"):
+            t = m.get(key)
+            if isinstance(t, (list, tuple)) and len(t) >= 2:
+                try:
+                    m[key] = (int(t[0]) + shift, t[1])
+                except (TypeError, ValueError):
+                    pass
     return m
 
 
@@ -374,7 +375,7 @@ def build_live_chart_payload(
 ) -> dict[str, Any]:
     m = dict(meta or {})
     if created_at:
-        m = reanchor_meta(bars, m, created_at=created_at)
+        m = reanchor_meta(bars, m, created_at=created_at, category=category)
     specs: list[dict[str, Any]] = []
     if category and m:
         specs.append(pattern_overlays(category, m, bars))
