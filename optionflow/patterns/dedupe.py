@@ -24,9 +24,14 @@ def backtest_dedupe_key(hit: PatternHit) -> str:
         stage = str(meta.get("stage") or "")
         return f"triangle:{kind}:{stage}:u{uk}:l{lk}"
     if cat == "ema50":
+        alert = meta.get("alert_key")
+        if alert:
+            return f"ema50:{alert}"
         ep = meta.get("entry_px")
         px = int(round(float(ep))) if isinstance(ep, (int, float)) else 0
-        return f"ema50:{hit.pattern_id}:e{px}"
+        mode = meta.get("mode") or ""
+        direction = meta.get("direction") or ""
+        return f"ema50:{mode}:{direction}:e{px}"
     if cat == "flag":
         fh = meta.get("flag_high")
         fl = meta.get("flag_low")

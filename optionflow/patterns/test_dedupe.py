@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from optionflow.patterns.dedupe import backtest_dedupe_key
+from optionflow.patterns.ema50 import detect_ema50
 from optionflow.patterns.types import PatternHit
 
 
@@ -43,3 +44,14 @@ def test_different_lines_different_keys() -> None:
     a = _trendline_hit(touch_highs=[12, 40, 88])
     b = _trendline_hit(touch_highs=[12, 40, 200])
     assert backtest_dedupe_key(a) != backtest_dedupe_key(b)
+
+
+def test_ema50_same_key_despite_stage_and_entry_px() -> None:
+    from optionflow.patterns.test_ema50 import _flat_away_above
+
+    early = detect_ema50(_flat_away_above(wick=False), "15m")
+    confirmed = detect_ema50(_flat_away_above(wick=True), "15m")
+    assert early and confirmed
+    assert backtest_dedupe_key(early) == backtest_dedupe_key(confirmed)
+    confirmed.meta["entry_px"] = float(confirmed.meta["entry_px"]) + 25
+    assert backtest_dedupe_key(early) == backtest_dedupe_key(confirmed)
