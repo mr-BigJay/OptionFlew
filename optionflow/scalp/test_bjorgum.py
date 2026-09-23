@@ -1,7 +1,12 @@
 from datetime import datetime, timedelta, timezone
 
 from optionflow.patterns.ohlc import OhlcBar
-from optionflow.scalp.bjorgum import _crossover, _crossunder, detect_bjorgum
+from optionflow.scalp.bjorgum import (
+    _crossover,
+    _crossunder,
+    bjorgum_stops_targets,
+    detect_bjorgum,
+)
 
 
 def _bars_from_closes(closes: list[float]) -> list[OhlcBar]:
@@ -26,6 +31,38 @@ def test_bjorgum_only_1h() -> None:
     params = {}
     bars = _bars_from_closes([100.0] * 80)
     assert detect_bjorgum(bars, "5m", scenario, params) is None
+
+
+def test_bjorgum_stops_targets_match_pine() -> None:
+    close = 100.0
+    atr_now = 2.0
+    lowest, highest = 90.0, 110.0
+    risk_m = 1.0
+    tp_rr = 1.0
+    _, stop_l, tp_l = bjorgum_stops_targets(
+        direction="up",
+        close=close,
+        lowest_low=lowest,
+        highest_high=highest,
+        atr_now=atr_now,
+        risk_m=risk_m,
+        tp_rr=tp_rr,
+        use_limit=True,
+    )
+    assert stop_l == 88.0  # 90 - 2*1
+    assert tp_l == 112.0  # 100 + 1*(100-88)
+    _, stop_s, tp_s = bjorgum_stops_targets(
+        direction="down",
+        close=close,
+        lowest_low=lowest,
+        highest_high=highest,
+        atr_now=atr_now,
+        risk_m=risk_m,
+        tp_rr=tp_rr,
+        use_limit=True,
+    )
+    assert stop_s == 112.0
+    assert tp_s == 88.0
 
 
 def test_bjorgum_crossover_helpers() -> None:

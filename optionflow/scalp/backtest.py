@@ -46,12 +46,19 @@ def _replay_scalp(
 ) -> list[tuple[int, PatternHit]]:
     dedupe = DEDUPE_BARS.get(timeframe, 12)
     params = scenario.get("params") or {}
+    dtype = scenario.get("detector_type") or scenario.get("scenario_id")
+    one_at_a_time = dtype == "bjorgum"
     last_key: dict[str, int] = {}
     out: list[tuple[int, PatternHit]] = []
     total = max(1, len(range(scan_start, scan_end + 1, stride)))
     done = 0
+    next_allowed = scan_start
 
-    for i in range(scan_start, scan_end + 1, stride):
+    i = scan_start
+    while i <= scan_end:
+        if one_at_a_time and i < next_allowed:
+            i += stride
+            continue
         _check_cancel(should_cancel)
         lo = max(0, i + 1 - WINDOW)
         chunk = bars[lo : i + 1]
@@ -62,15 +69,29 @@ def _replay_scalp(
         ):
             on_progress(done, total)
         if hit is None:
+            i += stride
             continue
         _shift_hit_bar_indices(hit, lo)
         meta = hit.meta
         sk = meta.get("setup_key") or hit.pattern_id
         prev = last_key.get(sk)
         if prev is not None and i - prev < dedupe:
+            i += stride
             continue
         last_key[sk] = i
         out.append((i, hit))
+        if one_at_a_time:
+            sig = meta.get("entry_index")
+            if isinstance(sig, int):
+                ok, _ = evaluate_scalp_path(bars, hit, bar_index=sig)
+                exit_i = hit.meta.get("exit_index")
+                if isinstance(exit_i, int):
+                    next_allowed = exit_i + 1
+                else:
+                    next_allowed = i + stride
+            i = max(i + stride, next_allowed)
+        else:
+            i += stride
     if on_progress:
         on_progress(total, total)
     return out

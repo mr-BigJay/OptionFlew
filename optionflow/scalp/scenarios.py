@@ -73,20 +73,24 @@ BUILTIN: list[dict[str, Any]] = [
         "scenario_id": "bjorgum",
         "title_fa": "BjorGum",
         "description_fa": (
-            "کراس EMA21/EMA50 (Bj Bot) · استاپ پشت swing low/high با بافر ATR · "
-            "هدف بر اساس نسبت Risk:Reward (پیش‌فرض 1:1)."
+            "Bj Bot (3Commas): کراس MA · استاپ swing±ATR×RiskM · "
+            "limit=R:R×ریسک · پیش‌فرض EMA21/50 · فقط 1h."
         ),
         "detector_type": "bjorgum",
         "timeframes": ["1h"],
         "params": {
+            "ma_type_1": "EMA",
+            "ma_type_2": "EMA",
             "ma_length_1": 21,
             "ma_length_2": 50,
             "atr_len": 14,
             "swing_lookback": 5,
             "risk_m": 1.0,
             "tp_rr": 1.0,
+            "use_limit": True,
             "long_trades": True,
             "short_trades": True,
+            "max_hold_bars": 120,
         },
     },
 ]
