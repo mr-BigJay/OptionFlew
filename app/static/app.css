@@ -891,7 +891,55 @@ a.pattern-nav-card:active {
   background: linear-gradient(180deg, rgba(0, 229, 255, 0.45), rgba(0, 229, 255, 0.08));
 }
 
+/* TradingView embed — Bitunix BTCUSDT */
+.page--tv-chart {
+  padding: 0 0 calc(var(--nav-h) + var(--safe-b) + 8px);
+  max-width: none;
+}
+
+.tv-chart-tabs {
+  margin: 0 12px 8px;
+}
+
+.tv-chart-tabs--tf {
+  margin-bottom: 10px;
+}
+
+.tv-chart-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: min(72dvh, calc(100dvh - 220px));
+  height: min(78dvh, calc(100dvh - 200px));
+  margin: 0;
+  background: var(--surface);
+  border-top: 1px solid #2a3441;
+}
+
+.tv-chart-widget {
+  flex: 1;
+  min-height: 280px;
+  height: 100%;
+  width: 100%;
+}
+
+.tv-chart-widget .tradingview-widget-container__widget {
+  height: calc(100% - 28px);
+}
+
+.tv-chart-attrib {
+  font-size: 0.62rem;
+  text-align: center;
+  padding: 4px 8px 6px;
+  color: var(--muted);
+}
+
+.tv-chart-attrib a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
 .patterns-refresh {
+  margin-top: 12px;
   margin-bottom: 16px;
 }
 
