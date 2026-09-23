@@ -33,6 +33,18 @@ def backtest_dedupe_key(hit: PatternHit) -> str:
         fhk = int(round(float(fh))) if isinstance(fh, (int, float)) else 0
         flk = int(round(float(fl))) if isinstance(fl, (int, float)) else 0
         return f"flag:{hit.pattern_id}:h{fhk}:l{flk}"
+    if cat == "three_rp":
+        sts = meta.get("signal_ts")
+        if sts:
+            d = meta.get("direction") or ""
+            return f"three_rp:{hit.pattern_id}:{sts}:{d}"
+        px = (
+            meta.get("pattern_low")
+            if "bear" in hit.pattern_id
+            else meta.get("pattern_high")
+        )
+        pk = int(round(float(px))) if isinstance(px, (int, float)) else 0
+        return f"three_rp:{hit.pattern_id}:p{pk}"
     return hit.pattern_id
 
 

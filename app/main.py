@@ -299,8 +299,16 @@ def _ledger_kind_fa(kind: str) -> str:
     }.get(kind, kind)
 
 
-BACKTEST_TABS = ("triangle", "flag", "divergence", "trendline", "channel", "ema50")
-PATTERN_TABS = BACKTEST_TABS + ("meaningful_behavior", "three_rp")
+BACKTEST_TABS = (
+    "triangle",
+    "flag",
+    "divergence",
+    "trendline",
+    "channel",
+    "ema50",
+    "three_rp",
+)
+PATTERN_TABS = BACKTEST_TABS + ("meaningful_behavior",)
 
 PATTERN_HINTS: dict[str, str] = {
     "triangle": "BTCUSDT · شکست مثلث · 5m / 15m / 1h",
@@ -996,14 +1004,19 @@ async def backtest_page(
                 "trendline": "ترندلاین",
                 "channel": "کانال",
                 "ema50": "EMA50",
+                "three_rp": "3BRP",
             },
-            bt_tf_labels={
-                "5m": "۵ دقیقه",
-                "15m": "۱۵ دقیقه",
-                "1h": "۱ ساعت",
-                "4h": "۴ ساعت",
-                "1d": "روزانه",
-            },
+            bt_tf_labels=(
+                {"1h": "۱ ساعت"}
+                if tab == "three_rp"
+                else {
+                    "5m": "۵ دقیقه",
+                    "15m": "۱۵ دقیقه",
+                    "1h": "۱ ساعت",
+                    "4h": "۴ ساعت",
+                    "1d": "روزانه",
+                }
+            ),
         ),
     )
 
@@ -1018,6 +1031,7 @@ async def backtest_reports_page(request: Request):
         "trendline": "ترندلاین",
         "channel": "کانال",
         "ema50": "EMA50",
+        "three_rp": "3BRP",
     }
     return templates.TemplateResponse(
         request,
@@ -1042,6 +1056,7 @@ async def backtest_report_detail(request: Request, run_id: int):
         "trendline": "ترندلاین",
         "channel": "کانال",
         "ema50": "EMA50",
+        "three_rp": "3BRP",
     }
     return templates.TemplateResponse(
         request,
@@ -1132,7 +1147,9 @@ async def backtest_start(
 ):
     if tab not in BACKTEST_TABS:
         tab = "triangle"
-    if timeframe not in ("5m", "15m", "1h", "4h", "1d"):
+    if tab == "three_rp":
+        timeframe = "1h"
+    elif timeframe not in ("5m", "15m", "1h", "4h", "1d"):
         timeframe = "1h"
     tp: float | None = None
     raw = (target_profit_pct or "").strip().replace(",", ".")

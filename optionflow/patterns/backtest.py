@@ -30,12 +30,22 @@ from optionflow.patterns.trendline import (
     detect_trendline,
     evaluate_trendline_path,
 )
+from optionflow.patterns.ema50 import detect_ema50, evaluate_ema50_path
+from optionflow.patterns.three_rp import detect_three_rp_at
 from optionflow.patterns.triangle import detect_triangle
 from optionflow.patterns.types import PatternHit
 
 logger = logging.getLogger("optionflow.patterns.backtest")
 
-CATEGORIES = ("triangle", "flag", "divergence", "trendline", "channel", "ema50")
+CATEGORIES = (
+    "triangle",
+    "flag",
+    "divergence",
+    "trendline",
+    "channel",
+    "ema50",
+    "three_rp",
+)
 STRIDE_BY_TF = {"5m": 6, "15m": 2, "1h": 1, "4h": 1, "1d": 1}
 STRIDE_HEAVY = {"5m": 12, "15m": 4, "1h": 2, "4h": 1, "1d": 1}
 HEAVY_STRIDE_CATEGORIES = frozenset({"divergence", "trendline", "channel", "ema50"})
@@ -160,7 +170,7 @@ def expected_direction(hit: PatternHit) -> str | None:
         if explicit in ("up", "down"):
             return explicit
         return None
-    if hit.category in ("trendline", "channel", "ema50"):
+    if hit.category in ("trendline", "channel", "ema50", "three_rp"):
         explicit = hit.meta.get("direction")
         if explicit in ("up", "down"):
             return explicit
@@ -315,6 +325,9 @@ def _shift_hit_bar_indices(hit: PatternHit, offset: int) -> None:
         "break_index",
         "pullback_index",
         "window_offset",
+        "signal_index",
+        "bar_first",
+        "bar_middle",
     ):
         v = meta.get(key)
         if isinstance(v, int):
@@ -343,7 +356,7 @@ def _replay_divergence(
     should_cancel: CancelFn | None = None,
 ) -> list[tuple[int, PatternHit]]:
     """ریپلی واگرایی: RSI یک‌بار + پنجرهٔ محدود (سریع‌تر از bars[:i+1] روی کل سری)."""
-    dedupe = _dedupe_window(category, timeframe)
+    dedupe = _dedupe_window("divergence", timeframe)
     win = _divergence_window_bars()
     closes = [b.close for b in bars]
     rs_full = rsi(closes, RSI_PERIOD)
@@ -395,6 +408,45 @@ def _replay_stride(category: str, timeframe: str, stride: int | None) -> int:
     if category in HEAVY_STRIDE_CATEGORIES:
         return STRIDE_HEAVY.get(timeframe, STRIDE_BY_TF.get(timeframe, 1))
     return STRIDE_BY_TF.get(timeframe, 1)
+
+
+def _replay_three_rp(
+    bars: list[OhlcBar],
+    *,
+    timeframe: str,
+    scan_start: int,
+    scan_end: int,
+    stride: int,
+    on_progress: ProgressFn | None = None,
+    should_cancel: CancelFn | None = None,
+) -> list[tuple[int, PatternHit]]:
+    """هر کندل در بازه یک‌بار — همان منطق Enhanced الگوها (بدون پنجرهٔ لغزان)."""
+    if timeframe != "1h":
+        return []
+    last_key: set[str] = set()
+    out: list[tuple[int, PatternHit]] = []
+    lo = max(2, scan_start)
+    total = max(1, len(range(lo, scan_end + 1, stride)))
+    done = 0
+
+    for i in range(lo, scan_end + 1, stride):
+        _check_cancel(should_cancel)
+        hit = detect_three_rp_at(bars, timeframe, i)
+        done += 1
+        if on_progress and (
+            done == 1 or done == total or done % max(1, total // 40) == 0
+        ):
+            on_progress(done, total)
+        if hit is None:
+            continue
+        key = backtest_dedupe_key(hit)
+        if key in last_key:
+            continue
+        last_key.add(key)
+        out.append((i, hit))
+    if on_progress:
+        on_progress(total, total)
+    return out
 
 
 def _replay_sliding_window(
@@ -449,6 +501,17 @@ def replay_category(
     should_cancel: CancelFn | None = None,
 ) -> list[tuple[int, PatternHit]]:
     st = _replay_stride(category, timeframe, stride)
+    if category == "three_rp":
+        st = 1
+        return _replay_three_rp(
+            bars,
+            timeframe=timeframe,
+            scan_start=scan_start,
+            scan_end=scan_end,
+            stride=st,
+            on_progress=on_progress,
+            should_cancel=should_cancel,
+        )
     if category == "divergence":
         return _replay_divergence(
             bars,
@@ -490,6 +553,19 @@ def run_backtest(
         raise ValueError(f"unknown category: {category}")
     if timeframe not in BACKTEST_TIMEFRAMES:
         raise ValueError(f"unsupported timeframe: {timeframe}")
+    if category == "three_rp" and timeframe != "1h":
+        result = BacktestResult(
+            category=category,
+            timeframe=timeframe,
+            from_iso=start.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+            to_iso=end.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+            bars_total=0,
+            bars_scanned=0,
+            stride=1,
+            target_profit_pct=target_profit_pct,
+        )
+        result.error = "۳BRP فقط روی تایم‌فریم ۱ ساعت قابل بکتست است."
+        return result
 
     hist_dir = history_data_dir(data_base)
     bars = load_cached_bars(hist_dir, timeframe)
@@ -572,6 +648,10 @@ def run_backtest(
             _phase(float(n) + 0.55)
             if hit.category in ("trendline", "ema50", "channel"):
                 sig_ix = hit.meta.get("entry_index", hit.meta.get("early_index", idx))
+            elif hit.category == "three_rp":
+                sig_ix = hit.meta.get(
+                    "confirm_index", hit.meta.get("signal_index", idx)
+                )
             else:
                 sig_ix = hit.meta.get("confirm_index", idx)
             if not isinstance(sig_ix, int):
