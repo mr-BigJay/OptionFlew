@@ -981,7 +981,7 @@ async def backtest_page(
         "backtest.html",
         _page_ctx(
             request,
-            active="backtest",
+            active="menu",
             tab=tab,
             cache_rows=cache_status(data_dir()),
             run_id=run_id,
@@ -1022,7 +1022,7 @@ async def backtest_reports_page(request: Request):
         "backtest_reports.html",
         _page_ctx(
             request,
-            active="backtest", runs=runs, category_labels=labels, bt_tf_labels={
+            active="menu", runs=runs, category_labels=labels, bt_tf_labels={
                 "5m": "۵ دقیقه", "15m": "۱۵ دقیقه", "1h": "۱ ساعت", "4h": "۴ ساعت", "1d": "روزانه",
             }),
     )
@@ -1044,7 +1044,7 @@ async def backtest_report_detail(request: Request, run_id: int):
     return templates.TemplateResponse(
         request,
         "backtest_report_detail.html",
-        _page_ctx(request, active="backtest", run=run, category_labels=labels),
+        _page_ctx(request, active="menu", run=run, category_labels=labels),
     )
 
 
@@ -1538,6 +1538,15 @@ async def position_open_chart_png(request: Request, position_id: int):
     return Response(content=png, media_type="image/png")
 
 
+@app.get("/menu", response_class=HTMLResponse)
+async def app_menu_page(request: Request):
+    return templates.TemplateResponse(
+        request,
+        "menu.html",
+        _page_ctx(request, active="menu"),
+    )
+
+
 @app.get("/telegram", response_class=HTMLResponse)
 async def telegram_page(request: Request, msg: str = "", ok: str = ""):
     user = current_user(request)
@@ -1546,7 +1555,7 @@ async def telegram_page(request: Request, msg: str = "", ok: str = ""):
         "telegram.html",
         _page_ctx(
             request,
-            active="telegram",
+            active="menu",
             bot_token=(user or {}).get("telegram_bot_token") or "",
             chat_id=(user or {}).get("telegram_chat_id") or "",
             enabled=bool((user or {}).get("telegram_enabled")),

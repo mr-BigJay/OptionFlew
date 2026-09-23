@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}منو — OptionFlow{% endblock %}
+{% block header %}<span class="header-title">☰ منو</span>{% endblock %}
+{% block subheader %}
+<p class="muted patterns-sub">تنظیمات و ابزارها</p>
+{% endblock %}
+
+{% block content %}
+<section class="pattern-section" aria-labelledby="app-menu-head">
+  <h2 id="app-menu-head" class="section-title">گزینه‌ها</h2>
+  <div class="pattern-nav-grid">
+    <a href="/telegram" class="pattern-nav-card pattern-nav-card-compact">
+      <span class="pattern-nav-title">✈ تلگرام</span>
+      <span class="muted" style="font-size:0.75rem;margin-top:4px;">ربات و اعلان‌ها</span>
+    </a>
+    {% if is_admin %}
+    <a href="/backtest" class="pattern-nav-card pattern-nav-card-compact">
+      <span class="pattern-nav-title">⏪ بکتست</span>
+      <span class="muted" style="font-size:0.75rem;margin-top:4px;">الگوها · تاریخچه</span>
+    </a>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}
