@@ -108,6 +108,64 @@ def pattern_content_signature(
     return f"{pattern_id}:{stage}"
 
 
+def trade_signature_for_hit(hit: PatternHit) -> str:
+    """امضای setup برای paper — بدون stage تا بعد از بستن دوباره باز نشود."""
+    meta = hit.meta or {}
+    category = hit.category
+    pattern_id = hit.pattern_id
+    alert = meta.get("alert_key")
+    if alert:
+        return str(alert)
+    if category == "divergence":
+        pa = _meta_pivot_price(meta.get("pivot_a"))
+        pb = _meta_pivot_price(meta.get("pivot_b"))
+        ra, rb = meta.get("rsi_a"), meta.get("rsi_b")
+        rsi = ""
+        if isinstance(ra, (int, float)) and isinstance(rb, (int, float)):
+            rsi = f":r{round(float(ra), 1)}:{round(float(rb), 1)}"
+        return f"{pattern_id}:p{pa}:p{pb}{rsi}"
+    if category == "ema50":
+        ep = meta.get("entry_px")
+        px = int(round(float(ep))) if isinstance(ep, (int, float)) else 0
+        return f"{pattern_id}:e{px}"
+    if category in ("trendline", "channel"):
+        side = meta.get("side") or meta.get("early_side") or ""
+        y = meta.get("y_now")
+        yk = int(round(float(y))) if isinstance(y, (int, float)) else 0
+        return f"{pattern_id}:{side}:y{yk}"
+    if category == "triangle":
+        kind = meta.get("kind") or ""
+        u = meta.get("upper_now")
+        lo = meta.get("lower_now")
+        uk = int(round(float(u))) if isinstance(u, (int, float)) else 0
+        lk = int(round(float(lo))) if isinstance(lo, (int, float)) else 0
+        return f"{pattern_id}:{kind}:u{uk}:l{lk}"
+    if category == "flag":
+        fh = meta.get("flag_high")
+        fl = meta.get("flag_low")
+        d = meta.get("direction") or ""
+        fhk = int(round(float(fh))) if isinstance(fh, (int, float)) else 0
+        flk = int(round(float(fl))) if isinstance(fl, (int, float)) else 0
+        return f"{pattern_id}:{d}:h{fhk}:l{flk}"
+    if category == "three_rp":
+        sts = meta.get("signal_ts")
+        if sts:
+            d = meta.get("direction") or ""
+            return f"{pattern_id}:enh:{sts}:{d}"
+        px = meta.get("pattern_low") if "bear" in pattern_id else meta.get("pattern_high")
+        pk = int(round(float(px))) if isinstance(px, (int, float)) else 0
+        return f"{pattern_id}:enh:p{pk}"
+    if category == "meaningful_behavior":
+        return str(meta.get("alert_key") or pattern_id)
+    stage = str(meta.get("stage") or "")
+    return f"{pattern_id}:{stage}"
+
+
+def trade_key_for_hit(hit: PatternHit) -> str:
+    sig = trade_signature_for_hit(hit)
+    return f"{hit.category}:{hit.timeframe}:{sig}"
+
+
 def event_key_for_hit(hit: PatternHit) -> str:
     meta = hit.meta or {}
     sig = pattern_content_signature(

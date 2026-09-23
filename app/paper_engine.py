@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from app.pattern_store import event_key_for_hit
+from app.pattern_store import trade_key_for_hit
 from app.position_store import (
     close_position,
     get_config,
@@ -13,7 +13,7 @@ from app.position_store import (
     has_open_report_kind,
     insert_open_position,
     list_positions,
-    signal_seen,
+    signal_consumed,
 )
 from app.storage import list_reports
 from optionflow.patterns.behavior_service import (
@@ -157,8 +157,8 @@ def try_open_from_pattern_hit(user_id: int, hit: PatternHit) -> int | None:
         return None
     if has_open_pattern_category(user_id, cat):
         return None
-    key = event_key_for_hit(hit)
-    if signal_seen(user_id, key):
+    key = trade_key_for_hit(hit)
+    if signal_consumed(user_id, key):
         return None
     meta = hit.meta or {}
     direction = _direction_from_pattern(meta)
@@ -195,7 +195,7 @@ def try_open_from_report(user_id: int, report: dict[str, Any]) -> int | None:
         return None
     rid = int(report["id"])
     key = f"report:{rid}"
-    if signal_seen(user_id, key):
+    if signal_consumed(user_id, key):
         return None
     direction = _direction_from_report(str(report.get("bias") or ""))
     if not direction:

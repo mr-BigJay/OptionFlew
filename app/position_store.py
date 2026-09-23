@@ -348,6 +348,23 @@ def mark_signal_seen(user_id: int, signal_key: str) -> None:
         )
 
 
+def signal_consumed(user_id: int, signal_key: str) -> bool:
+    """این سیگنال قبلاً ترید شده (باز یا بسته) — دوباره پوزیشن نگیر."""
+    if signal_seen(user_id, signal_key):
+        return True
+    init_position_db()
+    with connect() as conn:
+        row = conn.execute(
+            """
+            SELECT 1 FROM paper_positions
+            WHERE user_id = ? AND source_key = ?
+            LIMIT 1
+            """,
+            (user_id, signal_key),
+        ).fetchone()
+        return row is not None
+
+
 def has_open_pattern_category(user_id: int, category: str) -> bool:
     """حداکثر یک پوزیشن باز به ازای هر دستهٔ الگو (مثلاً trendline)."""
     cat = (category or "").strip()
@@ -548,4 +565,7 @@ def close_position(
             note=f"آزاد مارجین #{position_id}",
             ref_id=position_id,
         )
+    sk = str(pos.get("source_key") or "").strip()
+    if sk:
+        mark_signal_seen(user_id, sk)
     return True
