@@ -79,6 +79,7 @@ def render_pattern_chart(
         signal_index=signal_index,
         forward_bars=fwd or 0,
         outcome_success=outcome_success,
+        extra_hlines=extra_hlines,
     )
 
 
@@ -565,6 +566,7 @@ def _render_price_pattern(
     signal_index: int | None,
     forward_bars: int,
     outcome_success: bool | None,
+    extra_hlines: list[HLine] | None = None,
 ) -> bytes | None:
     import matplotlib.dates as mdates
     import matplotlib.pyplot as plt
@@ -992,6 +994,17 @@ def _render_price_pattern(
     ) and isinstance(hit.meta.get("exit_index"), int)
     if sig is not None and not path_drawn:
         _mark_signal_and_forward(ax, xs, slice_bars, sig, start, forward_bars, outcome_success)
+
+    if extra_hlines:
+        for price, color, ls, label in extra_hlines:
+            ax.axhline(
+                price,
+                color=color,
+                linewidth=1.1,
+                linestyle=ls,
+                label=label,
+                zorder=7,
+            )
 
     _style_axes(ax, f"BTCUSDT {hit.timeframe} — {hit.title_fa}")
     ax.set_ylabel("USDT", color="#90a4ae", fontsize=8)

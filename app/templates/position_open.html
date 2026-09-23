@@ -32,12 +32,16 @@
     </p>
     {% endif %}
 
-    <img
-      class="pos-chart-img"
-      src="/position/open/{{ pos.id }}/chart.png?t={{ pos.opened_at }}"
-      alt="چارت پوزیشن"
-      loading="eager"
-    >
+    <figure class="scenario-chart pattern-chart">
+      <div class="scenario-chart-frame">
+        <img
+          class="chart-preview"
+          src="/position/open/{{ pos.id }}/chart.png?t={{ pos.opened_at }}"
+          alt="چارت پوزیشن — برای بزرگ‌نمایی لمس کنید"
+          loading="eager"
+        >
+      </div>
+    </figure>
 
     {% if pos.status == 'open' %}
     <form method="post" action="/position/close/{{ pos.id }}" class="pos-chart-actions">

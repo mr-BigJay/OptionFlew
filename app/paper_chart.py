@@ -2,22 +2,24 @@ from __future__ import annotations
 
 import io
 import logging
+from datetime import datetime, timezone
 from typing import Any
 
 from app.pattern_store import get_pattern_event_by_key
-from optionflow.patterns.chart import DIVERGENCE_BEFORE_PAD, render_pattern_chart
+from optionflow.patterns.chart import DIVERGENCE_BEFORE_PAD, chart_forward_bars, render_pattern_chart
 from optionflow.patterns.divergence import detect_rsi_divergence
-from optionflow.patterns.ohlc import OhlcBar
-from optionflow.patterns.trendline import WINDOW, detect_channel, detect_trendline
+from optionflow.patterns.ohlc import OhlcBar, load_btcusdt
+from optionflow.patterns.trendline import WINDOW
 from optionflow.patterns.types import PatternHit
-from optionflow.scenario_chart import fetch_btcusdt_klines
 
 logger = logging.getLogger("optionflow.paper.chart")
+
+_PATTERN_LIMITS = {"5m": 220, "15m": 220, "1h": 200, "4h": 180, "1d": 120}
 
 
 def _pick_interval(timeframe: str) -> str:
     tf = (timeframe or "").strip().lower()
-    if tf in ("5m", "15m", "1h", "4h", "1d"):
+    if tf in _PATTERN_LIMITS:
         return tf
     return "15m"
 
@@ -36,24 +38,80 @@ def _pattern_meta(pos: dict[str, Any]) -> tuple[str | None, dict[str, Any] | Non
     return cat, meta if isinstance(meta, dict) else None, ev
 
 
-def _klines_to_bars(candles) -> list[OhlcBar]:
-    return [
-        OhlcBar(c.ts, c.open, c.high, c.low, c.close, 0.0)
-        for c in candles
-    ]
+def _parse_iso_ts(raw: str) -> datetime | None:
+    s = (raw or "").strip()
+    if not s:
+        return None
+    try:
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except ValueError:
+        return None
 
 
-def _redetect_meta(bars: list[OhlcBar], interval: str, category: str) -> dict[str, Any] | None:
-    """ترندلاین روی همان پنجرهٔ کندل فعلی (هم‌تراز با قیمت)."""
-    if category == "trendline":
-        hit = detect_trendline(bars, interval, allow_early=True)
-    elif category == "channel":
-        hit = detect_channel(bars, interval, allow_early=True)
-    else:
-        return None
-    if not hit or not hit.meta:
-        return None
-    return dict(hit.meta)
+def _nearest_bar_index(bars: list[OhlcBar], ts: datetime) -> int:
+    best_i = len(bars) - 1
+    best_d = float("inf")
+    for i, b in enumerate(bars):
+        bt = b.ts
+        if bt.tzinfo is None:
+            bt = bt.replace(tzinfo=timezone.utc)
+        d = abs((bt - ts).total_seconds())
+        if d < best_d:
+            best_d = d
+            best_i = i
+    return best_i
+
+
+def _reanchor_meta(bars: list[OhlcBar], meta: dict[str, Any], ev: dict[str, Any]) -> dict[str, Any]:
+    """هم‌تراز کردن window_offset و اندیس‌ها با کندل‌های فعلی (زمان ثبت الگو)."""
+    ts = _parse_iso_ts(str(ev.get("created_at") or ""))
+    if ts is None or not bars:
+        return dict(meta)
+    idx = _nearest_bar_index(bars, ts)
+    m = dict(meta)
+    end_i = int(m.get("end_i") or len(bars) - 1)
+    old_wo = int(m.get("window_offset") or 0)
+    ref = m.get("confirm_index")
+    if not isinstance(ref, int):
+        ref = m.get("early_index")
+    if not isinstance(ref, int):
+        ref = old_wo + end_i
+    shift = idx - ref
+    m["window_offset"] = max(0, old_wo + shift)
+    for key in (
+        "confirm_index",
+        "early_index",
+        "entry_index",
+        "final_index",
+        "break_index",
+        "pullback_index",
+    ):
+        v = m.get(key)
+        if isinstance(v, int):
+            m[key] = v + shift
+    return m
+
+
+def _pattern_hit_from_event(
+    ev: dict[str, Any],
+    meta: dict[str, Any],
+    *,
+    category: str,
+    pos: dict[str, Any],
+) -> PatternHit:
+    return PatternHit(
+        category=category,
+        timeframe=str(ev.get("timeframe") or pos.get("timeframe") or "1h"),
+        pattern_id=str(ev.get("pattern_id") or category),
+        title_fa=str(ev.get("title_fa") or pos.get("signal_title") or category),
+        status_fa=str(ev.get("status_fa") or ""),
+        summary_fa=str(ev.get("summary_fa") or ""),
+        forecast_fa=str(ev.get("forecast_fa") or ""),
+        meta=meta,
+    )
 
 
 def _divergence_hit(
@@ -94,130 +152,30 @@ def _paper_hlines(pos: dict[str, Any], mark: float | None) -> list[tuple[float, 
     return lines
 
 
-def _trendline_slice(n: int, meta: dict[str, Any]) -> tuple[int, int]:
-    """برش چارت: فقط یک‌سوم کندل‌های قبل از شروع ترندلاین."""
-    local_start = int(meta.get("start_i") or 0)
-    local_start = max(0, min(local_start, n - 1))
-    pad = max(5, local_start // 3)
-    chart_start = max(0, local_start - pad)
-    return chart_start, n
-
-
-def _slice_index(chart_start: int, wi: int, slice_len: int) -> int | None:
-    if wi < chart_start or wi >= chart_start + slice_len:
-        return None
-    return wi - chart_start
-
-
-def _line_at(meta: dict[str, Any], wi: int, *, upper: bool) -> float | None:
-    if upper:
-        s, ic = meta.get("upper_slope"), meta.get("upper_intercept")
-    else:
-        s, ic = meta.get("lower_slope"), meta.get("lower_intercept")
-    if s is None or ic is None:
-        return None
-    return float(s) * wi + float(ic)
-
-
-def _draw_trendline_overlay(
-    ax,
-    candles,
-    xs,
-    meta: dict[str, Any],
-    *,
-    chart_start: int,
-    category: str,
-) -> None:
-    import matplotlib.dates as mdates
-
-    slice_len = len(candles)
-    wi_left = chart_start
-    wi_right = chart_start + slice_len - 1
-    di0, di1 = 0, slice_len - 1
-    if slice_len < 2:
-        return
-
-    def plot_seg(upper: bool, color: str, label: str) -> None:
-        y0 = _line_at(meta, wi_left, upper=upper)
-        y1 = _line_at(meta, wi_right, upper=upper)
-        if y0 is None or y1 is None:
-            return
-        ax.plot(
-            [xs[di0], xs[di1]],
-            [y0, y1],
-            color=color,
-            linewidth=2.2,
-            label=label,
-            zorder=5,
-        )
-
-    if category == "trendline":
-        side = meta.get("side")
-        if side == "low":
-            plot_seg(False, "#81c784", "ترندلاین حمایت")
-        else:
-            plot_seg(True, "#ffb74d", "ترندلاین مقاومت")
-    else:
-        plot_seg(True, "#ffb74d", "مقاومت")
-        plot_seg(False, "#81c784", "حمایت")
-
-    touch_c = "#eceff1" if category == "trendline" else None
-    for ti in meta.get("touch_highs") or []:
-        di = _slice_index(chart_start, int(ti), slice_len)
-        if di is not None:
-            ax.scatter(
-                [mdates.date2num(candles[di].ts)],
-                [candles[di].high],
-                c=touch_c or "#ffb74d",
-                s=40,
-                zorder=6,
-                edgecolors="#fff",
-                linewidths=0.4,
-            )
-    for ti in meta.get("touch_lows") or []:
-        di = _slice_index(chart_start, int(ti), slice_len)
-        if di is not None:
-            ax.scatter(
-                [mdates.date2num(candles[di].ts)],
-                [candles[di].low],
-                c=touch_c or "#81c784",
-                s=40,
-                zorder=6,
-                edgecolors="#fff",
-                linewidths=0.4,
-            )
+def _load_pattern_bars(interval: str) -> list[OhlcBar]:
+    limit = _PATTERN_LIMITS.get(interval, 220)
+    win = WINDOW.get(interval, 120)
+    return load_btcusdt(interval, limit=max(limit, win + 40))
 
 
 def render_paper_position_chart(pos: dict[str, Any], *, mark: float | None = None) -> bytes | None:
-    """چارت BTCUSDT با خطوط ورود، SL، TP، مارک و ترندلاین الگو."""
-    try:
-        import matplotlib
-
-        matplotlib.use("Agg")
-        import matplotlib.dates as mdates
-        import matplotlib.pyplot as plt
-        from matplotlib.patches import Rectangle
-    except ImportError:
-        return None
-
+    """چارت پوزیشن الگو — همان رندر بخش الگوها + خطوط ورود/SL/TP."""
     interval = _pick_interval(str(pos.get("timeframe") or ""))
     category, meta, ev = _pattern_meta(pos)
     if ev and ev.get("timeframe"):
         interval = _pick_interval(str(ev["timeframe"]))
 
-    win_n = WINDOW.get(interval, 120)
-    if category == "divergence":
-        win_n = max(win_n, 132)
     try:
-        candles_all = fetch_btcusdt_klines(interval=interval, limit=win_n)
+        bars_all = _load_pattern_bars(interval)
     except Exception as e:
-        logger.warning("klines for paper chart: %s", e)
+        logger.warning("bars for paper chart: %s", e)
         return None
-    if len(candles_all) < 5:
+    if len(bars_all) < 10:
         return None
 
-    bars_all = _klines_to_bars(candles_all)
-    if category == "divergence":
+    hlines = _paper_hlines(pos, mark)
+
+    if category == "divergence" and ev:
         hit = _divergence_hit(bars_all, interval, ev, pos)
         if hit:
             sig = hit.meta.get("confirm_index") or hit.meta["pivot_b"][0]
@@ -228,26 +186,54 @@ def render_paper_position_chart(pos: dict[str, Any], *, mark: float | None = Non
                 signal_index=int(sig) if sig is not None else None,
                 forward_bars=12,
                 before_signal_pad=half_pad,
-                extra_hlines=_paper_hlines(pos, mark),
+                extra_hlines=hlines,
             )
             if png:
                 return png
 
-    draw_meta = meta
-    if category in ("trendline", "channel"):
-        fresh = _redetect_meta(bars_all, interval, category)
-        if fresh:
-            draw_meta = fresh
-    chart_start = 0
-    if draw_meta and category in ("trendline", "channel"):
-        chart_start, chart_end = _trendline_slice(len(candles_all), draw_meta)
-        candles = candles_all[chart_start:chart_end]
-    else:
-        candles = candles_all
+    if category in ("trendline", "channel") and meta and ev:
+        aligned = _reanchor_meta(bars_all, meta, ev)
+        hit = _pattern_hit_from_event(ev, aligned, category=category, pos=pos)
+        sig = hit.meta.get("confirm_index") or hit.meta.get("early_index")
+        if not isinstance(sig, int):
+            sig = len(bars_all) - 1
+        fwd = chart_forward_bars(bars_all, hit, sig)
+        png = render_pattern_chart(
+            bars_all,
+            hit,
+            signal_index=sig,
+            forward_bars=fwd,
+            extra_hlines=hlines,
+        )
+        if png:
+            return png
 
+    return _render_fallback_chart(pos, mark=mark, interval=interval)
+
+
+def _render_fallback_chart(
+    pos: dict[str, Any],
+    *,
+    mark: float | None,
+    interval: str,
+) -> bytes | None:
+    """چارت ساده برای گزارش/بدون متای الگو."""
+    try:
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.dates as mdates
+        import matplotlib.pyplot as plt
+        from matplotlib.patches import Rectangle
+    except ImportError:
+        return None
+
+    try:
+        candles = load_btcusdt(interval, limit=120)
+    except Exception:
+        return None
     if len(candles) < 5:
-        candles = candles_all
-        chart_start = 0
+        return None
 
     entry = float(pos["entry_price"])
     sl = float(pos["sl_price"])
@@ -255,7 +241,7 @@ def render_paper_position_chart(pos: dict[str, Any], *, mark: float | None = Non
     direction = str(pos.get("direction") or "long")
     title = str(pos.get("signal_title") or "پوزیشن")[:60]
 
-    fig, ax = plt.subplots(figsize=(8.2, 4.8), dpi=110, layout="constrained")
+    fig, ax = plt.subplots(figsize=(8.5, 4.4), dpi=120, layout="constrained")
     fig.patch.set_facecolor("#0d1117")
     ax.set_facecolor("#0d1117")
 
@@ -277,32 +263,8 @@ def render_paper_position_chart(pos: dict[str, Any], *, mark: float | None = Non
             )
         )
 
-    if draw_meta and category in ("trendline", "channel"):
-        _draw_trendline_overlay(
-            ax, candles, xs, draw_meta, chart_start=chart_start, category=category
-        )
-
-    ax.axhline(entry, color="#fbbf24", linewidth=1.2, linestyle="-", label=f"Entry {entry:,.0f}")
-    ax.axhline(sl, color="#f87171", linewidth=1.0, linestyle="--", label=f"SL {sl:,.0f}")
-    ax.axhline(tp, color="#34d399", linewidth=1.0, linestyle="--", label=f"TP {tp:,.0f}")
-    if mark is not None and mark > 0:
-        ax.axhline(mark, color="#60a5fa", linewidth=1.0, linestyle=":", label=f"Mark {mark:,.0f}")
-
-    y_vals: list[float] = [entry, sl, tp]
-    if mark is not None and mark > 0:
-        y_vals.append(mark)
-    for c in candles:
-        y_vals.extend([c.high, c.low])
-    if draw_meta and category in ("trendline", "channel"):
-        for wi in range(chart_start, chart_start + len(candles)):
-            for upper in (True, False):
-                y = _line_at(draw_meta, wi, upper=upper)
-                if y is not None:
-                    y_vals.append(y)
-    lo, hi = min(y_vals), max(y_vals)
-    span = max(hi - lo, hi * 0.001, 1.0)
-    pad = span * 0.08
-    ax.set_ylim(lo - pad, hi + pad)
+    for price, color, ls, label in _paper_hlines(pos, mark):
+        ax.axhline(price, color=color, linewidth=1.1, linestyle=ls, label=label)
 
     side = "Long" if direction == "long" else "Short"
     ax.set_title(f"{title} · {side} · {interval}", color="#e2e8f0", fontsize=10)
