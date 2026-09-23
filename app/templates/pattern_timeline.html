@@ -54,8 +54,6 @@
   <button type="submit" class="btn secondary full">به‌روزرسانی اسکن</button>
 </form>
 
-{% include "partials/live_overlay_chart.html" %}
-
 {% if grouped %}
 {% for day_key, items in grouped %}
 <section class="timeline-section">
@@ -98,9 +96,4 @@
   <p>{% if raw_count and (tf_filter or min_profit) %}در این بازه {{ raw_count }} مورد بود؛ با فیلتر فعلی چیزی نمانده.{% else %}در این بازه تشخیصی ثبت نشده. «به‌روزرسانی اسکن» را بزنید.{% endif %}</p>
 </div>
 {% endif %}
-{% endblock %}
-
-{% block scripts %}
-<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js" crossorigin="anonymous"></script>
-<script src="/static/live-overlay-chart.js?v=1"></script>
 {% endblock %}

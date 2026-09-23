@@ -29,6 +29,24 @@ def test_divergence_overlay_has_segment() -> None:
     assert len(ov["markers"]) >= 2
 
 
+def test_triangle_converging_lines() -> None:
+    bars = [_bar(i, 84_400 + (i % 5) * 8) for i in range(80)]
+    meta = {
+        "upper_slope": -2.5,
+        "upper_intercept": 84480.0,
+        "lower_slope": 2.0,
+        "lower_intercept": 84320.0,
+        "start_i": 10,
+        "end_i": 70,
+        "window_offset": 0,
+        "touch_highs": [20, 40, 55],
+        "touch_lows": [15, 35, 50],
+    }
+    ov = pattern_overlays("triangle", meta, bars)
+    assert len(ov["segments"]) == 2
+    assert len(ov["markers"]) >= 4
+
+
 def test_position_and_pattern_merge() -> None:
     bars = [_bar(i, 90_000 + i) for i in range(40)]
     pos = {

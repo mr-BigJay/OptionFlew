@@ -80,6 +80,9 @@ def reanchor_meta(bars: list[OhlcBar], meta: dict[str, Any], *, created_at: str 
         "break_index",
         "pullback_index",
         "signal_index",
+        "start_i",
+        "end_i",
+        "apex_index",
     ):
         v = m.get(key)
         if isinstance(v, int):
@@ -170,6 +173,70 @@ def position_overlays(pos: dict[str, Any], *, mark: float | None = None) -> dict
     return {"hlines": hlines, "segments": [], "lines": [], "markers": []}
 
 
+def _triangle_lines(
+    meta: dict[str, Any], bars: list[OhlcBar]
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    segments: list[dict[str, Any]] = []
+    markers: list[dict[str, Any]] = []
+    su, iu = meta.get("upper_slope"), meta.get("upper_intercept")
+    sl, il = meta.get("lower_slope"), meta.get("lower_intercept")
+    i0, i1 = meta.get("start_i"), meta.get("end_i")
+    if not all(isinstance(x, (int, float)) for x in (su, iu, sl, il, i0, i1)):
+        u, lo = meta.get("upper_now"), meta.get("lower_now")
+        if isinstance(u, (int, float)):
+            segments.append(
+                _segment(
+                    bars,
+                    len(bars) - 40,
+                    float(u),
+                    len(bars) - 1,
+                    float(u),
+                    color="#ffb74d",
+                    label="سقف",
+                )
+            )
+        if isinstance(lo, (int, float)):
+            segments.append(
+                _segment(
+                    bars,
+                    len(bars) - 40,
+                    float(lo),
+                    len(bars) - 1,
+                    float(lo),
+                    color="#81c784",
+                    label="کف",
+                )
+            )
+        return segments, markers
+    wo = int(meta.get("window_offset") or 0)
+    li0, li1 = int(i0), int(i1)
+    g0 = _clamp_i(bars, wo + li0)
+    g1 = _clamp_i(bars, wo + li1)
+    y_u0 = float(su) * li0 + float(iu)
+    y_u1 = float(su) * li1 + float(iu)
+    y_l0 = float(sl) * li0 + float(il)
+    y_l1 = float(sl) * li1 + float(il)
+    segments.append(
+        _segment(bars, g0, y_u0, g1, y_u1, color="#ffb74d", label="مقاومت")
+    )
+    segments.append(
+        _segment(bars, g0, y_l0, g1, y_l1, color="#81c784", label="حمایت")
+    )
+    for ti in meta.get("touch_highs") or meta.get("hi_idx") or []:
+        gi = wo + int(ti)
+        if 0 <= gi < len(bars):
+            markers.append(
+                _marker(bars, gi, text="▲", color="#ffb74d", position="aboveBar")
+            )
+    for ti in meta.get("touch_lows") or meta.get("lo_idx") or []:
+        gi = wo + int(ti)
+        if 0 <= gi < len(bars):
+            markers.append(
+                _marker(bars, gi, text="▼", color="#81c784", position="belowBar")
+            )
+    return segments, markers
+
+
 def pattern_overlays(
     category: str,
     meta: dict[str, Any],
@@ -244,11 +311,19 @@ def pattern_overlays(
             markers.append(_marker(bars, ei, text="ورود", color="#fbbf24", position="belowBar"))
 
     elif cat in ("triangle", "flag"):
-        u, lo = meta.get("upper_now"), meta.get("lower_now")
-        if isinstance(u, (int, float)):
-            hlines.append(_hline(float(u), color="#ffb74d", label="سقف"))
-        if isinstance(lo, (int, float)):
-            hlines.append(_hline(float(lo), color="#81c784", label="کف"))
+        if cat == "triangle":
+            tri_seg, tri_mk = _triangle_lines(meta, bars)
+            segments.extend(tri_seg)
+            markers.extend(tri_mk)
+        else:
+            fh, fl = meta.get("flag_high"), meta.get("flag_low")
+            if isinstance(fh, (int, float)):
+                hlines.append(_hline(float(fh), color="#ffb74d", label="سقف پرچم"))
+            if isinstance(fl, (int, float)):
+                hlines.append(_hline(float(fl), color="#81c784", label="کف پرچم"))
+            ps = meta.get("pole_start")
+            if isinstance(ps, int):
+                markers.append(_marker(bars, ps, text="pole", color="#90caf9", position="belowBar"))
 
     elif cat == "meaningful_behavior":
         strike = meta.get("strike") or meta.get("tp_px")

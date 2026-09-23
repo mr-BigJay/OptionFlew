@@ -1,13 +1,24 @@
 {% if chart_payload and chart_payload.candles %}
-<section class="live-ov-panel" aria-label="چارت زنده با خطوط الگو">
-  <h3 class="live-ov-title">{{ chart_title|default('چارت زنده BTCUSDT') }}</h3>
-  <p class="muted live-ov-hint">{{ chart_hint|default('کندل‌های زنده · خطوط ورود، SL، TP و ساختار الگو') }}</p>
-  <div
-    class="live-ov-chart-mount"
-    data-live-overlay-chart
-    data-payload-id="{{ chart_payload_id }}"
-    {% if chart_poll_url %}data-poll-url="{{ chart_poll_url }}"{% endif %}
-  ></div>
+<figure class="scenario-chart pattern-chart" aria-label="چارت زنده BTCUSDT">
+  <div class="scenario-chart-frame">
+    <div
+      class="live-ov-chart-mount"
+      data-live-overlay-chart
+      data-payload-id="{{ chart_payload_id }}"
+      {% if chart_poll_url %}data-poll-url="{{ chart_poll_url }}"{% endif %}
+    ></div>
+  </div>
   <script type="application/json" id="{{ chart_payload_id }}">{{ chart_payload_json|safe }}</script>
-</section>
+</figure>
+{% elif chart_png_src %}
+<figure class="scenario-chart pattern-chart">
+  <div class="scenario-chart-frame">
+    <img
+      class="chart-preview"
+      src="{{ chart_png_src }}"
+      alt="{{ chart_png_alt|default('چارت الگو') }}"
+      loading="lazy"
+    />
+  </div>
+</figure>
 {% endif %}

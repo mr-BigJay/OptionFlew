@@ -34,17 +34,6 @@
 
     {% include "partials/live_overlay_chart.html" %}
 
-    <figure class="scenario-chart pattern-chart">
-      <div class="scenario-chart-frame">
-        <img
-          class="chart-preview"
-          src="/position/open/{{ pos.id }}/chart.png?t={{ pos.opened_at }}"
-          alt="چارت پوزیشن — برای بزرگ‌نمایی لمس کنید"
-          loading="eager"
-        >
-      </div>
-    </figure>
-
     {% if pos.status == 'open' %}
     <form method="post" action="/position/close/{{ pos.id }}" class="pos-chart-actions">
       <button type="submit" class="btn secondary">بستن با قیمت Mark</button>
@@ -55,6 +44,8 @@
 {% endblock %}
 
 {% block scripts %}
+{% if chart_payload and chart_payload.candles %}
 <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js" crossorigin="anonymous"></script>
-<script src="/static/live-overlay-chart.js?v=1"></script>
+<script src="/static/live-overlay-chart.js?v=2"></script>
+{% endif %}
 {% endblock %}

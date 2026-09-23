@@ -464,14 +464,18 @@ def _live_chart_ctx(
             "chart_title": title,
             "chart_hint": hint,
             "chart_poll_url": poll_url,
+            "chart_png_src": "",
+            "chart_png_alt": "",
         }
     return {
         "chart_payload": payload,
         "chart_payload_id": dom_id,
         "chart_payload_json": json_for_template(payload),
-        "chart_title": title or payload.get("title") or "چارت زنده BTCUSDT",
+        "chart_title": title,
         "chart_hint": hint,
         "chart_poll_url": poll_url,
+        "chart_png_src": "",
+        "chart_png_alt": "",
     }
 
 
@@ -915,26 +919,6 @@ async def patterns_menu(request: Request):
     recent = list_all_pattern_events(start_iso=start_iso, limit=300)
     grouped_recent = _group_by_date(recent)
 
-    live_scan_payload = None
-    try:
-        scan_data = get_cached_scan(_patterns_dir)
-        for cat in PATTERN_TABS:
-            if cat == "meaningful_behavior":
-                continue
-            hit = _first_live_hit_for_category(scan_data, cat)
-            if hit is not None:
-                live_scan_payload = payload_from_pattern_hit(hit)
-                break
-    except Exception:
-        pass
-    live_ctx = _live_chart_ctx(
-        live_scan_payload,
-        dom_id="live-ov-patterns-home",
-        title="اسکن زنده · BTCUSDT",
-        hint="اولین سیگنال فعال از اسکن الگوها — برای جزئیات هر نوع وارد همان دسته شوید",
-        poll_url="/api/chart/live/patterns/scan",
-    )
-
     return templates.TemplateResponse(
         request,
         "patterns_menu.html",
@@ -944,7 +928,6 @@ async def patterns_menu(request: Request):
             menu_items=_pattern_menu_items(),
             grouped_recent=grouped_recent,
             recent_count=len(recent),
-            **live_ctx,
         ),
     )
 
@@ -956,13 +939,16 @@ async def pattern_event_detail(request: Request, event_id: int):
         return RedirectResponse("/patterns", status_code=302)
     cache_ts = pattern_cache_timestamp()
     chart_payload = payload_from_pattern_event(event)
+    png = ""
+    if event.get("chart_file") and not chart_payload:
+        png = f"/pattern-charts/{event['chart_file']}?v={cache_ts}"
     live_ctx = _live_chart_ctx(
         chart_payload,
         dom_id=f"live-ov-ev-{event_id}",
-        title=f"چارت زنده · {event.get('title_fa', '')}",
-        hint="خطوط واگرایی / ترند / ورود و SL·TP روی کندل‌های به‌روز",
         poll_url=f"/api/chart/live/pattern/event/{event_id}",
     )
+    live_ctx["chart_png_src"] = png
+    live_ctx["chart_png_alt"] = f"چارت {event.get('title_fa', '')}"
     return templates.TemplateResponse(
         request,
         "pattern_event.html",
@@ -1028,19 +1014,6 @@ async def pattern_category_page(
         if category == "meaningful_behavior"
         else "BTCUSDT · ۵m / ۱۵m / ۱h"
     )
-    live_scan_payload = None
-    if category != "meaningful_behavior":
-        scan_data = get_cached_scan(_patterns_dir)
-        live_hit = _first_live_hit_for_category(scan_data, category)
-        if live_hit is not None:
-            live_scan_payload = payload_from_pattern_hit(live_hit)
-    live_ctx = _live_chart_ctx(
-        live_scan_payload,
-        dom_id=f"live-ov-cat-{category}",
-        title=f"اسکن زنده · {_category_fa(category)}",
-        hint="سیگنال فعلی روی کندل‌های لحظه‌ای — خطوط ساختار همان منطق بخش الگو",
-        poll_url=f"/api/chart/live/pattern/category/{category}",
-    )
 
     return templates.TemplateResponse(
         request,
@@ -1063,7 +1036,6 @@ async def pattern_category_page(
             count=len(items),
             raw_count=raw_count,
             subheader=sub,
-            **live_ctx,
         ),
     )
 
@@ -1699,10 +1671,13 @@ async def position_open_detail(request: Request, position_id: int):
     live_ctx = _live_chart_ctx(
         chart_payload,
         dom_id=f"live-ov-pos-{position_id}",
-        title="چارت زنده پوزیشن",
-        hint="Entry · SL · TP · Mark و در صورت وجود خطوط الگوی منبع",
         poll_url=f"/api/chart/live/position/{position_id}",
     )
+    if not chart_payload:
+        live_ctx["chart_png_src"] = (
+            f"/position/open/{position_id}/chart.png?t={pos.get('opened_at', '')}"
+        )
+        live_ctx["chart_png_alt"] = str(pos.get("signal_title") or "چارت پوزیشن")
     return templates.TemplateResponse(
         request,
         "position_open.html",
