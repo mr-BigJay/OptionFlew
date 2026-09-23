@@ -9,6 +9,7 @@ from optionflow.patterns.divergence import detect_rsi_divergence
 from optionflow.patterns.flag import detect_flag
 from optionflow.patterns.ohlc import load_btcusdt
 from optionflow.patterns.ema50 import detect_ema50
+from optionflow.patterns.three_rp import detect_three_rp
 from optionflow.patterns.trendline import detect_channel, detect_trendline
 from optionflow.patterns.triangle import detect_triangle
 from optionflow.patterns.types import PatternHit
@@ -36,6 +37,7 @@ def _scan_tf(tf: str, chart_dir: Path) -> dict[str, PatternHit | None]:
     trl = detect_trendline(bars, tf)
     chn = detect_channel(bars, tf)
     e50 = detect_ema50(bars, tf)
+    trp = detect_three_rp(bars, tf) if tf == "1h" else None
     out: dict[str, PatternHit | None] = {
         "triangle": tri,
         "flag": flg,
@@ -43,13 +45,16 @@ def _scan_tf(tf: str, chart_dir: Path) -> dict[str, PatternHit | None]:
         "trendline": trl,
         "channel": chn,
         "ema50": e50,
+        "three_rp": trp,
     }
-    for hit in (tri, flg, div, trl, chn, e50):
+    for hit in (tri, flg, div, trl, chn, e50, trp):
         if hit is None:
             continue
         sig_ix = None
         if hit.category in ("ema50", "trendline"):
             sig_ix = hit.meta.get("entry_index", hit.meta.get("early_index"))
+        elif hit.category == "three_rp":
+            sig_ix = hit.meta.get("confirm_index", hit.meta.get("signal_index"))
         else:
             sig_ix = hit.meta.get("confirm_index", len(bars) - 1)
         if not isinstance(sig_ix, int):
@@ -76,6 +81,7 @@ def scan_all_patterns(chart_dir: Path) -> dict[str, dict[str, PatternHit | None]
         "trendline": {},
         "channel": {},
         "ema50": {},
+        "three_rp": {},
     }
     for tf in TIMEFRAMES:
         try:
