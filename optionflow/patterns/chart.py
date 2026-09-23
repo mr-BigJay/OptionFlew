@@ -1137,6 +1137,20 @@ def _render_divergence(
 
     _mark_early_entry(ax1, bars, meta, start, end)
 
+    entry_i = meta.get("entry_index")
+    if isinstance(entry_i, int) and start <= entry_i < min(end, len(bars)):
+        x_e = mdates.date2num(bars[entry_i].ts)
+        ax1.scatter(
+            [x_e],
+            [bars[entry_i].close],
+            c="#fbbf24",
+            s=58,
+            zorder=9,
+            edgecolors="#fff",
+            linewidths=0.5,
+            label="ورود",
+        )
+
     if extra_hlines:
         for price, color, ls, label in extra_hlines:
             ax1.axhline(price, color=color, linewidth=1.1, linestyle=ls, label=label)

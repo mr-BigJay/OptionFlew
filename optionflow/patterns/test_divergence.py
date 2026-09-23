@@ -9,6 +9,7 @@ from optionflow.patterns.divergence import (
     RSI_PERIOD,
     _bearish_ok,
     _bullish_ok,
+    _entry_after_confirm,
     _entry_lines,
     _forming_pivot,
     _is_meaningful_divergence,
@@ -112,6 +113,25 @@ def test_entry_lines_early_and_final() -> None:
     assert fin is None
     assert fp is None
     assert "اولیه" in extra_early
+
+
+def test_entry_on_bar_after_confirm() -> None:
+    t0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    bars = [
+        OhlcBar(
+            ts=t0 + timedelta(minutes=5 * i),
+            open=65000 + i,
+            high=65100 + i,
+            low=64900 + i,
+            close=65000 + i,
+            volume=1.0,
+        )
+        for i in range(30)
+    ]
+    entry_ix, entry_px = _entry_after_confirm(bars, 10)
+    assert entry_ix == 11
+    assert entry_px == 65011
+    assert _entry_after_confirm(bars, len(bars) - 1) == (None, None)
 
 
 def test_short_bars_no_hit() -> None:

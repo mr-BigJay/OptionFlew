@@ -128,6 +128,17 @@ def _price_txt(px: float | None) -> str:
     return f"{px:,.0f}"
 
 
+def _entry_after_confirm(
+    bars: list[OhlcBar], confirm_index: int
+) -> tuple[int | None, float | None]:
+    """ورود روی کندل بلافاصله بعد از کندل تأیید واگرایی (close)."""
+    entry_ix = int(confirm_index) + 1
+    if entry_ix < 0 or entry_ix >= len(bars):
+        return None, None
+    px = _bar_close(bars, entry_ix)
+    return entry_ix, px
+
+
 def _entry_lines(
     bars: list[OhlcBar],
     p_b: int,
@@ -169,6 +180,10 @@ def _hit_bearish(
     early_ix, final_ix, early_px, final_px, extra = _entry_lines(
         bars, p_b, early=early
     )
+    entry_ix, entry_px = _entry_after_confirm(bars, confirm_index)
+    entry_note = ""
+    if entry_ix is not None and entry_px is not None:
+        entry_note = f" ورود پیشنهادی: کندل بعد از تأیید، close {_price_txt(entry_px)}."
     return PatternHit(
         category="divergence",
         timeframe=timeframe,
@@ -178,7 +193,7 @@ def _hit_bearish(
         summary_fa=(
             f"Regular Bearish (BigBeluga) · "
             f"قیمت HH ({highs[p_b]:,.0f} > {highs[p_a]:,.0f})، "
-            f"RSI LH ({rb:.1f} < {ra:.1f}، Δ{diff:.1f}). {extra}"
+            f"RSI LH ({rb:.1f} < {ra:.1f}، Δ{diff:.1f}). {extra}{entry_note}"
         ),
         forecast_fa=(
             "احتمال اصلاح نزولی؛ تأیید با شکست کف کوتاه‌مدت."
@@ -196,6 +211,8 @@ def _hit_bearish(
             "final_index": final_ix,
             "early_price": early_px,
             "final_price": final_px,
+            "entry_index": entry_ix,
+            "entry_px": entry_px,
             "stage": "early" if early else "confirmed",
         },
     )
@@ -218,6 +235,10 @@ def _hit_bullish(
     early_ix, final_ix, early_px, final_px, extra = _entry_lines(
         bars, p_b, early=early
     )
+    entry_ix, entry_px = _entry_after_confirm(bars, confirm_index)
+    entry_note = ""
+    if entry_ix is not None and entry_px is not None:
+        entry_note = f" ورود پیشنهادی: کندل بعد از تأیید، close {_price_txt(entry_px)}."
     return PatternHit(
         category="divergence",
         timeframe=timeframe,
@@ -227,7 +248,7 @@ def _hit_bullish(
         summary_fa=(
             f"Regular Bullish (BigBeluga) · "
             f"قیمت LL ({lows[p_b]:,.0f} < {lows[p_a]:,.0f})، "
-            f"RSI HL ({rb:.1f} > {ra:.1f}، Δ{diff:.1f}). {extra}"
+            f"RSI HL ({rb:.1f} > {ra:.1f}، Δ{diff:.1f}). {extra}{entry_note}"
         ),
         forecast_fa=(
             "احتمال اصلاح صعودی؛ تأیید با شکست سقف کوتاه‌مدت."
@@ -245,6 +266,8 @@ def _hit_bullish(
             "final_index": final_ix,
             "early_price": early_px,
             "final_price": final_px,
+            "entry_index": entry_ix,
+            "entry_px": entry_px,
             "stage": "early" if early else "confirmed",
         },
     )
