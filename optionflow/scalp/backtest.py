@@ -47,7 +47,7 @@ def _replay_scalp(
     dedupe = DEDUPE_BARS.get(timeframe, 12)
     params = scenario.get("params") or {}
     dtype = scenario.get("detector_type") or scenario.get("scenario_id")
-    one_at_a_time = dtype == "bjorgum"
+    one_at_a_time = dtype in ("bjorgum", "spline")
     last_key: dict[str, int] = {}
     out: list[tuple[int, PatternHit]] = []
     total = max(1, len(range(scan_start, scan_end + 1, stride)))

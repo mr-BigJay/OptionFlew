@@ -12,7 +12,7 @@ from optionflow.scalp.evaluate import evaluate_scalp_path
 
 logger = logging.getLogger("optionflow.scalp.service")
 
-LIMITS = {"5m": 220, "15m": 200, "1h": 168}
+LIMITS = {"5m": 220, "15m": 220, "1h": 200}
 _cache: dict = {"ts": 0.0, "hits": None}
 CACHE_TTL = 120
 

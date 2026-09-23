@@ -93,6 +93,34 @@ BUILTIN: list[dict[str, Any]] = [
             "max_hold_bars": 120,
         },
     },
+    {
+        "scenario_id": "spline",
+        "title_fa": "Spline",
+        "description_fa": (
+            "LuxAlgo Spline Quantile Channel · رگرسیون spline روی close · "
+            "باند ۵٪/۵۰٪/۹۵٪ · ورود از باند پایین/بالا وقتی شیب میانه هم‌جهت است · "
+            "TP پیش‌فرض روی میانه کانال."
+        ),
+        "detector_type": "spline",
+        "timeframes": ["15m", "1h"],
+        "params": {
+            "lookback": 100,
+            "knots": 3,
+            "irls_iters": 50,
+            "forecast_bars": 20,
+            "upper_q": 0.95,
+            "mid_q": 0.5,
+            "lower_q": 0.05,
+            "atr_len": 14,
+            "stop_atr_mult": 0.5,
+            "touch_buffer_pct": 0.05,
+            "tp_target": "mid",
+            "tp_rr": 1.5,
+            "long_trades": True,
+            "short_trades": True,
+            "max_hold_bars": 48,
+        },
+    },
 ]
 
 SCALP_TIMEFRAMES = ("5m", "15m", "1h")
