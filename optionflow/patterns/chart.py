@@ -901,6 +901,33 @@ def _render_price_pattern(
                     linestyles="--",
                     alpha=0.55,
                 )
+            mid = meta.get("third_candle_mid")
+            if isinstance(mid, (int, float)):
+                ax.hlines(
+                    float(mid),
+                    x_left,
+                    x_right,
+                    colors=ac,
+                    linewidth=1.0,
+                    linestyles=":",
+                    alpha=0.65,
+                    label="۵۰٪ کندل ۳",
+                )
+            ei = meta.get("entry_index")
+            if isinstance(ei, int) and start <= ei < end:
+                epx = meta.get("entry_px")
+                y_entry = float(epx) if isinstance(epx, (int, float)) else bars[ei].close
+                ax.scatter(
+                    [mdates.date2num(bars[ei].ts)],
+                    [y_entry],
+                    marker="o",
+                    c=ac,
+                    s=55,
+                    zorder=9,
+                    edgecolors="#fff",
+                    linewidths=0.5,
+                    label="ورود",
+                )
             if start <= si < end:
                 y_mark = bars[si].low * 0.999 if bull else bars[si].high * 1.001
                 ax.scatter(

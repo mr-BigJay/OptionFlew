@@ -193,6 +193,10 @@ def entry_price_for_hit(
         ei = meta.get("entry_index", meta.get("early_index"))
         if isinstance(ei, int) and 0 <= ei < len(bars):
             return float(bars[ei].close)
+    if hit.category == "three_rp":
+        ep = meta.get("entry_px")
+        if isinstance(ep, (int, float)) and ep > 0:
+            return float(ep)
     if 0 <= idx < len(bars):
         return float(bars[idx].close)
     return None
@@ -213,7 +217,11 @@ def evaluate_target_profit(
     move = target_pct / 100.0
     exit_i: int | None = None
     exit_px: float | None = None
-    for i in range(idx + 1, len(bars)):
+    if hit.category == "three_rp":
+        start_i = idx if hit.meta.get("entry_mode") == "mid_touch" else idx + 1
+    else:
+        start_i = idx + 1
+    for i in range(start_i, len(bars)):
         b = bars[i]
         if direction == "up":
             target = entry * (1 + move)
@@ -264,6 +272,39 @@ def evaluate_outcome(
         return evaluate_target_profit(bars, idx, hit, target_profit_pct)
     if hit.category == "ema50":
         return evaluate_ema50_path(bars, idx, hit)
+    if hit.category == "three_rp":
+        mode = hit.meta.get("entry_mode", "close_third")
+        entry = hit.meta.get("entry_px")
+        if isinstance(entry, (int, float)) and entry > 0:
+            entry_px = float(entry)
+        else:
+            entry_px = bars[idx].close
+        fwd = FORWARD_BARS.get(timeframe, 12)
+        if mode == "close_third":
+            if idx + fwd >= len(bars):
+                return None, "کندل کافی بعد از سیگnal برای ارزیابی نبود."
+            future = bars[idx + 1 : idx + 1 + fwd]
+        else:
+            if idx + fwd > len(bars):
+                return None, "کندل کافی بعد از ورود برای ارزیابی نبود."
+            future = bars[idx : idx + fwd]
+        move = MIN_MOVE_PCT.get(timeframe, 0.015)
+        direction = expected_direction(hit)
+        if direction == "up":
+            peak = max(b.high for b in future)
+            ok = peak >= entry_px * (1 + move)
+            note = (
+                f"هدف صعود {move*100:.1f}٪ — حداکثر {peak:,.0f} vs ورود {entry_px:,.0f}"
+            )
+            return ok, note
+        if direction == "down":
+            trough = min(b.low for b in future)
+            ok = trough <= entry_px * (1 - move)
+            note = (
+                f"هدف نزول {move*100:.1f}٪ — حداقل {trough:,.0f} vs ورود {entry_px:,.0f}"
+            )
+            return ok, note
+        return None, "جهت پیش‌بینی مشخص نشد."
     direction = expected_direction(hit)
     if not direction:
         return None, "جهت پیش‌بینی مشخص نشد."
@@ -628,17 +669,22 @@ def run_backtest(
                 )
 
         _phase(float(n) + 0.05)
-        ts = full[idx].ts
+        entry_ix = idx
+        if hit.category == "three_rp":
+            ei = hit.meta.get("entry_index")
+            if isinstance(ei, int):
+                entry_ix = ei
+        ts = full[entry_ix].ts
         success, outcome_fa = evaluate_outcome(
             full,
-            idx,
+            entry_ix,
             hit,
             timeframe,
             target_profit_pct=target_profit_pct,
         )
         _phase(float(n) + 0.45)
         finding = BacktestFinding.from_hit(
-            hit, idx, ts, success=success, outcome_fa=outcome_fa
+            hit, entry_ix, ts, success=success, outcome_fa=outcome_fa
         )
         if success is True:
             result.success_count += 1
@@ -650,7 +696,8 @@ def run_backtest(
                 sig_ix = hit.meta.get("entry_index", hit.meta.get("early_index", idx))
             elif hit.category == "three_rp":
                 sig_ix = hit.meta.get(
-                    "confirm_index", hit.meta.get("signal_index", idx)
+                    "entry_index",
+                    hit.meta.get("signal_index", idx),
                 )
             else:
                 sig_ix = hit.meta.get("confirm_index", idx)
