@@ -1268,6 +1268,9 @@ async def scalp_backtest_page(
     if scenario_id not in ids:
         scenario_id = scenarios[0]["scenario_id"] if scenarios else "range_break"
     active_run = get_scalp_backtest_run(run_id) if run_id else None
+    today = datetime.now(timezone.utc).date()
+    default_to = today.isoformat()
+    default_from = (today - timedelta(days=13)).isoformat()
     return templates.TemplateResponse(
         request,
         "scalp_backtest.html",
@@ -1279,6 +1282,8 @@ async def scalp_backtest_page(
             run_id=run_id,
             active_run=active_run,
             bt_tf_labels=SCALP_BT_TF_LABELS,
+            default_date_from=default_from,
+            default_date_to=default_to,
         ),
     )
 

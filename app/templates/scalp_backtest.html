@@ -12,6 +12,11 @@
 <section class="bt-cache-panel card">
   <h2 class="bt-section-title">کندل تاریخی</h2>
   <p class="muted bt-hint">همان ذخیرهٔ بکتست الگوها — در صورت نیاز از <a href="/backtest">بکتست الگو</a> دانلود کنید.</p>
+  <p class="flash ok bt-hint" style="margin-top:8px;font-size:0.85rem">
+    <strong>۳BRP (LuxAlgo Enhanced)</strong> در این صفحه نیست — از منوی پایین بروید به
+    <a href="/patterns/three_rp">الگوها → 3BRP</a> (فقط 1h).
+    اینجا بکتست <strong>استراتژی‌ها</strong> (4HRR، BjorGum، …) است.
+  </p>
 </section>
 
 <form class="filter-card pattern-bt-form" method="post" action="/scalp/backtest/start">
@@ -30,10 +35,12 @@
     {% endfor %}
   </select>
   <label>از تاریخ</label>
-  <input type="date" name="date_from" required>
+  <input type="date" name="date_from" value="{{ default_date_from }}" required>
   <label>تا تاریخ</label>
-  <input type="date" name="date_to" required>
-  <p class="muted bt-hint">ارزیابی: اول استاپ، بعد TP؛ در غیر این صورت پایان مهلت نگه‌داری.</p>
+  <input type="date" name="date_to" value="{{ default_date_to }}" required>
+  <p class="muted bt-hint">
+    بازه را دقیق بگذارید (مثلاً ۱۰–۲۳ سپت). 4HRR روی 5m تا ~۱ سیگنال در روز NY می‌دهد — با 3BRP فرق دارد.
+  </p>
   <button type="submit" class="btn primary full">شروع بکتست</button>
 </form>
 
