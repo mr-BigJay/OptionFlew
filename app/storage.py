@@ -116,13 +116,10 @@ def init_db() -> None:
     from app.scalp_store import init_scalp_db
 
     init_pattern_events_db()
-<<<<<<< HEAD
     from app.position_store import init_position_db
 
     init_position_db()
-=======
     init_scalp_db()
->>>>>>> f086b57 (feat(scalp): independent scalp section with scenarios and backtest)
 
 
 def _upsert_scheduled(conn: sqlite3.Connection, row: dict[str, Any]) -> int:

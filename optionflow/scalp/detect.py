@@ -311,11 +311,23 @@ def _detect_four_h_rr(
     )
 
 
+def _detect_bjorgum(
+    bars: list[OhlcBar],
+    timeframe: str,
+    scenario: dict[str, Any],
+    params: dict[str, Any],
+) -> PatternHit | None:
+    from optionflow.scalp.bjorgum import detect_bjorgum
+
+    return detect_bjorgum(bars, timeframe, scenario, params)
+
+
 _DETECTORS = {
     "range_break": _detect_range_break,
     "sweep_reclaim": _detect_sweep_reclaim,
     "impulse_pullback": _detect_impulse_pullback,
     "four_h_rr": _detect_four_h_rr,
+    "bjorgum": _detect_bjorgum,
 }
 
 
