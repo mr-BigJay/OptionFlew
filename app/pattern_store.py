@@ -98,10 +98,13 @@ def pattern_content_signature(
         flk = int(round(float(fl))) if isinstance(fl, (int, float)) else 0
         return f"{pattern_id}:{d}:h{fhk}:l{flk}"
     if category == "three_rp":
+        sts = meta.get("signal_ts")
+        if sts:
+            d = meta.get("direction") or ""
+            return f"{pattern_id}:enh:{sts}:{d}"
         px = meta.get("pattern_low") if "bear" in pattern_id else meta.get("pattern_high")
         pk = int(round(float(px))) if isinstance(px, (int, float)) else 0
-        st = meta.get("stage") or ""
-        return f"{pattern_id}:{st}:p{pk}"
+        return f"{pattern_id}:enh:p{pk}"
     return f"{pattern_id}:{stage}"
 
 

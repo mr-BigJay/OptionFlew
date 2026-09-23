@@ -54,7 +54,7 @@ def _scan_tf(tf: str, chart_dir: Path) -> dict[str, PatternHit | None]:
         if hit.category in ("ema50", "trendline"):
             sig_ix = hit.meta.get("entry_index", hit.meta.get("early_index"))
         elif hit.category == "three_rp":
-            sig_ix = hit.meta.get("confirm_index", hit.meta.get("signal_index"))
+            sig_ix = hit.meta.get("signal_index", hit.meta.get("confirm_index"))
         else:
             sig_ix = hit.meta.get("confirm_index", len(bars) - 1)
         if not isinstance(sig_ix, int):
