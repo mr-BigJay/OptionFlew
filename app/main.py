@@ -219,14 +219,22 @@ def _category_fa(category: str) -> str:
 
 
 def _pattern_signal_kind(row: dict[str, Any]) -> str:
-    """early | confirmed | rejected | neutral — برای بچ وضعیت سیگنال."""
+    """neutral | confirmed | rejected | break_up | break_down — بچ وضعیت."""
     meta = row.get("meta") or {}
     status = str(row.get("status_fa") or "")
     stage = str(meta.get("stage") or "").lower()
-    if meta.get("outcome_success") is False or "رد" in status:
+    if meta.get("outcome_success") is False:
         return "rejected"
+    if "رد شده" in status or status.strip() == "رد":
+        return "rejected"
+    if "شکست صعودی" in status:
+        return "break_up"
+    if "شکست نزولی" in status:
+        return "break_down"
+    if "در حال فشردگی" in status:
+        return "neutral"
     if stage == "early" or "اولیه" in status:
-        return "early"
+        return "neutral"
     if stage == "confirmed" or "تأیید" in status:
         return "confirmed"
     return "neutral"

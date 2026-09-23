@@ -1710,9 +1710,9 @@ bdi[dir="ltr"] {
 }
 
 .pat-status-early {
-  background: rgba(250, 204, 21, 0.16);
-  color: #fde68a;
-  border: 1px solid rgba(250, 204, 21, 0.38);
+  background: rgba(148, 163, 184, 0.12);
+  color: #cbd5e1;
+  border: 1px solid rgba(148, 163, 184, 0.28);
 }
 .pat-status-confirmed {
   background: rgba(52, 211, 153, 0.15);
@@ -1720,6 +1720,16 @@ bdi[dir="ltr"] {
   border: 1px solid rgba(52, 211, 153, 0.38);
 }
 .pat-status-rejected {
+  background: rgba(248, 113, 113, 0.14);
+  color: #fca5a5;
+  border: 1px solid rgba(248, 113, 113, 0.4);
+}
+.pat-status-break-up {
+  background: rgba(52, 211, 153, 0.15);
+  color: #6ee7b7;
+  border: 1px solid rgba(52, 211, 153, 0.38);
+}
+.pat-status-break-down {
   background: rgba(248, 113, 113, 0.14);
   color: #fca5a5;
   border: 1px solid rgba(248, 113, 113, 0.4);
