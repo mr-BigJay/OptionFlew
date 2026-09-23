@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0a1018">
   <title>{% block title %}OptionFlow{% endblock %}</title>
-    <link rel="stylesheet" href="/static/app.css?v=28">
+    <link rel="stylesheet" href="/static/app.css?v=29">
 </head>
 <body>
   <header class="top-bar">
@@ -20,7 +20,7 @@
     {% endif %}
   </header>
 
-  <main class="page">
+  <main class="page{% block page_class %}{% endblock %}">
     {% block content %}{% endblock %}
   </main>
 
@@ -58,5 +58,6 @@
   </div>
 
   <script src="/static/chart-lightbox.js?v=3" defer></script>
+  {% block scripts %}{% endblock %}
 </body>
 </html>
