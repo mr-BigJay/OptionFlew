@@ -35,11 +35,12 @@
           <span class="timeline-dot" aria-hidden="true"></span>
         </div>
         <a href="/patterns/event/{{ r.id }}" class="timeline-card">
-          <span class="timeline-play" aria-hidden="true">▶</span>
+          <div class="timeline-badges">
+            <span class="pat-badge pat-cat-{{ r.category }}">{{ category_fa(r.category) }}</span>
+            <span class="pat-badge pat-tf pat-tf-{{ r.timeframe }}">{{ r.timeframe }}</span>
+          </div>
           <div class="timeline-body">
             <div class="timeline-top">
-              <span class="kind-pill">{{ category_fa(r.category) }}</span>
-              <span class="kind-pill">{{ r.timeframe }}</span>
               <span class="bias-mini">{{ r.status_fa }}</span>
             </div>
             <p class="timeline-preview"><strong>{{ r.title_fa }}</strong> — {{ r.summary_fa[:140] }}{% if r.summary_fa|length > 140 %}…{% endif %}</p>
