@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block page_class %} page--tv-chart{% endblock %}
+{% block title %}چارت BTC — Bitunix — OptionFlow{% endblock %}
+{% block header %}<span class="header-title">چارت BTCUSDT</span>{% endblock %}
+{% block subheader %}
+<p class="muted patterns-sub">TradingView · {{ symbol_label }} · {{ interval_label }}</p>
+{% endblock %}
+
+{% block content %}
+<nav class="tabs tabs-patterns tv-chart-tabs" aria-label="بازار">
+  <a href="/chart?market=perp&amp;interval={{ interval }}" class="{% if market == 'perp' %}on{% endif %}">فیوچرز</a>
+  <a href="/chart?market=spot&amp;interval={{ interval }}" class="{% if market == 'spot' %}on{% endif %}">اسپات</a>
+</nav>
+<nav class="tabs tabs-patterns tv-chart-tabs tv-chart-tabs--tf" aria-label="تایم‌فریم">
+  {% for iv, label in interval_links %}
+  <a href="/chart?market={{ market }}&amp;interval={{ iv }}" class="{% if interval == iv %}on{% endif %}">{{ label }}</a>
+  {% endfor %}
+</nav>
+<div class="tv-chart-shell" id="tv-chart-shell">
+  <div class="tradingview-widget-container tv-chart-widget">
+    <div class="tradingview-widget-container__widget"></div>
+    <div class="tv-chart-attrib">
+      <a href="https://www.tradingview.com/symbols/{{ tv_symbol_slug }}/" target="_blank" rel="noopener noreferrer">BTCUSDT · Bitunix</a>
+      <span class="muted"> · داده TradingView</span>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js" async>
+{
+  "autosize": true,
+  "symbol": "{{ tv_symbol }}",
+  "interval": "{{ tv_interval }}",
+  "timezone": "Asia/Tehran",
+  "theme": "dark",
+  "style": "1",
+  "locale": "en",
+  "enable_publishing": false,
+  "hide_top_toolbar": false,
+  "hide_legend": false,
+  "save_image": false,
+  "calendar": false,
+  "hide_volume": false,
+  "support_host": "https://www.tradingview.com"
+}
+</script>
+{% endblock %}

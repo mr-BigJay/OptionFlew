@@ -1573,6 +1573,50 @@ async def app_menu_page(request: Request):
     )
 
 
+TV_CHART_MARKETS = {
+    "perp": ("BITUNIX:BTCUSDT.P", "BTCUSDT Perpetual · Bitunix"),
+    "spot": ("BITUNIX:BTCUSDT", "BTCUSDT Spot · Bitunix"),
+}
+TV_CHART_INTERVALS = (
+    ("5", "۵m"),
+    ("15", "۱۵m"),
+    ("60", "۱h"),
+    ("240", "۴h"),
+    ("D", "روز"),
+)
+
+
+@app.get("/chart", response_class=HTMLResponse)
+async def live_bitunix_chart(
+    request: Request,
+    market: str = "perp",
+    interval: str = "15",
+):
+    """چارت زنده TradingView — BTCUSDT روی Bitunix (اسپات یا perpetual)."""
+    m = market if market in TV_CHART_MARKETS else "perp"
+    valid_iv = {iv for iv, _ in TV_CHART_INTERVALS}
+    iv = interval if interval in valid_iv else "15"
+    symbol, symbol_label = TV_CHART_MARKETS[m]
+    interval_label = next(l for k, l in TV_CHART_INTERVALS if k == iv)
+    slug = symbol.replace(":", "-")
+    return templates.TemplateResponse(
+        request,
+        "live_chart.html",
+        _page_ctx(
+            request,
+            active="menu",
+            market=m,
+            interval=iv,
+            tv_symbol=symbol,
+            tv_interval=iv,
+            symbol_label=symbol_label,
+            interval_label=interval_label,
+            tv_symbol_slug=slug,
+            interval_links=TV_CHART_INTERVALS,
+        ),
+    )
+
+
 @app.get("/telegram", response_class=HTMLResponse)
 async def telegram_page(request: Request, msg: str = "", ok: str = ""):
     user = current_user(request)
