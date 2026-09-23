@@ -283,7 +283,7 @@ def _position_source_fa(source_type: str) -> str:
     return {
         "pattern": "الگو",
         "report": "گزارش",
-        "scalp": "اسکلپ",
+        "scalp": "استراتژی",
     }.get(source_type, source_type)
 
 

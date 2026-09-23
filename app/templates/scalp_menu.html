@@ -1,6 +1,6 @@
 {% extends "base.html" %}
-{% block title %}اسکلپ — OptionFlow{% endblock %}
-{% block header %}<span class="header-title">⚡ اسکلپ</span>{% endblock %}
+{% block title %}استراتژی — OptionFlow{% endblock %}
+{% block header %}<span class="header-title">⚡ استراتژی</span>{% endblock %}
 {% block subheader %}
 <p class="home-schedule muted">سناریوهای کوتاه‌مدت · ورود / استاپ / TP · مستقل از الگوها</p>
 {% endblock %}
@@ -9,7 +9,7 @@
 <section class="pattern-section" aria-labelledby="scalp-scenarios-head">
   <h2 id="scalp-scenarios-head" class="section-title">سناریوها</h2>
   {% if is_admin %}
-  <p class="muted bt-hint"><a href="/scalp/backtest">بکتست اسکلپ</a> · <a href="/scalp/backtest/reports">آرشیو بکتست</a></p>
+  <p class="muted bt-hint"><a href="/scalp/backtest">بکتست استراتژی</a> · <a href="/scalp/backtest/reports">آرشیو بکتست</a></p>
   {% endif %}
   <div class="pattern-nav-grid">
     {% for sc in scenarios %}
@@ -25,7 +25,7 @@
 </section>
 
 <form class="patterns-refresh" method="post" action="/scalp/refresh">
-  <button type="submit" class="btn secondary">به‌روزرسانی اسکن اسکلپ</button>
+  <button type="submit" class="btn secondary">به‌روزرسانی اسکن استراتژی</button>
 </form>
 
 <section class="pattern-section" aria-labelledby="scalp-feed-head">
@@ -67,7 +67,7 @@
   </section>
   {% endfor %}
   {% else %}
-  <div class="empty card"><p>هنوز سیگنال اسکلپ ثبت نشده. سناریو را فعال کنید و «به‌روزرسانی اسکن» بزنید.</p></div>
+  <div class="empty card"><p>هنوز سیگنال استراتژی ثبت نشده. سناریو را فعال کنید و «به‌روزرسانی اسکن» بزنید.</p></div>
   {% endif %}
 </section>
 {% endblock %}

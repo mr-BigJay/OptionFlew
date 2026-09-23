@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ event.title_fa }} — اسکلپ{% endblock %}
+{% block title %}{{ event.title_fa }} — استراتژی{% endblock %}
 {% block header %}<span class="header-title">{{ event.title_fa }}</span>{% endblock %}
 {% block subheader %}
 <p class="home-schedule muted">{{ event.timeframe }} · {{ fmt_dt(event.created_at) }}</p>
@@ -24,7 +24,7 @@
         <img
           class="chart-preview"
           src="/pattern-charts/{{ event.chart_file }}?v={{ cache_ts }}"
-          alt="چارت اسکلپ"
+          alt="چارت استراتژی"
           loading="lazy"
         />
       </div>

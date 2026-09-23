@@ -115,7 +115,7 @@ def _detect_range_break(
                 f"شکست بالای رنج {rh:,.0f} / {rl:,.0f} · ورود {entry:,.0f} · "
                 f"استاپ {stop:,.0f} · TP {tp:,.0f} (R×{tp_rr:g})"
             ),
-            forecast="اسکلپ صعودی تا TP یا استاپ.",
+            forecast="استراتژی صعودی تا TP یا استاپ.",
             params=params,
         )
     if last.close < rl - buf * 0.15:
@@ -136,7 +136,7 @@ def _detect_range_break(
                 f"شکست زیر رنج {rh:,.0f} / {rl:,.0f} · ورود {entry:,.0f} · "
                 f"استاپ {stop:,.0f} · TP {tp:,.0f} (R×{tp_rr:g})"
             ),
-            forecast="اسکلپ نزولی تا TP یا استاپ.",
+            forecast="استراتژی نزولی تا TP یا استاپ.",
             params=params,
         )
     return None

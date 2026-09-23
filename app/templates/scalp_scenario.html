@@ -1,12 +1,12 @@
 {% extends "base.html" %}
-{% block title %}{{ scenario.title_fa }} — اسکلپ{% endblock %}
+{% block title %}{{ scenario.title_fa }} — استراتژی{% endblock %}
 {% block header %}<span class="header-title">{{ scenario.title_fa }}</span>{% endblock %}
 {% block subheader %}
 <p class="home-schedule muted">{{ scenario.description_fa }}</p>
 {% endblock %}
 
 {% block content %}
-<p class="patterns-back"><a href="/scalp">← اسکلپ</a></p>
+<p class="patterns-back"><a href="/scalp">← استراتژی</a></p>
 
 {% if is_admin %}
 <form class="filter-card" method="post" action="/scalp/scenario/{{ scenario.scenario_id }}/settings">

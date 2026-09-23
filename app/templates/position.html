@@ -120,7 +120,7 @@
   </details>
 
   <details class="pos-details">
-    <summary>اسکلپ <span class="pos-count">{{ config.scalp_scenarios|length }}/{{ scalp_scenarios|length }}</span></summary>
+    <summary>استراتژی <span class="pos-count">{{ config.scalp_scenarios|length }}/{{ scalp_scenarios|length }}</span></summary>
     <div class="pos-check-grid">
       {% for sid, label in scalp_scenarios %}
       <label class="pos-chip"><input type="checkbox" name="scalp_scenarios" value="{{ sid }}" {% if sid in config.scalp_scenarios %}checked{% endif %}><span>{{ label }}</span></label>
