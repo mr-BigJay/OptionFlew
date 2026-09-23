@@ -1704,6 +1704,32 @@ bdi[dir="ltr"] {
 .pat-tf-4h { background: var(--kind-4h-bg); color: var(--kind-4h); border: 1px solid rgba(34, 211, 238, 0.35); }
 .pat-tf-1d { background: var(--kind-daily-bg); color: var(--kind-daily); border: 1px solid rgba(167, 139, 250, 0.35); }
 
+.pat-badge-spacer {
+  flex: 1 1 auto;
+  min-width: 6px;
+}
+
+.pat-status-early {
+  background: rgba(250, 204, 21, 0.16);
+  color: #fde68a;
+  border: 1px solid rgba(250, 204, 21, 0.38);
+}
+.pat-status-confirmed {
+  background: rgba(52, 211, 153, 0.15);
+  color: #6ee7b7;
+  border: 1px solid rgba(52, 211, 153, 0.38);
+}
+.pat-status-rejected {
+  background: rgba(248, 113, 113, 0.14);
+  color: #fca5a5;
+  border: 1px solid rgba(248, 113, 113, 0.4);
+}
+.pat-status-neutral {
+  background: rgba(148, 163, 184, 0.12);
+  color: #cbd5e1;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+}
+
 .timeline-body {
   flex: 1;
   min-width: 0;

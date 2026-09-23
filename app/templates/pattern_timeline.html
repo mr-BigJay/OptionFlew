@@ -72,14 +72,15 @@
         <div class="timeline-badges">
           <span class="pat-badge pat-cat-{{ r.category }}">{{ category_label }}</span>
           <span class="pat-badge pat-tf pat-tf-{{ r.timeframe }}">{{ r.timeframe }}</span>
+          <span class="pat-badge-spacer" aria-hidden="true"></span>
+          <span class="pat-badge pat-status pat-status-{{ pattern_signal_kind(r) }}">{{ pattern_signal_label(r) }}</span>
         </div>
         <div class="timeline-body">
+          {% if r.meta.get('path_pct') is not none %}
           <div class="timeline-top">
-            <span class="bias-mini">{{ r.status_fa }}</span>
-            {% if r.meta.get('path_pct') is not none %}
             <span class="bias-mini">{{ "{:+.2f}".format(r.meta.path_pct * 100) }}٪</span>
-            {% endif %}
           </div>
+          {% endif %}
           <p class="timeline-preview"><strong>{{ r.title_fa }}</strong> — {{ r.summary_fa[:120] }}{% if r.summary_fa|length > 120 %}…{% endif %}</p>
           <span class="timeline-meta">{{ r.pattern_id }}</span>
         </div>

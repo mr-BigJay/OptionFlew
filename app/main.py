@@ -218,6 +218,32 @@ def _category_fa(category: str) -> str:
     }.get(category, category)
 
 
+def _pattern_signal_kind(row: dict[str, Any]) -> str:
+    """early | confirmed | rejected | neutral — برای بچ وضعیت سیگنال."""
+    meta = row.get("meta") or {}
+    status = str(row.get("status_fa") or "")
+    stage = str(meta.get("stage") or "").lower()
+    if meta.get("outcome_success") is False or "رد" in status:
+        return "rejected"
+    if stage == "early" or "اولیه" in status:
+        return "early"
+    if stage == "confirmed" or "تأیید" in status:
+        return "confirmed"
+    return "neutral"
+
+
+def _pattern_signal_label(row: dict[str, Any]) -> str:
+    status = str(row.get("status_fa") or "").strip()
+    kind = _pattern_signal_kind(row)
+    if kind == "rejected":
+        return status if status and "رد" in status else "رد شده"
+    if kind == "early":
+        return status if status else "سیگنال اولیه"
+    if kind == "confirmed":
+        return status if status else "تأییدشده"
+    return status or "—"
+
+
 def _position_status_fa(status: str) -> str:
     return {
         "open": "باز",
@@ -406,6 +432,8 @@ def _template_ctx(**extra: Any) -> dict[str, Any]:
         "clean_paragraph": _clean_paragraph,
         "format_report_html": _format_prose_report_html,
         "category_fa": _category_fa,
+        "pattern_signal_kind": _pattern_signal_kind,
+        "pattern_signal_label": _pattern_signal_label,
         **extra,
     }
 
