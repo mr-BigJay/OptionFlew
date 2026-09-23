@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-import json
 import logging
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 
+from app.pattern_store import event_key_for_hit
 from app.position_store import (
     close_position,
     get_config,
@@ -14,9 +16,22 @@ from app.position_store import (
     signal_seen,
 )
 from app.storage import list_reports
+from optionflow.patterns.behavior_service import (
+    get_cached_behavior_scan,
+    invalidate_behavior_cache,
+)
 from optionflow.patterns.ohlc import load_btcusdt
+from optionflow.patterns.service import (
+    get_cached_scan,
+    invalidate_pattern_cache,
+    patterns_data_dir,
+)
+from optionflow.patterns.types import PatternHit
 
 logger = logging.getLogger("optionflow.paper")
+
+# گزارش فقط اگر تازه منتشر شده باشد (هم‌زمان با «لایو»)
+REPORT_FRESH_MINUTES = 90
 
 
 def latest_btc_price() -> float | None:
@@ -106,24 +121,46 @@ def update_open_positions(user_id: int, mark_price: float) -> int:
     return closed
 
 
-def try_open_from_pattern_event(user_id: int, event: dict[str, Any]) -> int | None:
+def collect_live_pattern_hits(
+    chart_dir: Path,
+    data_root: Path,
+    *,
+    refresh: bool = True,
+) -> list[PatternHit]:
+    """همان hitهای اسکن زندهٔ بخش الگوها (نه آرشیو ۶ ساعته DB)."""
+    if refresh:
+        invalidate_pattern_cache()
+        invalidate_behavior_cache()
+    hits: list[PatternHit] = []
+    scan = get_cached_scan(chart_dir)
+    for tf_map in scan.values():
+        if not isinstance(tf_map, dict):
+            continue
+        for hit in tf_map.values():
+            if hit is not None:
+                hits.append(hit)
+    behavior = get_cached_behavior_scan(
+        chart_dir, data_root=data_root, notify=False
+    )
+    for hit in behavior.values():
+        if hit is not None:
+            hits.append(hit)
+    return hits
+
+
+def try_open_from_pattern_hit(user_id: int, hit: PatternHit) -> int | None:
     cfg = get_config(user_id)
     if not cfg.get("enabled"):
         return None
-    cat = str(event.get("category") or "")
+    cat = str(hit.category or "")
     if cat not in (cfg.get("pattern_categories") or []):
         return None
     if has_open_pattern_category(user_id, cat):
         return None
-    key = str(event.get("event_key") or f"pattern:{event.get('id')}")
+    key = event_key_for_hit(hit)
     if signal_seen(user_id, key):
         return None
-    meta = event.get("meta") or {}
-    if isinstance(meta, str):
-        try:
-            meta = json.loads(meta)
-        except json.JSONDecodeError:
-            meta = {}
+    meta = hit.meta or {}
     direction = _direction_from_pattern(meta)
     if not direction:
         return None
@@ -135,7 +172,7 @@ def try_open_from_pattern_event(user_id: int, event: dict[str, Any]) -> int | No
         user_id,
         source_type="pattern",
         source_key=key,
-        timeframe=str(event.get("timeframe") or ""),
+        timeframe=str(hit.timeframe or ""),
         direction=direction,
         entry_price=price,
         margin_usdt=risk["margin_usdt"],
@@ -143,7 +180,7 @@ def try_open_from_pattern_event(user_id: int, event: dict[str, Any]) -> int | No
         fee_rate=float(cfg["fee_rate"]),
         sl_pct=risk["stop_loss_pct"],
         tp_pct=risk["take_profit_pct"],
-        signal_title=str(event.get("title_fa") or cat),
+        signal_title=str(hit.title_fa or cat),
     )
 
 
@@ -185,11 +222,22 @@ def try_open_from_report(user_id: int, report: dict[str, Any]) -> int | None:
     )
 
 
-def process_signals_for_user(user_id: int, *, recent_events: list[dict] | None = None) -> dict[str, int]:
-    """اسکن سیگنال‌های تازه + به‌روز SL/TP."""
-    from datetime import datetime, timedelta, timezone
+def _fresh_reports() -> list[dict[str, Any]]:
+    since = (
+        datetime.now(timezone.utc) - timedelta(minutes=REPORT_FRESH_MINUTES)
+    ).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return list_reports(start_iso=since, limit=10)
 
-    from app.pattern_store import list_all_pattern_events
+
+def process_signals_for_user(
+    user_id: int,
+    *,
+    data_root: Path | None = None,
+    chart_dir: Path | None = None,
+    refresh_scan: bool = True,
+) -> dict[str, int]:
+    """اسکن زندهٔ الگو + گزارش تازه؛ بدون باز کردن از رویدادهای قدیمی DB."""
+    from app.storage import data_dir
 
     stats = {"opened": 0, "closed": 0}
     mark = latest_btc_price()
@@ -198,18 +246,18 @@ def process_signals_for_user(user_id: int, *, recent_events: list[dict] | None =
     cfg = get_config(user_id)
     if not cfg.get("enabled"):
         return stats
-    events = recent_events
-    if events is None:
-        since = (
-            datetime.now(timezone.utc) - timedelta(hours=6)
-        ).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-        events = list_all_pattern_events(start_iso=since, limit=40)
-    for ev in events:
-        pid = try_open_from_pattern_event(user_id, ev)
+
+    root = data_root or data_dir()
+    charts = chart_dir or patterns_data_dir(root)
+
+    for hit in collect_live_pattern_hits(
+        charts, root, refresh=refresh_scan
+    ):
+        pid = try_open_from_pattern_hit(user_id, hit)
         if pid:
             stats["opened"] += 1
-    reports = list_reports(limit=5)
-    for rep in reports:
+
+    for rep in _fresh_reports():
         pid = try_open_from_report(user_id, rep)
         if pid:
             stats["opened"] += 1

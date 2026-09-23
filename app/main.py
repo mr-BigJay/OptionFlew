@@ -62,6 +62,7 @@ from app.pattern_store import get_pattern_event, list_all_pattern_events, list_p
 from app.exchange_fee_profiles import fee_profile_summary_fa, list_fee_profiles
 from app.paper_chart import render_paper_position_chart
 from app.paper_engine import (
+    REPORT_FRESH_MINUTES,
     latest_btc_price,
     live_open_state,
     process_signals_for_user,
@@ -1436,6 +1437,7 @@ async def position_page(request: Request, tab: str = "wallet", msg: str = "", er
             source_fa=_position_source_fa,
             ledger_fa=_ledger_kind_fa,
             unrealized=unrealized_pnl,
+            report_fresh_minutes=REPORT_FRESH_MINUTES,
         ),
     )
 
