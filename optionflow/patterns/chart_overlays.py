@@ -303,42 +303,6 @@ def triangle_viewport(meta: dict[str, Any], bars: list[OhlcBar]) -> dict[str, fl
     }
 
 
-def _trendline_snap_intercept(
-    meta: dict[str, Any],
-    bars: list[OhlcBar],
-    *,
-    slope: float,
-    intercept: float,
-    upper: bool,
-) -> float:
-    """تنظیم جزئی intercept برای نزدیک شدن خط به کف/سقف برخوردها — شیب از متا ثابت می‌ماند."""
-    side = meta.get("side")
-    if side == "low" and upper:
-        return intercept
-    if side == "high" and not upper:
-        return intercept
-    key = "touch_highs" if upper or side == "high" else "touch_lows"
-    touches = meta.get(key) or []
-    if not touches:
-        return intercept
-    wo = int(meta.get("window_offset") or 0)
-    deltas: list[float] = []
-    for ti in touches:
-        gi = wo + int(ti)
-        if gi < 0 or gi >= len(bars):
-            continue
-        li = int(ti)
-        line_y = float(slope) * li + float(intercept)
-        if side == "high" or upper:
-            actual = float(bars[gi].high)
-        else:
-            actual = float(bars[gi].low)
-        deltas.append(actual - line_y)
-    if not deltas:
-        return intercept
-    return float(intercept) + sum(deltas) / len(deltas)
-
-
 def _trendline_line_points(
     meta: dict[str, Any], bars: list[OhlcBar], *, upper: bool
 ) -> list[dict[str, float | int]]:
@@ -353,13 +317,6 @@ def _trendline_line_points(
             return []
         if side == "high" and not upper:
             return []
-        intercept = _trendline_snap_intercept(
-            meta,
-            bars,
-            slope=float(slope),
-            intercept=float(intercept),
-            upper=upper,
-        )
     wo = int(meta.get("window_offset") or 0)
     i0 = meta.get("start_i")
     i1 = meta.get("end_i")
