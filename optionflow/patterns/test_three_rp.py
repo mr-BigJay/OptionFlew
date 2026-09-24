@@ -84,6 +84,18 @@ def test_large_candle_no_touch_within_eight_bars_returns_none() -> None:
     assert detect_three_rp_at(bars, "1h", 2) is None
 
 
+def test_large_candle_on_last_bar_still_signals() -> None:
+    bars = [
+        _bar(100, 100, 90, 92, 0),
+        _bar(91, 94, 88, 90, 1),
+        _bar(90, 105, 89, 102, 2),
+    ]
+    hit = detect_three_rp(bars, "1h")
+    assert hit is not None
+    assert hit.meta["signal_index"] == 2
+    assert hit.meta["entry_mode"] == "close_third"
+
+
 def test_no_stale_pattern_from_lookback() -> None:
     bars = [
         _bar(100, 100, 90, 92, 0),
