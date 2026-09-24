@@ -25,7 +25,7 @@ def test_constants_match_pine() -> None:
     assert RSI_PERIOD == 24
     assert LOOKBACK_LEFT == 10
     assert LOOKBACK_RIGHT == 10
-    assert EARLY_RIGHT == 2
+    assert EARLY_RIGHT == 1
     assert RANGE_LOWER == 5
     assert RANGE_UPPER == 60
 
@@ -45,15 +45,18 @@ def test_consecutive_pivots_only() -> None:
     assert p_b == 115
 
 
-def test_forming_pivot_needs_two_bars_right() -> None:
+def test_forming_pivot_needs_one_bar_right() -> None:
     n = 50
     rs: list[float | None] = [40.0 - i * 0.02 for i in range(n)]
-    rs[n - 1 - 2] = 78.0
+    rs[n - 1 - 1] = 78.0
     found = _forming_pivot(rs, high=True, n=n)
     assert found is not None
     p, right = found
-    assert p == n - 1 - 2
-    assert right == 2
+    assert p == n - 1 - 1
+    assert right == 1
+    rs_unconfirmed = [40.0 - i * 0.02 for i in range(n)]
+    rs_unconfirmed[-1] = 78.0
+    assert _forming_pivot(rs_unconfirmed, high=True, n=n) is None
 
 
 def test_bearish_regular_conditions() -> None:
@@ -64,15 +67,29 @@ def test_bearish_regular_conditions() -> None:
     assert _bearish_ok(rs, highs, 50, 80) == (75.0, 70.0)
 
 
-def test_meaningful_divergence_rejects_flat_rsi() -> None:
+def test_meaningful_divergence_rejects_flat_rsi_slope() -> None:
+    # اختلاف RSI بالای ۵ است، ولی روی ۸۰ کندل شیب خوابیده است.
     assert not _is_meaningful_divergence(
         direction="down",
-        p_a=50,
-        p_b=80,
+        p_a=10,
+        p_b=90,
         price_a=86000.0,
-        price_b=86100.0,
-        ra=72.0,
-        rb=71.0,
+        price_b=87000.0,
+        ra=70.0,
+        rb=64.0,
+    )
+
+
+def test_meaningful_divergence_rejects_tiny_price_move() -> None:
+    # شیب RSI کافی است؛ حرکت قیمت از ۰.۱۵٪ کمتر است.
+    assert not _is_meaningful_divergence(
+        direction="down",
+        p_a=40,
+        p_b=60,
+        price_a=86000.0,
+        price_b=86080.0,
+        ra=70.0,
+        rb=60.0,
     )
 
 
@@ -104,7 +121,7 @@ def test_entry_lines_early_and_final() -> None:
     early_ix, final_ix, early_px, final_px, extra = _entry_lines(
         bars, 10, early=False
     )
-    assert early_ix == 12
+    assert early_ix == 11
     assert final_ix == 20
     assert final_px == 65020
     assert "BigBeluga" in extra or "نهایی" in extra

@@ -14,7 +14,7 @@ from optionflow.patterns.types import PatternHit
 RSI_PERIOD = 24
 LOOKBACK_LEFT = 10
 LOOKBACK_RIGHT = 10
-EARLY_RIGHT = 2
+EARLY_RIGHT = 1
 RANGE_LOWER = 5
 RANGE_UPPER = 60
 # واگرایی باید روی چارت مشهود باشد — خطوط تقریباً صاف رد می‌شوند
@@ -141,8 +141,8 @@ def _entry_lines(
     if early:
         extra = (
             f"تأیید اولیه در قیمت {_price_txt(early_px)}؛ "
-            f"منتظر pivot RSI {LOOKBACK_LEFT}/{LOOKBACK_RIGHT} (حدود "
-            f"{LOOKBACK_RIGHT - EARLY_RIGHT} کندل)."
+            f"منتظر pivot RSI {LOOKBACK_LEFT}/{LOOKBACK_RIGHT} "
+            f"(یک کندل بعد از سقف/کف)."
         )
         return early_ix, None, early_px, None, extra
     extra = (
@@ -183,7 +183,7 @@ def _hit_bearish(
         forecast_fa=(
             "احتمال اصلاح نزولی؛ تأیید با شکست کف کوتاه‌مدت."
             if not early
-            else "سقف RSI در حال شکل‌گیری؛ با ۲ کندل راست مثل TV تأیید می‌شود."
+            else "سقف RSI در حال شکل‌گیری؛ با یک کندل راست تأیید می‌شود."
         ),
         meta={
             "pivot_a": (p_a, highs[p_a]),
@@ -232,7 +232,7 @@ def _hit_bullish(
         forecast_fa=(
             "احتمال اصلاح صعودی؛ تأیید با شکست سقف کوتاه‌مدت."
             if not early
-            else "کف RSI در حال شکل‌گیری؛ با ۲ کندل راست مثل TV تأیید می‌شود."
+            else "کف RSI در حال شکل‌گیری؛ با یک کندل راست تأیید می‌شود."
         ),
         meta={
             "pivot_a": (p_a, lows[p_a]),
