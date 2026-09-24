@@ -18,7 +18,7 @@
   <a href="/position?tab=wallet" class="{% if tab == 'wallet' %}on{% endif %}">کیف</a>
   <a href="/position?tab=settings" class="{% if tab == 'settings' %}on{% endif %}">تنظیم</a>
   <a href="/position?tab=open" class="{% if tab == 'open' %}on{% endif %}">باز{% if open_positions %}<em>{{ open_positions|length }}</em>{% endif %}</a>
-  <a href="/position?tab=report" class="{% if tab == 'report' %}on{% endif %}">گزارش</a>
+  <a href="/position?tab=report&period=day" class="{% if tab == 'report' %}on{% endif %}">گزارش</a>
 </nav>
 
 {% if tab == 'wallet' %}
@@ -187,13 +187,33 @@
 {% endif %}
 
 {% if tab == 'report' %}
+<nav class="tabs pos-report-tabs" aria-label="بازه گزارش">
+  <a href="/position?tab=report&period=day" class="{% if period == 'day' %}on{% endif %}">امروز</a>
+  <a href="/position?tab=report&period=week" class="{% if period == 'week' %}on{% endif %}">هفته</a>
+  <a href="/position?tab=report&period=month" class="{% if period == 'month' %}on{% endif %}">ماه</a>
+  <a href="/position?tab=report&period=range" class="{% if period == 'range' %}on{% endif %}">تاریخ مشخص</a>
+</nav>
+<p class="muted pos-report-hint">
+  {% if period == 'day' %}۲۴ ساعت اخیر{% elif period == 'week' %}شنبه تا جمعه{% elif period == 'month' %}ماه جاری هجری شمسی{% else %}از تاریخ تا تاریخ{% endif %}
+</p>
+{% if period == 'range' %}
+<form class="filter-card" method="get" action="/position">
+  <input type="hidden" name="tab" value="report">
+  <input type="hidden" name="period" value="range">
+  <label>از تاریخ</label>
+  <input type="date" name="from_date" value="{{ from_date }}" required>
+  <label>تا تاریخ</label>
+  <input type="date" name="to_date" value="{{ to_date }}" required>
+  <button type="submit" class="btn primary full">نمایش بازه</button>
+</form>
+{% endif %}
 <section class="pos-panel pos-panel-tight">
   {% if closed_positions %}
-  {% for p in closed_positions[:30] %}
+  {% for p in closed_positions %}
   <div class="pos-hist-row">
     <div>
       <span class="pos-hist-title">{{ p.signal_title[:36] }}</span>
-      <span class="pos-hist-sub">{{ p.opened_at[:10] }} · {{ p.direction == 'long' and 'لانگ' or 'شورت' }}</span>
+      <span class="pos-hist-sub">{{ fmt_time(p.opened_at) }} · {{ fmt_jalali(p.opened_at) }} · {{ p.direction == 'long' and 'لانگ' or 'شورت' }}</span>
     </div>
     <span class="pos-hist-pnl {% if (p.pnl_usdt or 0) >= 0 %}pos{% else %}neg{% endif %}">{{ "{:+,.1f}".format(p.pnl_usdt or 0) }}</span>
     <span class="pos-hist-st">{{ status_fa(p.status) }}</span>

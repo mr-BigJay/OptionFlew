@@ -288,7 +288,13 @@ def locked_margin(user_id: int) -> float:
 
 
 def list_positions(
-    user_id: int, *, status: str | None = None, limit: int = 100
+    user_id: int,
+    *,
+    status: str | None = None,
+    closed_only: bool = False,
+    opened_from: str | None = None,
+    opened_to: str | None = None,
+    limit: int = 100,
 ) -> list[dict[str, Any]]:
     init_position_db()
     q = "SELECT * FROM paper_positions WHERE user_id = ?"
@@ -296,6 +302,14 @@ def list_positions(
     if status:
         q += " AND status = ?"
         params.append(status)
+    if closed_only:
+        q += " AND status != 'open'"
+    if opened_from:
+        q += " AND opened_at >= ?"
+        params.append(opened_from)
+    if opened_to:
+        q += " AND opened_at < ?"
+        params.append(opened_to)
     q += " ORDER BY opened_at DESC LIMIT ?"
     params.append(limit)
     with connect() as conn:

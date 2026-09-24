@@ -2473,6 +2473,18 @@ bdi[dir="ltr"] {
   margin: 0;
 }
 
+.pos-report-tabs {
+  margin-top: 10px;
+}
+.pos-report-tabs a {
+  font-size: 0.78rem;
+  padding: 10px 4px;
+}
+.pos-report-hint {
+  margin: 0 0 10px;
+  font-size: 0.75rem;
+}
+
 .pos-hist-row {
   display: grid;
   grid-template-columns: 1fr auto auto;

@@ -128,6 +128,8 @@ from optionflow.tehran_time import (
     REPORT_MINUTE,
     TEHRAN,
     format_date_tehran,
+    format_jalali_date_tehran,
+    tehran_last_24h_bounds_utc,
     format_day_header_tehran,
     format_dt_tehran,
     format_time_tehran,
@@ -514,6 +516,7 @@ def _template_ctx(**extra: Any) -> dict[str, Any]:
         "fmt_time": _fmt_time,
         "fmt_date_header": _fmt_day_header,
         "fmt_date": format_date_tehran,
+        "fmt_jalali": format_jalali_date_tehran,
         "bias_fa": _bias_fa,
         "clean_paragraph": _clean_paragraph,
         "format_report_html": _format_prose_report_html,
@@ -1458,20 +1461,49 @@ async def patterns_refresh(category: str = Form("triangle")):
     return RedirectResponse(f"/patterns/{category}", status_code=303)
 
 
+def _position_report_bounds(
+    period: str, from_date: str, to_date: str
+) -> tuple[str, str]:
+    if period == "week":
+        return tehran_week_sat_fri_bounds_utc(None)
+    if period == "month":
+        return tehran_jalali_month_bounds_utc(None)
+    if period == "range" and from_date and to_date:
+        return _range_custom_tehran(from_date, to_date)
+    return tehran_last_24h_bounds_utc()
+
+
 @app.get("/position", response_class=HTMLResponse)
-async def position_page(request: Request, tab: str = "wallet", msg: str = "", err: str = ""):
+async def position_page(
+    request: Request,
+    tab: str = "wallet",
+    msg: str = "",
+    err: str = "",
+    period: str = "day",
+    from_date: str = "",
+    to_date: str = "",
+):
     user = current_user(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
     uid = int(user["id"])
     if tab not in ("wallet", "settings", "open", "report"):
         tab = "wallet"
+    if period not in ("day", "week", "month", "range"):
+        period = "day"
     process_signals_for_user(uid)
     wallet = get_wallet(uid)
     cfg = get_config(uid)
     mark = latest_btc_price()
     open_pos = list_positions(uid, status="open", limit=30)
-    closed = [p for p in list_positions(uid, limit=80) if p.get("status") != "open"]
+    report_start, report_end = _position_report_bounds(period, from_date, to_date)
+    closed = list_positions(
+        uid,
+        closed_only=True,
+        opened_from=report_start,
+        opened_to=report_end,
+        limit=300,
+    )
     ledger = list_ledger(uid, limit=40)
     return templates.TemplateResponse(
         request,
@@ -1488,6 +1520,9 @@ async def position_page(request: Request, tab: str = "wallet", msg: str = "", er
             mark_price=mark,
             open_positions=open_pos,
             closed_positions=closed,
+            period=period,
+            from_date=from_date,
+            to_date=to_date,
             ledger=ledger,
             pattern_categories=PATTERN_CATEGORIES,
             scalp_scenarios=SCALP_SCENARIOS,

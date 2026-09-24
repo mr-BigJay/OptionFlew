@@ -44,6 +44,31 @@ def format_time_tehran(iso: str) -> str:
         return ""
 
 
+def format_jalali_date_tehran(iso: str) -> str:
+    """تاریخ هجری شمسی به وقت تهران، مثلاً ۱۴۰۴/۰۷/۰۲ به صورت 1404/07/02."""
+    try:
+        import jdatetime
+    except ImportError:
+        return format_date_tehran(iso)
+    try:
+        dt = parse_utc_iso(iso).astimezone(TEHRAN)
+        j = jdatetime.date.fromgregorian(date=dt.date())
+        return f"{j.year}/{j.month:02d}/{j.day:02d}"
+    except (ValueError, OverflowError):
+        return iso
+
+
+def tehran_last_24h_bounds_utc() -> tuple[str, str]:
+    """از همین لحظه تا ۲۴ ساعت قبل (UTC ISO)."""
+    end = datetime.now(timezone.utc).replace(microsecond=0)
+    start = end - timedelta(hours=24)
+
+    def iso(dt: datetime) -> str:
+        return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+    return iso(start), iso(end)
+
+
 def format_date_tehran(iso: str) -> str:
     try:
         return parse_utc_iso(iso).astimezone(TEHRAN).strftime("%Y/%m/%d")
