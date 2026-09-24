@@ -693,10 +693,20 @@
       var slTag = tag(slText, "#f23645");
       var midTag = tag(fmtNum(rr, 2), "rgba(8,153,129,0.92)");
       var midX = (x1 + x2) / 2;
-      tpTag.style.left = midX + "px";
-      tpTag.style.top = profitTop + profitH / 2 + "px";
-      slTag.style.left = midX + "px";
-      slTag.style.top = stopTop + stopH / 2 + "px";
+      var boxTop = Math.min(profitTop, stopTop);
+      var boxBot = Math.max(profitTop + profitH, stopTop + stopH);
+      function placeOutside(el, yLevel) {
+        el.style.left = midX + "px";
+        if (yLevel < yE) {
+          el.style.top = boxTop - 6 + "px";
+          el.style.transform = "translate(-50%, -100%)";
+        } else {
+          el.style.top = boxBot + 6 + "px";
+          el.style.transform = "translate(-50%, 0)";
+        }
+      }
+      placeOutside(tpTag, yTp);
+      placeOutside(slTag, ySl);
       midTag.style.left = midX + "px";
       midTag.style.top = yE + "px";
       layer.appendChild(profit);
