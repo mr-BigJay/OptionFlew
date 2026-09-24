@@ -725,8 +725,26 @@
       });
     }
 
-    chart.timeScale().subscribeVisibleLogicalRangeChange(paint);
-    chart.timeScale().subscribeVisibleTimeRangeChange(paint);
+    var scheduled = false;
+    function schedule() {
+      if (scheduled) return;
+      scheduled = true;
+      requestAnimationFrame(function () {
+        scheduled = false;
+        paint();
+      });
+    }
+    chart.timeScale().subscribeVisibleLogicalRangeChange(schedule);
+    chart.timeScale().subscribeVisibleTimeRangeChange(schedule);
+    if (typeof chart.timeScale().subscribeSizeChange === "function") {
+      chart.timeScale().subscribeSizeChange(schedule);
+    }
+    ["wheel", "touchmove", "pointermove", "pointerup", "mouseup"].forEach(function (ev) {
+      mount.addEventListener(ev, schedule, { passive: true });
+    });
+    if (typeof ResizeObserver !== "undefined") {
+      new ResizeObserver(schedule).observe(mount);
+    }
     return paint;
   }
 
