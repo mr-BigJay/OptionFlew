@@ -119,12 +119,12 @@
       <div class="pos-pattern-row">
         <label class="pos-chip pos-pattern-name"><input type="checkbox" name="pattern_categories" value="{{ cat }}" {% if cat in config.pattern_categories %}checked{% endif %}><span>{{ category_fa(cat) }}</span></label>
         <div class="pos-tf-picks">
-          {% for tf in tfs %}
-          <label class="pos-tf-chip"><input type="checkbox" name="pattern_timeframes" value="{{ cat }}|{{ tf }}" {% if cat not in config.pattern_categories %}disabled{% endif %} {% if chosen is none or tf in chosen %}checked{% endif %}><span>{{ tf_labels.get(tf, tf) }}</span></label>
-          {% endfor %}
           {% if cat in pattern_early_categories %}
           <label class="pos-tf-chip"><input type="checkbox" name="pattern_early" value="{{ cat }}" {% if cat not in config.pattern_categories %}disabled{% endif %} {% if cat in config.pattern_early %}checked{% endif %}><span>تأیید اولیه</span></label>
           {% endif %}
+          {% for tf in tfs %}
+          <label class="pos-tf-chip"><input type="checkbox" name="pattern_timeframes" value="{{ cat }}|{{ tf }}" {% if cat not in config.pattern_categories %}disabled{% endif %} {% if chosen is none or tf in chosen %}checked{% endif %}><span>{{ tf_labels.get(tf, tf) }}</span></label>
+          {% endfor %}
         </div>
       </div>
       {% endfor %}
