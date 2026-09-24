@@ -119,6 +119,87 @@ def chart_forward_bars(
     return max(6, end - 1 - sig_ix)
 
 
+def _visible_price_range(
+    bars: list[OhlcBar],
+    hit: PatternHit,
+    start: int,
+    end: int,
+) -> tuple[float, float]:
+    """محدودهٔ قیمت برای محور Y — کندل‌های پنجره + خط ساختار الگو."""
+    slice_bars = bars[start:end]
+    if not slice_bars:
+        return 0.0, 1.0
+    lo = min(b.low for b in slice_bars)
+    hi = max(b.high for b in slice_bars)
+    meta = hit.meta
+    if hit.category in ("triangle", "trendline", "channel"):
+        wo = int(meta.get("window_offset") or 0)
+        i0 = int(meta.get("start_i", 0))
+        i1 = int(meta.get("end_i", i0))
+        g0, g1 = wo + i0, wo + i1
+        if g1 >= start and g0 < end:
+            li0 = max(i0, start - wo)
+            li1 = min(i1, end - 1 - wo)
+            if li1 >= li0:
+                for sl, ic in (
+                    (meta.get("upper_slope"), meta.get("upper_intercept")),
+                    (meta.get("lower_slope"), meta.get("lower_intercept")),
+                ):
+                    if sl is None or ic is None:
+                        continue
+                    y0 = float(sl) * li0 + float(ic)
+                    y1 = float(sl) * li1 + float(ic)
+                    lo = min(lo, y0, y1)
+                    hi = max(hi, y0, y1)
+        for ti in (meta.get("touch_highs") or []) + (meta.get("touch_lows") or []):
+            gi = wo + int(ti)
+            if start <= gi < end:
+                lo = min(lo, bars[gi].low)
+                hi = max(hi, bars[gi].high)
+    elif hit.category == "flag":
+        for key in ("flag_high", "flag_low"):
+            v = meta.get(key)
+            if isinstance(v, (int, float)):
+                px = float(v)
+                lo = min(lo, px)
+                hi = max(hi, px)
+    for key in ("tp_px", "entry_px", "entry_blended_px", "sl_px"):
+        v = meta.get(key)
+        if isinstance(v, (int, float)):
+            px = float(v)
+            lo = min(lo, px)
+            hi = max(hi, px)
+    if hit.category == "divergence":
+        for key in ("pivot_a", "pivot_b", "pivot_mid"):
+            pt = meta.get(key)
+            if isinstance(pt, (list, tuple)) and len(pt) >= 2:
+                try:
+                    px = float(pt[1])
+                    lo = min(lo, px)
+                    hi = max(hi, px)
+                except (TypeError, ValueError):
+                    pass
+    return lo, hi
+
+
+def _apply_price_ylim(
+    ax: Any,
+    bars: list[OhlcBar],
+    hit: PatternHit,
+    start: int,
+    end: int,
+    *,
+    extra_top_frac: float = 0.0,
+) -> None:
+    lo, hi = _visible_price_range(bars, hit, start, end)
+    span = hi - lo
+    if span <= 0:
+        span = max(abs(hi) * 0.002, 1.0)
+    pad = span * 0.10
+    top = hi + pad + span * extra_top_frac
+    ax.set_ylim(lo - pad, top)
+
+
 def _candle_widths(xs: list[float]) -> list[float]:
     if len(xs) < 2:
         return [0.012] * len(xs)
@@ -231,19 +312,17 @@ def _mark_trendline_path(
     ax.axvline(x1, color=edge, linewidth=1.1, linestyle=":", alpha=0.85, zorder=4)
     if not isinstance(pct, (int, float)):
         return
-    ymin, ymax = ax.get_ylim()
-    pad = (ymax - ymin) * 0.07
-    ax.set_ylim(ymin, ymax + pad)
     ax.text(
         (x0 + x1) / 2,
-        ymax + pad * 0.42,
+        1.02,
         f"{pct * 100:+.1f}%",
         color=edge,
         fontsize=9,
         ha="center",
-        va="center",
+        va="bottom",
         zorder=12,
         fontweight="bold",
+        transform=ax.get_xaxis_transform(),
         bbox={
             "boxstyle": "round,pad=0.18",
             "facecolor": "#0d1117cc",
@@ -554,6 +633,8 @@ def _render_price_pattern(
     _style_axes(ax, f"BTCUSDT {hit.timeframe} — {hit.title_fa}")
     ax.set_ylabel("USDT", color="#90a4ae", fontsize=8)
     ax.margins(x=0.02)
+    extra_top = 0.08 if isinstance(hit.meta.get("path_pct"), (int, float)) else 0.0
+    _apply_price_ylim(ax, bars, hit, start, end, extra_top_frac=extra_top)
 
     buf = io.BytesIO()
     fig.savefig(buf, format="png", facecolor=fig.get_facecolor())
@@ -687,6 +768,7 @@ def _render_divergence(
     for ax in (ax1, ax2):
         ax.tick_params(colors="#90a4ae", labelsize=6)
         ax.xaxis.set_major_formatter(mdates.DateFormatter("%m-%d %H:%M"))
+    _apply_price_ylim(ax1, bars, hit, start, end)
 
     buf = io.BytesIO()
     fig.savefig(buf, format="png", facecolor=fig.get_facecolor())
