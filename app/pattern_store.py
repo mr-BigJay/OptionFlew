@@ -370,8 +370,22 @@ def get_pattern_event_by_key(event_key: str) -> dict[str, Any] | None:
     return _event_from_row(row) if row else None
 
 
+def _legacy_y_key(ev: dict[str, Any]) -> str:
+    """کلید قدیمی پوزیشن: قیمت لحظه‌ای خط، قبل از هویت پایدار برخوردها."""
+    meta = ev.get("meta") if isinstance(ev.get("meta"), dict) else {}
+    y = meta.get("y_now")
+    if not isinstance(y, (int, float)):
+        return ""
+    side = str(meta.get("side") or meta.get("early_side") or "")
+    pid = str(ev.get("pattern_id") or "")
+    return (
+        f"{ev.get('category')}:{ev.get('timeframe')}:"
+        f"{pid}:{side}:y{int(round(float(y)))}"
+    )
+
+
 def get_pattern_event_by_trade_key(trade_key: str) -> dict[str, Any] | None:
-    """پوزیشن با trade_key ذخیره می‌شود؛ رویداد با event_key (شامل stage)."""
+    """پوزیشن با trade_key ذخیره می‌شود؛ رویداد با event_key."""
     key = (trade_key or "").strip()
     parts = key.split(":", 2)
     if len(parts) < 3:
@@ -390,8 +404,10 @@ def get_pattern_event_by_trade_key(trade_key: str) -> dict[str, Any] | None:
             """,
             (category, timeframe),
         ).fetchall()
+    legacy_hit: dict[str, Any] | None = None
     for row in rows:
         ev = _event_from_row(row)
+        meta = ev.get("meta") if isinstance(ev.get("meta"), dict) else {}
         hit = PatternHit(
             category=str(ev.get("category") or ""),
             timeframe=str(ev.get("timeframe") or ""),
@@ -400,8 +416,23 @@ def get_pattern_event_by_trade_key(trade_key: str) -> dict[str, Any] | None:
             status_fa="",
             summary_fa="",
             forecast_fa="",
-            meta=ev.get("meta") if isinstance(ev.get("meta"), dict) else {},
+            meta=meta,
         )
-        if trade_key_for_hit(hit) == key:
+        if trade_key_for_hit(hit) == key or _legacy_y_key(ev) == key:
             return ev
-    return None
+        if (
+            legacy_hit is None
+            and ":y" in key
+            and _legacy_y_key(ev)
+            and _legacy_side_matches(key, ev)
+        ):
+            legacy_hit = ev
+    return legacy_hit
+
+
+def _legacy_side_matches(trade_key: str, ev: dict[str, Any]) -> bool:
+    meta = ev.get("meta") if isinstance(ev.get("meta"), dict) else {}
+    side = str(meta.get("side") or meta.get("early_side") or "")
+    if not side:
+        return True
+    return f":{side}:y" in trade_key or trade_key.endswith(f":{side}")

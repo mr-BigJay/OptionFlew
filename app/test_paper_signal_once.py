@@ -34,6 +34,11 @@ def test_trade_key_finds_event_that_includes_stage() -> None:
     assert ev is not None
     assert ev["meta"]["stage"] == "early"
     assert "low" in ev["event_key"]
+    legacy = get_pattern_event_by_trade_key(
+        "trendline:5m:trendline_low_early:low:y83446"
+    )
+    assert legacy is not None
+    assert legacy["meta"]["y_now"] == 83446.0
 
 
 def test_trade_key_ignores_stage_for_trendline() -> None:
