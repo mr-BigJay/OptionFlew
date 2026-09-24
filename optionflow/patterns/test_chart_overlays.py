@@ -184,8 +184,8 @@ def test_live_payload_keeps_all_candles_and_time_viewport() -> None:
     assert len(payload["candles"]) == len(bars)
     vp = payload["viewport"]
     assert vp is not None
+    assert vp["from"] > payload["candles"][0]["time"]
     assert vp["from"] < vp["to"]
-    assert "priceMin" not in vp
 
 
 def test_trendline_viewport_exports_price_bounds() -> None:
@@ -207,8 +207,9 @@ def test_trendline_viewport_exports_price_bounds() -> None:
     }
     vp = _trendline_focus_viewport(meta, bars)
     assert vp is not None
+    assert vp["from"] > bar_unix(bars[0])
+    assert vp["to"] < bar_unix(bars[-1]) or vp["from"] < bar_unix(bars[-1])
     assert vp["from"] < vp["to"]
-    assert float(vp["priceMin"]) < float(vp["priceMax"])
 
 
 def test_position_and_pattern_merge() -> None:

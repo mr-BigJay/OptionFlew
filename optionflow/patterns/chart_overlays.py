@@ -335,31 +335,23 @@ def triangle_viewport(meta: dict[str, Any], bars: list[OhlcBar]) -> dict[str, fl
 
 
 def _trendline_focus_viewport(meta: dict[str, Any], bars: list[OhlcBar]) -> dict[str, float | int] | None:
+    """زوم اولیه روی بدنهٔ خط؛ کندل‌های قبل از g0 در سری می‌مانند تا اسکرول چپ کار کند."""
     wo = int(meta.get("window_offset") or 0)
     i0 = meta.get("start_i")
     i1 = meta.get("end_i")
-    if not isinstance(i0, int) or not isinstance(i1, int):
+    if not isinstance(i0, int) or not isinstance(i1, int) or not bars:
         return None
-    li_end = max(i1, len(bars) - 1 - wo)
-    li_from, li_to = _trendline_extended_local_range(i0, li_end)
-    span = max(1, li_to - li_from)
-    history = max(40, int(span * 0.55))
-    pad_right = max(12, int(span * 0.12))
-    g0 = max(0, wo + li_from - history)
-    g1 = min(len(bars) - 1, wo + li_to + pad_right)
+    last_local = len(bars) - 1 - wo
+    li_end = max(int(i0), min(int(i1), last_local))
+    pad_left = 16
+    pad_right = 14
+    g0 = max(0, wo + int(i0) - pad_left)
+    g1 = min(len(bars) - 1, wo + li_end + pad_right)
     if g1 <= g0:
         return None
-    t_from = bar_unix(bars[g0])
-    t_to = bar_unix(bars[g1])
-    # محور Y روی بدنهٔ الگو — نه کندل‌های قدیمیِ دورتر در همان پنجرهٔ زمانی
-    price_g0 = max(g0, wo + li_from - max(6, int(span * 0.06)))
-    p_lo, p_hi = _viewport_price_bounds(bars, meta, price_g0, g1, "trendline")
     return {
-        "from": t_from,
-        "to": t_to,
-        "priceMin": p_lo,
-        "priceMax": p_hi,
-        "candleFrom": bar_unix(bars[price_g0]),
+        "from": bar_unix(bars[g0]),
+        "to": bar_unix(bars[g1]),
     }
 
 

@@ -590,7 +590,14 @@
         autoScale: true,
         scaleMargins: { top: 0.04, bottom: 0.04 },
       },
-      timeScale: { borderColor: "#2a3441", timeVisible: true, secondsVisible: false },
+      timeScale: {
+        borderColor: "#2a3441",
+        timeVisible: true,
+        secondsVisible: false,
+        rightOffset: 6,
+        fixLeftEdge: false,
+        lockVisibleTimeRangeOnResize: false,
+      },
     });
 
     var ov = payload.overlays || {};
