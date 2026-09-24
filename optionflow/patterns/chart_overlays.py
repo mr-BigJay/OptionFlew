@@ -400,8 +400,12 @@ def _trendline_line_points(
     li_from, li_to = _trendline_extended_local_range(li0, li_end)
     pts: list[dict[str, float | int]] = []
     seen_t: set[int] = set()
-    for li in range(li_from, li_to + 1):
-        t = time_at_local_index(bars, wo, li)
+    last_li = len(bars) - 1 - wo
+    for li in range(max(0, li_from), min(li_to, last_li) + 1):
+        gi = wo + li
+        if gi < 0 or gi >= len(bars):
+            continue
+        t = bar_unix(bars[gi])
         if t in seen_t:
             continue
         seen_t.add(t)

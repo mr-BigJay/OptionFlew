@@ -170,6 +170,7 @@ html, body {
 
 .live-ov-chart-wrap {
   width: 100%;
+  direction: ltr;
 }
 
 .live-ov-chart-toolbar {

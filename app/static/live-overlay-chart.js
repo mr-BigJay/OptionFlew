@@ -573,6 +573,7 @@
     if (typeof LightweightCharts === "undefined") return;
 
     mount.dataset.liveChartReady = "1";
+    mount.style.direction = "ltr";
     var w = mount.clientWidth || 320;
     var chart = LightweightCharts.createChart(mount, {
       width: w,
@@ -687,6 +688,14 @@
       var fromIdx = candleIndexAt(vp.from, "from");
       var toIdx = candleIndexAt(vp.to, "to");
       if (toIdx <= fromIdx) toIdx = Math.min(cs.length - 1, fromIdx + 1);
+      var plotW = Math.max(280, mount.clientWidth || w);
+      chart.applyOptions({ width: plotW });
+      var barsInView = Math.max(1, toIdx - fromIdx + 1);
+      chart.timeScale().applyOptions({
+        barSpacing: Math.max(4, (plotW - 56) / barsInView),
+        rightOffset: 2,
+        fixLeftEdge: false,
+      });
       try {
         chart.timeScale().setVisibleLogicalRange({ from: fromIdx, to: toIdx });
       } catch (e) {
