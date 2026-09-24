@@ -71,6 +71,25 @@ def test_behavior_path_reaches_strike_target() -> None:
     assert hit.meta["exit_index"] == 3
 
 
+def test_put_forecast_near_spot_no_zero_percent_path() -> None:
+    spot = 84_092.0
+    top = [(85_000.0, 200.0), (84_000.0, 150.0)]
+    meta = {"direction": "down", "dominant_strikes": top}
+    tp, label = _flow_target_price(meta, spot)
+    assert tp is None
+    assert "معنادار" in label
+    text = behavior_forecast_fa(
+        direction="down",
+        spot=spot,
+        tp_px=tp,
+        strikes=[85_000.0, 84_000.0],
+        pattern_id="put_surge",
+    )
+    assert "0٪" not in text
+    assert "مسیر نزول درصدی» معنادار نیست" in text
+    assert "84,000" in text
+
+
 def test_put_surge_target_is_below_spot() -> None:
     spot = 85_901.0
     top = [(88_000.0, 400.0), (79_000.0, 250.0)]

@@ -13,6 +13,24 @@ from optionflow.patterns.types import PatternHit
 SURGE_RATIO = 2.2
 MIN_BURST_BTC = 28.0
 MIN_BASELINE_BTC = 8.0
+MIN_TARGET_MOVE_PCT = 0.004
+MIN_TARGET_MOVE_USD = 400.0
+
+
+def _target_move_ok(spot: float, target: float) -> bool:
+    if spot <= 0 or target <= 0:
+        return False
+    dist = abs(spot - target)
+    return dist >= MIN_TARGET_MOVE_USD or dist / spot >= MIN_TARGET_MOVE_PCT
+
+
+def _format_move_pct(move_pct: float) -> str:
+    a = abs(move_pct)
+    if a < 0.08:
+        return "کمتر از ۰.۱"
+    if a < 1.0:
+        return f"{a:.1f}"
+    return f"{a:.0f}"
 
 # burst = آخرین N دقیقه؛ baseline = ساعات قبل از burst (فقط 1h)
 # baseline بلندتر = میانگین «عادی» پایدارتر؛ surge باید واقعاً غیرعادی باشد
@@ -86,23 +104,36 @@ def _parse_dominant_strikes(meta: dict[str, Any]) -> list[float]:
 def _flow_target_price(
     meta: dict[str, Any], entry_px: float
 ) -> tuple[float | None, str]:
-    """هدف حرکت spot در جهت سیگنال — نزدیک‌ترین strike مناسب زیر/بالای قیمت."""
+    """هدف حرکت spot — فقط اگر فاصله از strike معنادار باشد."""
     direction = meta.get("direction")
     strikes = _parse_dominant_strikes(meta)
     if not strikes or entry_px <= 0:
         return None, "strike هدف مشخص نشد"
     if direction == "up":
         above = sorted(s for s in strikes if s > entry_px)
-        tp = above[0] if above else max(strikes)
-        return tp, f"رسیدن به strike کال {tp:,.0f}"
+        for tp in above:
+            if _target_move_ok(entry_px, tp):
+                return tp, f"رسیدن به strike کال {tp:,.0f}"
+        if above:
+            return None, f"نزدیک strike {above[0]:,.0f} — هدف صعود معنادار نیست"
+        tp = max(strikes)
+        return (tp, f"رسیدن به strike کال {tp:,.0f}") if _target_move_ok(entry_px, tp) else (
+            None,
+            "هدف صعود معنادار نیست",
+        )
     if direction == "down":
         below = sorted((s for s in strikes if s < entry_px), reverse=True)
+        for tp in below:
+            if _target_move_ok(entry_px, tp):
+                return tp, f"رسیدن به strike پوت {tp:,.0f}"
         if below:
-            tp = below[0]
-        else:
-            tp = min(strikes)
-        return tp, f"رسیدن به strike پوت {tp:,.0f}"
-    return strikes[0], f"strike {strikes[0]:,.0f}"
+            return None, f"نزدیک strike {below[0]:,.0f} — هدف نزول معنادار نیست"
+        tp = min(strikes)
+        if tp < entry_px and _target_move_ok(entry_px, tp):
+            return tp, f"رسیدن به strike پوت {tp:,.0f}"
+        return None, "هدف نزول معنادار نیست"
+    tp = strikes[0]
+    return tp, f"strike {tp:,.0f}"
 
 
 def behavior_summary_fa(
@@ -143,9 +174,40 @@ def behavior_forecast_fa(
     pattern_id: str,
 ) -> str:
     """پیش‌بینی ساده: جهت spot + توضیح strikeها."""
-    if tp_px is None or spot <= 0:
-        return "جهت روشن نیست — دادهٔ strike کافی نبود."
+    if tp_px is None or spot <= 0 or not _target_move_ok(spot, tp_px):
+        if pattern_id == "put_surge" or direction == "down":
+            below = sorted((s for s in strikes if s < spot), reverse=True)
+            above = sorted((s for s in strikes if s > spot), reverse=True)
+            nearest_below = below[0] if below else None
+            above_s = "، ".join(f"{int(s):,}" for s in above) if above else "—"
+            nb_line = ""
+            if nearest_below is not None:
+                nb_line = (
+                    f"قیمت الان حدود {spot:,.0f} است و نزدیک strike {nearest_below:,.0f} — "
+                    "این فاصله برای «مسیر نزول درصدی» معنادار نیست؛ "
+                    "سیگنال بیشتر فشار/پوشش نزولی کوتاه‌مدت است، نه افت بزرگ تا همان سطح.\n"
+                )
+            else:
+                nb_line = (
+                    f"قیمت الان حدود {spot:,.0f} است؛ "
+                    "strike معنادار پایین‌تر در لیست غالب نیست.\n"
+                )
+            return (
+                "معنی سیگنال: کوتاه‌مدت بیشتر «نگرانی از پایین آمدن قیمت» دیده می‌شود "
+                "(خرید زیاد پوت).\n"
+                + nb_line
+                + f"سطح {above_s} (بالای قیمت الان): پوت زیاد = بیمه؛ "
+                "لازم نیست قیمت برود آن بالا.\n"
+                + (
+                    f"سطح {nearest_below:,.0f}: zone حمایت آپشن؛ "
+                    "شکست آن می‌تواند نزول را جدی‌تر کند."
+                    if nearest_below is not None
+                    else ""
+                )
+            )
+        return "جهت روشن نیست — هدف strike برای مسیر قیمت کافی نبود."
     move_pct = (tp_px - spot) / spot * 100.0
+    pct_s = _format_move_pct(move_pct)
     if pattern_id == "put_surge" or direction == "down":
         above = sorted((s for s in strikes if s > spot), reverse=True)
         above_s = "، ".join(f"{int(s):,}" for s in above) if above else "—"
@@ -153,7 +215,7 @@ def behavior_forecast_fa(
             "معنی سیگنال: کوتاه‌مدت بیشتر «نگرانی از پایین آمدن قیمت» دیده می‌شود "
             "(خرید زیاد پوت).\n"
             f"مسیر محتمل قیمت: از حدود {spot:,.0f} به سمت {tp_px:,.0f} "
-            f"(تقریباً {abs(move_pct):.0f}٪ پایین‌تر).\n"
+            f"(تقریباً {pct_s}٪ پایین‌تر).\n"
             f"سطح {above_s} (بالای قیمت الان): آنجا هم پوت زیاد خریده شده — "
             "بیشتر شبیه «بیمه / اگر بازار بد شد ضرر کم شود»؛ "
             "یعنی لازم نیست قیمت برود آن بالا.\n"
@@ -166,7 +228,7 @@ def behavior_forecast_fa(
             "معنی سیگنال: کوتاه‌مدت بیشتر «امید به بالا رفتن قیمت» دیده می‌شود "
             "(خرید زیاد کال).\n"
             f"مسیر محتمل قیمت: از حدود {spot:,.0f} به سمت {tp_px:,.0f} "
-            f"(تقریباً {abs(move_pct):.0f}٪ بالاتر).\n"
+            f"(تقریباً {pct_s}٪ بالاتر).\n"
             + (
                 f"سطح {below_s} (پایین‌تر از قیمت): معاملهٔ زیاد آنجا بیشتر «پوشش» است، "
                 "نه هدف نزول قیمت.\n"
@@ -197,6 +259,10 @@ def evaluate_behavior_path(
 
     tp_px, tp_label = _flow_target_price(meta, entry_px)
     if tp_px is None:
+        meta.pop("tp_px", None)
+        meta["target_strike"] = None
+        meta["path_pct"] = None
+        meta["exit_reason"] = tp_label
         return None, tp_label
     meta["tp_px"] = tp_px
     meta["target_strike"] = tp_px
