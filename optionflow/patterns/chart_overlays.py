@@ -455,7 +455,10 @@ def _trendline_line_points(
         li0, li1 = 0, max(0, len(bars) - 1 - wo)
     if li1 < li0:
         li0, li1 = li1, li0
-    li_from, li_to = _trendline_extended_local_range(li0, li1)
+    # مثل چارت الگو: خط تا آخرین کندل می‌رود، بعد از هر طرف نصف همین طول اضافه می‌شود.
+    last_li = len(bars) - 1 - wo
+    li_end = max(li1, last_li)
+    li_from, li_to = _trendline_extended_local_range(li0, li_end)
     pts: list[dict[str, float | int]] = []
     seen_t: set[int] = set()
     for li in range(li_from, li_to + 1):

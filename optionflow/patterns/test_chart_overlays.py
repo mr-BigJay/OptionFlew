@@ -272,7 +272,7 @@ def test_trendline_extends_half_the_span_each_side() -> None:
         "end_i": 60,
     }
     pts = _trendline_line_points(meta, bars, upper=False)
-    assert pts[0]["time"] == bar_unix(bars[30])
-    assert pts[-1]["time"] == bar_unix(bars[70])
-    assert pts[0]["value"] == 80_000.0 + 2.0 * 30
-    assert pts[-1]["value"] == 80_000.0 + 2.0 * 70
+    # start 40 → end at last bar 99; half of that span is added on each side
+    assert pts[0]["time"] == bar_unix(bars[10])
+    assert pts[-1]["time"] > bar_unix(bars[-1])
+    assert pts[0]["value"] == 80_000.0 + 2.0 * 10
