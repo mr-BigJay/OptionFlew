@@ -150,9 +150,6 @@ def resolve_three_rp_entry(
 
     mid = third_candle_mid(b2)
     last_j = min(len(bars) - 1, i + PULLBACK_WAIT_BARS)
-    if last_j <= i:
-        # کندل سوم همین الان بسته شده؛ مثل برچسب تریدینگ‌ویو سیگنال همان‌جا می‌ماند.
-        return i, float(b2.close), "close_third"
     for j in range(i + 1, last_j + 1):
         if direction == "up":
             if j >= 2 and _is_bearish_reversal(bars, j):
@@ -382,7 +379,6 @@ def detect_three_rp(
         if hit is None:
             continue
         entry_i = int(hit.meta.get("entry_index", sig))
-        signal_i = int(hit.meta.get("signal_index", sig))
-        if entry_i == last or signal_i == last:
+        if entry_i == last:
             return hit
     return None
