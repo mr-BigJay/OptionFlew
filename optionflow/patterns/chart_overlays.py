@@ -243,8 +243,8 @@ def _triangle_range(
     core_g0 = wo + int(i0)
     core_g1 = wo + int(li_end)
     core_len = max(1, core_g1 - core_g0 + 1)
-    history = max(30, int((int(i1) - int(i0)) * 0.55))
-    zoom_out = max(8, int(core_len * 0.12))
+    history = max(48, int((int(i1) - int(i0)) * 0.65))
+    zoom_out = max(6, int(core_len * 0.08))
     g0 = max(0, core_g0 - history - zoom_out)
     g1 = min(len(bars) - 1, core_g1 + pad_right + zoom_out)
     if g1 <= g0:
@@ -275,29 +275,13 @@ def triangle_viewport(meta: dict[str, Any], bars: list[OhlcBar]) -> dict[str, fl
     rng = _triangle_range(meta, bars)
     if rng is None:
         return None
-    g0, g1, ap = rng
-    wo = int(meta.get("window_offset") or 0)
-    su, iu = meta.get("upper_slope"), meta.get("upper_intercept")
-    sl, il = meta.get("lower_slope"), meta.get("lower_intercept")
+    g0, g1, _ap = rng
     t_from = bar_unix(bars[g0])
     t_to = bar_unix(bars[g1])
-    if ap is not None:
-        t_to = max(t_to, time_at_local_index(bars, wo, ap + 1.0))
-    prices: list[float] = []
-    for gi in range(g0, g1 + 1):
-        prices.append(float(bars[gi].high))
-        prices.append(float(bars[gi].low))
-    if ap is not None and all(isinstance(x, (int, float)) for x in (su, iu, sl, il)):
-        prices.append(float(su) * ap + float(iu))
-    if not prices:
-        return {"from": t_from, "to": t_to}
-    lo_p, hi_p = min(prices), max(prices)
-    pad = max(30.0, (hi_p - lo_p) * 0.12)
+    # Viewport = initial pan/zoom only; apex line extends in overlays, not empty future time.
     return {
         "from": t_from,
         "to": t_to,
-        "priceMin": lo_p - pad,
-        "priceMax": hi_p + pad,
     }
 
 
@@ -310,25 +294,17 @@ def _trendline_focus_viewport(meta: dict[str, Any], bars: list[OhlcBar]) -> dict
     li_end = max(i1, len(bars) - 1 - wo)
     li_from, li_to = _trendline_extended_local_range(i0, li_end)
     span = max(1, li_to - li_from)
-    history = max(24, int(span * 0.45))
-    pad_right = max(8, int(span * 0.15))
+    history = max(40, int(span * 0.55))
+    pad_right = max(12, int(span * 0.12))
     g0 = max(0, wo + li_from - history)
     g1 = min(len(bars) - 1, wo + li_to + pad_right)
     if g1 <= g0:
         return None
     t_from = bar_unix(bars[g0])
     t_to = bar_unix(bars[g1])
-    prices: list[float] = []
-    for gi in range(g0, g1 + 1):
-        prices.append(float(bars[gi].high))
-        prices.append(float(bars[gi].low))
-    lo_p, hi_p = min(prices), max(prices)
-    pad = max(25.0, (hi_p - lo_p) * 0.1)
     return {
         "from": t_from,
         "to": t_to,
-        "priceMin": lo_p - pad,
-        "priceMax": hi_p + pad,
     }
 
 

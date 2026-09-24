@@ -636,22 +636,6 @@
 
     function applyViewport() {
       var vp = payload.viewport;
-      if (vp && vp.priceMin != null && vp.priceMax != null) {
-        series.applyOptions({
-          autoscaleInfoProvider: function () {
-            return {
-              priceRange: {
-                minValue: vp.priceMin,
-                maxValue: vp.priceMax,
-              },
-            };
-          },
-        });
-      }
-      if (vp && vp.fitTime) {
-        chart.timeScale().fitContent();
-        return;
-      }
       if (!vp || vp.from == null || vp.to == null) {
         chart.timeScale().fitContent();
         return;

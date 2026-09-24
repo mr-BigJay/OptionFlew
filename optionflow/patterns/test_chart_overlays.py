@@ -88,8 +88,7 @@ def test_triangle_converging_lines() -> None:
     pvp = payload.get("viewport")
     assert pvp is not None
     assert not pvp.get("fitTime")
-    assert pvp.get("priceMin") is not None
-    assert pvp["from"] <= bar_unix(bars[0]) or pvp["from"] >= bar_unix(bars[0])
+    assert pvp["from"] < pvp["to"]
 
 
 def test_trendline_line_on_touch_lows_no_touch_markers() -> None:
