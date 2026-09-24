@@ -15,12 +15,15 @@
       <output class="live-ov-measure-readout" for="{{ chart_payload_id }}" aria-live="polite"></output>
     </div>
     <div class="scenario-chart-frame">
-      <div
-        class="live-ov-chart-mount"
-        data-live-overlay-chart
-        data-payload-id="{{ chart_payload_id }}"
-        {% if chart_poll_url %}data-poll-url="{{ chart_poll_url }}"{% endif %}
-      ></div>
+      <div class="live-ov-chart-inner">
+        <div
+          class="live-ov-chart-mount"
+          data-live-overlay-chart
+          data-payload-id="{{ chart_payload_id }}"
+          {% if chart_poll_url %}data-poll-url="{{ chart_poll_url }}"{% endif %}
+        ></div>
+        <div class="live-ov-measure-layer" aria-hidden="true"></div>
+      </div>
     </div>
   </div>
   <script type="application/json" id="{{ chart_payload_id }}">{{ chart_payload_json|safe }}</script>

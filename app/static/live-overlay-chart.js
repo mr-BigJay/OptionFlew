@@ -86,29 +86,37 @@
     return bars + " کندل · " + Math.round(sec / 86400) + " روز";
   }
 
-  function measureReadout(candles, p0, p1, t0, t1) {
-    var dPrice = p1 - p0;
-    var pct = p0 !== 0 ? (dPrice / p0) * 100 : 0;
-    var sign = dPrice >= 0 ? "+" : "−";
-    return (
-      sign +
-      fmtNum(dPrice) +
-      " (" +
-      sign +
-      Math.abs(pct).toFixed(2) +
-      "%) · " +
-      durationFa(candles, t0, t1)
-    );
-  }
-
   function timeToUnix(t) {
     if (typeof t === "number") return t;
     return null;
   }
 
+  function formatSignedNum(n, digits) {
+    var d = digits != null ? digits : 2;
+    var abs = Math.abs(n).toLocaleString("en-US", {
+      minimumFractionDigits: d,
+      maximumFractionDigits: d,
+    });
+    if (n > 0) return abs;
+    if (n < 0) return "−" + abs;
+    return abs;
+  }
+
+  function formatDurationTv(sec) {
+    var s = Math.round(sec);
+    if (s === 0) return "0";
+    var sign = s < 0 ? "−" : "";
+    s = Math.abs(s);
+    if (s < 3600) return sign + Math.max(1, Math.round(s / 60)) + "m";
+    if (s < 86400) return sign + Math.round(s / 3600) + "h";
+    return sign + Math.round(s / 86400) + "d";
+  }
+
   function setupMeasure(chart, series, mount, payload) {
     var wrap = mount.closest(".live-ov-chart-wrap");
     if (!wrap) return;
+    var inner = mount.closest(".live-ov-chart-inner");
+    if (!inner) return;
     var payloadId = mount.getAttribute("data-payload-id");
     var btn = wrap.querySelector('[data-measure-for="' + payloadId + '"]');
     var readout = wrap.querySelector(".live-ov-measure-readout");
@@ -117,11 +125,34 @@
     var candles = payload.candles || [];
     var active = false;
     var dragging = false;
-    var startPt = null;
-    var lastCross = null;
-    var lineSeries = null;
-    var bandTop = null;
-    var bandBot = null;
+    var anchor = null;
+    var savedA = null;
+    var savedB = null;
+    var markerId = "live-ov-arr-" + String(payloadId).replace(/[^a-zA-Z0-9_-]/g, "");
+
+    var layer = inner.querySelector(".live-ov-measure-layer");
+    if (!layer) {
+      layer = document.createElement("div");
+      layer.className = "live-ov-measure-layer";
+      layer.setAttribute("aria-hidden", "true");
+      inner.appendChild(layer);
+    }
+
+    var shade = document.createElement("div");
+    shade.className = "live-ov-measure-shade";
+    shade.style.display = "none";
+    var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    var hLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    var vLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    svg.appendChild(hLine);
+    svg.appendChild(vLine);
+    shade.appendChild(svg);
+    var tag = document.createElement("div");
+    tag.className = "live-ov-measure-tag";
+    layer.appendChild(shade);
+    layer.appendChild(tag);
+
+    var stepSec = candleStepSec(candles);
 
     function setPanZoom(enabled) {
       chart.applyOptions({
@@ -130,32 +161,28 @@
       });
     }
 
-    function removeSeries(ref) {
-      if (ref) {
-        chart.removeSeries(ref);
-      }
-      return null;
-    }
-
-    function clearGraphics() {
-      lineSeries = removeSeries(lineSeries);
-      bandTop = removeSeries(bandTop);
-      bandBot = removeSeries(bandBot);
-    }
-
     function setReadout(text) {
       if (readout) readout.textContent = text || "";
+    }
+
+    function hideMeasure() {
+      shade.style.display = "none";
+      tag.textContent = "";
+      tag.className = "live-ov-measure-tag";
+      savedA = null;
+      savedB = null;
     }
 
     function pointFromXY(x, y) {
       var ts = chart.timeScale();
       var time = null;
+      var logical = null;
       if (typeof ts.coordinateToTime === "function") {
         time = ts.coordinateToTime(x);
       }
-      if (time == null && typeof ts.coordinateToLogical === "function") {
-        var logical = ts.coordinateToLogical(x);
-        if (logical != null && typeof series.dataByIndex === "function") {
+      if (typeof ts.coordinateToLogical === "function") {
+        logical = ts.coordinateToLogical(x);
+        if (time == null && logical != null && typeof series.dataByIndex === "function") {
           var bar = series.dataByIndex(Math.round(logical));
           if (bar) time = bar.time;
         }
@@ -164,86 +191,140 @@
       if (tUnix == null) return null;
       var price = series.coordinateToPrice(y);
       if (price == null || !isFinite(price)) return null;
-      var candle = nearestCandle(candles, tUnix);
-      if (!candle) return null;
-      return snapToCandle(candle, price);
+      return { time: tUnix, price: price, logical: logical };
     }
 
     function pointFromClient(clientX, clientY) {
       var rect = mount.getBoundingClientRect();
-      return pointFromXY(clientX - rect.left, clientY - rect.top);
+      var x = clientX - rect.left;
+      var y = clientY - rect.top;
+      if (x < 0 || y < 0 || x > rect.width || y > rect.height) return null;
+      return pointFromXY(x, y);
     }
 
-    function pointFromCrosshair(param) {
-      if (!param || param.time == null || !param.point) return null;
-      return pointFromXY(param.point.x, param.point.y);
+    function pixelOf(pt) {
+      var x = chart.timeScale().timeToCoordinate(pt.time);
+      var y = series.priceToCoordinate(pt.price);
+      if (x == null || y == null) return null;
+      return { x: x, y: y };
     }
 
-    function ensureLineSeries(color, style, width) {
-      return chart.addLineSeries({
-        color: color,
-        lineWidth: width,
-        lineStyle: style,
-        crosshairMarkerVisible: false,
-        priceLineVisible: false,
-        lastValueVisible: false,
-      });
-    }
-
-    function drawMeasure(a, b) {
+    function renderMeasure(a, b) {
       if (!a || !b) return;
-      var t0 = a.time <= b.time ? a.time : b.time;
-      var t1 = a.time <= b.time ? b.time : a.time;
-      var p0 = a.time <= b.time ? a.price : b.price;
-      var p1 = a.time <= b.time ? b.price : a.price;
-      var pHi = Math.max(p0, p1);
-      var pLo = Math.min(p0, p1);
-      var up = p1 >= p0;
-      var col = up ? "#34d399" : "#f87171";
-      var bandCol = up ? "rgba(52, 211, 153, 0.7)" : "rgba(248, 113, 113, 0.7)";
+      savedA = a;
+      savedB = b;
 
-      if (!lineSeries) lineSeries = ensureLineSeries(col, 0, 2);
-      else lineSeries.applyOptions({ color: col });
-      lineSeries.setData([
-        { time: t0, value: a.time <= b.time ? a.price : b.price },
-        { time: t1, value: a.time <= b.time ? b.price : a.price },
-      ]);
+      var pa = pixelOf(a);
+      var pb = pixelOf(b);
+      if (!pa || !pb) return;
 
-      if (!bandBot) bandBot = ensureLineSeries(bandCol, 2, 1);
-      else bandBot.applyOptions({ color: bandCol });
-      if (!bandTop) bandTop = ensureLineSeries(bandCol, 2, 1);
-      else bandTop.applyOptions({ color: bandCol });
-      bandBot.setData([
-        { time: t0, value: pLo },
-        { time: t1, value: pLo },
-      ]);
-      bandTop.setData([
-        { time: t0, value: pHi },
-        { time: t1, value: pHi },
-      ]);
+      var left = Math.min(pa.x, pb.x);
+      var right = Math.max(pa.x, pb.x);
+      var top = Math.min(pa.y, pb.y);
+      var bottom = Math.max(pa.y, pb.y);
+      var w = Math.max(1, right - left);
+      var h = Math.max(1, bottom - top);
 
-      setReadout(measureReadout(candles, p0, p1, t0, t1));
+      var dPrice = b.price - a.price;
+      var pct = a.price !== 0 ? (dPrice / a.price) * 100 : 0;
+      var up = dPrice >= 0;
+      var theme = up ? "up" : "down";
+      var stroke = up ? "rgba(41, 98, 255, 0.95)" : "rgba(239, 83, 80, 0.95)";
+
+      var l0 = a.logical != null ? a.logical : chart.timeScale().coordinateToLogical(pa.x);
+      var l1 = b.logical != null ? b.logical : chart.timeScale().coordinateToLogical(pb.x);
+      if (l0 == null) l0 = 0;
+      if (l1 == null) l1 = 0;
+      var dBars = Math.round(l1 - l0);
+      var dSec = b.time - a.time;
+
+      shade.className = "live-ov-measure-shade " + theme;
+      shade.style.display = "block";
+      shade.style.left = left + "px";
+      shade.style.top = top + "px";
+      shade.style.width = w + "px";
+      shade.style.height = h + "px";
+
+      var ax = pa.x - left;
+      var ay = pa.y - top;
+      var hx = pb.x >= pa.x ? w : 0;
+      var vy = pb.y >= pa.y ? h : 0;
+      hLine.setAttribute("x1", ax);
+      hLine.setAttribute("y1", ay);
+      hLine.setAttribute("x2", hx);
+      hLine.setAttribute("y2", ay);
+      vLine.setAttribute("x1", ax);
+      vLine.setAttribute("y1", ay);
+      vLine.setAttribute("x2", ax);
+      vLine.setAttribute("y2", vy);
+      hLine.setAttribute("stroke", stroke);
+      vLine.setAttribute("stroke", stroke);
+      hLine.setAttribute("stroke-width", "1");
+      vLine.setAttribute("stroke-width", "1");
+      hLine.setAttribute("marker-end", "url(#" + markerId + ")");
+      vLine.setAttribute("marker-end", "url(#" + markerId + ")");
+
+      if (!svg.querySelector("defs")) {
+        var defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+        var marker = document.createElementNS("http://www.w3.org/2000/svg", "marker");
+        marker.setAttribute("id", markerId);
+        marker.setAttribute("markerWidth", "6");
+        marker.setAttribute("markerHeight", "6");
+        marker.setAttribute("refX", "5");
+        marker.setAttribute("refY", "3");
+        marker.setAttribute("orient", "auto");
+        var path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("d", "M0,0 L6,3 L0,6 Z");
+        path.setAttribute("fill", stroke);
+        marker.appendChild(path);
+        defs.appendChild(marker);
+        svg.insertBefore(defs, svg.firstChild);
+      } else {
+        var arr = svg.querySelector("path");
+        if (arr) arr.setAttribute("fill", stroke);
+      }
+
+      var line1 = formatSignedNum(dPrice, 2) + " (" + formatSignedNum(pct, 2) + "%)";
+      var barLabel = dBars + " bars, " + formatDurationTv(dSec);
+      if (Math.abs(dBars) <= 1 && Math.abs(dSec) < stepSec * 2) {
+        barLabel = dBars + " bar";
+      }
+
+      tag.className = "live-ov-measure-tag " + theme;
+      tag.innerHTML =
+        '<div class="l1">' + line1 + '</div><div class="l2">' + barLabel + "</div>";
+
+      tag.style.left = left + w / 2 + "px";
+      if (up) {
+        tag.style.top = top - 6 + "px";
+        tag.style.transform = "translate(-50%, -100%)";
+      } else {
+        tag.style.top = bottom + 6 + "px";
+        tag.style.transform = "translate(-50%, 0)";
+      }
+
+      setReadout(line1 + " · " + barLabel);
     }
+
+    function repaintIfSaved() {
+      if (savedA && savedB) renderMeasure(savedA, savedB);
+    }
+
+    chart.timeScale().subscribeVisibleTimeRangeChange(repaintIfSaved);
+    window.addEventListener("resize", repaintIfSaved, { passive: true });
 
     function deactivate() {
       active = false;
       dragging = false;
-      startPt = null;
+      anchor = null;
       btn.classList.remove("on");
       btn.setAttribute("aria-pressed", "false");
       wrap.classList.remove("measure-on");
+      layer.setAttribute("aria-hidden", "true");
       setPanZoom(true);
-      clearGraphics();
+      hideMeasure();
       setReadout("");
     }
-
-    chart.subscribeCrosshairMove(function (param) {
-      if (param.time != null && param.point) lastCross = param;
-      if (dragging && startPt && param.time != null && param.point) {
-        var end = pointFromCrosshair(param);
-        if (end) drawMeasure(startPt, end);
-      }
-    });
 
     btn.addEventListener("click", function (e) {
       e.preventDefault();
@@ -255,51 +336,50 @@
       btn.classList.add("on");
       btn.setAttribute("aria-pressed", "true");
       wrap.classList.add("measure-on");
-      clearGraphics();
+      layer.setAttribute("aria-hidden", "false");
+      hideMeasure();
       setPanZoom(false);
-      setReadout("کلیک و بکشید روی چارت");
+      setReadout("کلیک کنید، بکشید، رها کنید (مثل TradingView)");
     });
 
     function onPointerDown(e) {
       if (!active || e.button !== 0) return;
-      var pt = pointFromClient(e.clientX, e.clientY) || pointFromCrosshair(lastCross);
-      if (!pt) {
-        setReadout("اول نشانگر را روی چارت بگذارید، بعد کلیک و بکشید");
-        return;
-      }
+      var pt = pointFromClient(e.clientX, e.clientY);
+      if (!pt) return;
       e.preventDefault();
       e.stopPropagation();
       dragging = true;
-      startPt = pt;
-      if (mount.setPointerCapture) mount.setPointerCapture(e.pointerId);
-      drawMeasure(startPt, startPt);
+      anchor = pt;
+      hideMeasure();
+      renderMeasure(anchor, anchor);
+      if (layer.setPointerCapture) layer.setPointerCapture(e.pointerId);
     }
 
     function onPointerMove(e) {
-      if (!dragging || !startPt) return;
-      var pt = pointFromClient(e.clientX, e.clientY) || pointFromCrosshair(lastCross);
-      if (pt) drawMeasure(startPt, pt);
+      if (!dragging || !anchor) return;
+      var pt = pointFromClient(e.clientX, e.clientY);
+      if (!pt) return;
+      e.preventDefault();
+      renderMeasure(anchor, pt);
     }
 
     function onPointerUp(e) {
       if (!dragging) return;
       dragging = false;
       try {
-        if (mount.releasePointerCapture) mount.releasePointerCapture(e.pointerId);
+        if (layer.releasePointerCapture) layer.releasePointerCapture(e.pointerId);
       } catch (err) {
         /* ignore */
       }
-      if (startPt) {
-        var pt = pointFromClient(e.clientX, e.clientY) || pointFromCrosshair(lastCross);
-        if (pt) drawMeasure(startPt, pt);
-      }
-      startPt = null;
+      var pt = pointFromClient(e.clientX, e.clientY);
+      if (anchor && pt) renderMeasure(anchor, pt);
+      anchor = null;
     }
 
-    mount.addEventListener("pointerdown", onPointerDown, true);
-    mount.addEventListener("pointermove", onPointerMove, true);
-    mount.addEventListener("pointerup", onPointerUp, true);
-    mount.addEventListener("pointercancel", onPointerUp, true);
+    layer.addEventListener("pointerdown", onPointerDown, { passive: false });
+    layer.addEventListener("pointermove", onPointerMove, { passive: false });
+    layer.addEventListener("pointerup", onPointerUp);
+    layer.addEventListener("pointercancel", onPointerUp);
 
     window.addEventListener("keydown", function (e) {
       if (e.key === "Escape" && active) deactivate();
