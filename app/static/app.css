@@ -2398,6 +2398,14 @@ bdi[dir="ltr"] {
   color: var(--accent);
   border-color: rgba(45, 212, 191, 0.45);
 }
+.pos-tf-chip:has(input:disabled) {
+  opacity: 0.4;
+  cursor: default;
+  background: transparent;
+  color: var(--muted);
+  border-color: var(--border);
+  pointer-events: none;
+}
 .pos-tf-chip input { accent-color: var(--accent); width: 12px; height: 12px; }
 
 .pos-actions { margin-top: 10px; }

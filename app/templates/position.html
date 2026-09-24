@@ -120,13 +120,37 @@
         <label class="pos-chip pos-pattern-name"><input type="checkbox" name="pattern_categories" value="{{ cat }}" {% if cat in config.pattern_categories %}checked{% endif %}><span>{{ category_fa(cat) }}</span></label>
         <div class="pos-tf-picks">
           {% for tf in tfs %}
-          <label class="pos-tf-chip"><input type="checkbox" name="pattern_timeframes" value="{{ cat }}|{{ tf }}" {% if chosen is none or tf in chosen %}checked{% endif %}><span>{{ tf_labels.get(tf, tf) }}</span></label>
+          <label class="pos-tf-chip"><input type="checkbox" name="pattern_timeframes" value="{{ cat }}|{{ tf }}" {% if cat not in config.pattern_categories %}disabled{% endif %} {% if chosen is none or tf in chosen %}checked{% endif %}><span>{{ tf_labels.get(tf, tf) }}</span></label>
           {% endfor %}
         </div>
       </div>
       {% endfor %}
     </div>
   </details>
+  <script>
+  (function () {
+    var form = document.querySelector("form.pos-form");
+    if (!form) return;
+    function sync(row) {
+      var cat = row.querySelector('input[name="pattern_categories"]');
+      var on = !!(cat && cat.checked);
+      row.classList.toggle("is-off", !on);
+      row.querySelectorAll('input[name="pattern_timeframes"]').forEach(function (tf) {
+        tf.disabled = !on;
+      });
+    }
+    form.querySelectorAll(".pos-pattern-row").forEach(function (row) {
+      sync(row);
+      var cat = row.querySelector('input[name="pattern_categories"]');
+      if (cat) cat.addEventListener("change", function () { sync(row); });
+    });
+    form.addEventListener("submit", function () {
+      form.querySelectorAll('input[name="pattern_timeframes"]').forEach(function (tf) {
+        tf.disabled = false;
+      });
+    });
+  })();
+  </script>
 
   <details class="pos-details">
     <summary>استراتژی <span class="pos-count">{{ config.scalp_scenarios|length }}/{{ scalp_scenarios|length }}</span></summary>
