@@ -131,7 +131,6 @@
     var candles = payload.candles || [];
     var active = false;
     var dragging = false;
-    var anchor = null;
     var savedA = null;
     var savedB = null;
     var markerId = "live-ov-arr-" + String(payloadId).replace(/[^a-zA-Z0-9_-]/g, "");
@@ -164,6 +163,7 @@
       chart.applyOptions({
         handleScroll: enabled,
         handleScale: enabled,
+        kineticScroll: enabled,
       });
     }
 
@@ -179,30 +179,64 @@
       savedB = null;
     }
 
-    function pointFromXY(x, y) {
+    function plotWidth() {
       var ts = chart.timeScale();
-      var w = mount.clientWidth || 1;
-      var h = mount.clientHeight || 1;
-      x = Math.max(0, Math.min(w, x));
-      y = Math.max(0, Math.min(h, y));
+      if (typeof ts.width === "function") {
+        var pw = ts.width();
+        if (pw > 0) return pw;
+      }
+      return mount.clientWidth || 1;
+    }
 
+    function plotHeight() {
+      return mount.clientHeight || 1;
+    }
+
+    function clientToPixel(clientX, clientY) {
+      var rect = mount.getBoundingClientRect();
+      var pw = plotWidth();
+      var ph = plotHeight();
+      return {
+        x: Math.max(0, Math.min(pw, clientX - rect.left)),
+        y: Math.max(0, Math.min(ph, clientY - rect.top)),
+      };
+    }
+
+    function extrapolateTime(x, pw) {
+      var ts = chart.timeScale();
+      var vis = ts.getVisibleRange && ts.getVisibleRange();
+      if (!vis) return null;
+      var tFrom = timeToUnix(vis.from);
+      var tTo = timeToUnix(vis.to);
+      if (tFrom == null || tTo == null) return null;
+      var frac = pw > 0 ? x / pw : 0;
+      return Math.round(tFrom + (tTo - tFrom) * frac);
+    }
+
+    function dataFromPixel(x, y) {
+      var ts = chart.timeScale();
+      var pw = plotWidth();
+      var ph = plotHeight();
+      x = Math.max(0, Math.min(pw, x));
+      y = Math.max(0, Math.min(ph, y));
+
+      var price = series.coordinateToPrice(y);
+      if (price == null || !isFinite(price)) return null;
+
+      var logical = typeof ts.coordinateToLogical === "function" ? ts.coordinateToLogical(x) : null;
       var time = null;
-      var logical = null;
       if (typeof ts.coordinateToTime === "function") {
         time = ts.coordinateToTime(x);
       }
-      if (typeof ts.coordinateToLogical === "function") {
-        logical = ts.coordinateToLogical(x);
-        if (time == null && logical != null && typeof series.dataByIndex === "function") {
-          var bar = series.dataByIndex(Math.round(logical));
-          if (bar) time = bar.time;
-        }
+      if (time == null && logical != null && typeof series.dataByIndex === "function") {
+        var bar = series.dataByIndex(Math.round(logical));
+        if (bar) time = bar.time;
       }
-      if (time == null && typeof ts.coordinateToLogical === "function") {
+      if (time == null && logical != null && typeof ts.coordinateToLogical === "function") {
         var logL = ts.coordinateToLogical(0);
-        var logR = ts.coordinateToLogical(w);
+        var logR = ts.coordinateToLogical(pw);
         if (logL != null && logR != null && logR !== logL) {
-          var frac = x / w;
+          var frac = x / pw;
           logical = logL + (logR - logL) * frac;
           if (typeof series.dataByIndex === "function") {
             var bar2 = series.dataByIndex(Math.round(logical));
@@ -211,15 +245,14 @@
         }
       }
       var tUnix = timeToUnix(time);
+      if (tUnix == null) tUnix = extrapolateTime(x, pw);
       if (tUnix == null) return null;
-      var price = series.coordinateToPrice(y);
-      if (price == null || !isFinite(price)) return null;
       return { time: tUnix, price: price, logical: logical };
     }
 
     function pointFromClient(clientX, clientY) {
-      var rect = mount.getBoundingClientRect();
-      return pointFromXY(clientX - rect.left, clientY - rect.top);
+      var px = clientToPixel(clientX, clientY);
+      return dataFromPixel(px.x, px.y);
     }
 
     function pixelOf(pt) {
@@ -229,34 +262,41 @@
       return { x: x, y: y };
     }
 
-    function renderMeasure(a, b) {
-      if (!a || !b) return;
-      savedA = a;
-      savedB = b;
-
-      var pa = pixelOf(a);
-      var pb = pixelOf(b);
-      if (!pa || !pb) return;
-
-      var left = Math.min(pa.x, pb.x);
-      var right = Math.max(pa.x, pb.x);
-      var top = Math.min(pa.y, pb.y);
-      var bottom = Math.max(pa.y, pb.y);
+    function paintMeasureBox(pxA, pxB, dataA, dataB) {
+      var left = Math.min(pxA.x, pxB.x);
+      var right = Math.max(pxA.x, pxB.x);
+      var top = Math.min(pxA.y, pxB.y);
+      var bottom = Math.max(pxA.y, pxB.y);
       var w = Math.max(1, right - left);
       var h = Math.max(1, bottom - top);
 
-      var dPrice = b.price - a.price;
-      var pct = a.price !== 0 ? (dPrice / a.price) * 100 : 0;
+      var priceA =
+        dataA && isFinite(dataA.price) ? dataA.price : series.coordinateToPrice(pxA.y);
+      var priceB =
+        dataB && isFinite(dataB.price) ? dataB.price : series.coordinateToPrice(pxB.y);
+      if (priceA == null || priceB == null || !isFinite(priceA) || !isFinite(priceB)) return;
+
+      var dPrice = priceB - priceA;
+      var pct = priceA !== 0 ? (dPrice / priceA) * 100 : 0;
       var up = dPrice >= 0;
       var theme = up ? "up" : "down";
       var stroke = up ? "rgba(41, 98, 255, 0.95)" : "rgba(239, 83, 80, 0.95)";
 
-      var l0 = a.logical != null ? a.logical : chart.timeScale().coordinateToLogical(pa.x);
-      var l1 = b.logical != null ? b.logical : chart.timeScale().coordinateToLogical(pb.x);
+      var ts = chart.timeScale();
+      var l0 =
+        dataA && dataA.logical != null
+          ? dataA.logical
+          : ts.coordinateToLogical(pxA.x);
+      var l1 =
+        dataB && dataB.logical != null
+          ? dataB.logical
+          : ts.coordinateToLogical(pxB.x);
       if (l0 == null) l0 = 0;
       if (l1 == null) l1 = 0;
       var dBars = Math.round(l1 - l0);
-      var dSec = b.time - a.time;
+      var tA = dataA ? dataA.time : extrapolateTime(pxA.x, plotWidth());
+      var tB = dataB ? dataB.time : extrapolateTime(pxB.x, plotWidth());
+      var dSec = tA != null && tB != null ? tB - tA : 0;
 
       shade.className = "live-ov-measure-shade " + theme;
       shade.style.display = "block";
@@ -265,10 +305,10 @@
       shade.style.width = w + "px";
       shade.style.height = h + "px";
 
-      var ax = pa.x - left;
-      var ay = pa.y - top;
-      var hx = pb.x >= pa.x ? w : 0;
-      var vy = pb.y >= pa.y ? h : 0;
+      var ax = pxA.x - left;
+      var ay = pxA.y - top;
+      var hx = pxB.x >= pxA.x ? w : 0;
+      var vy = pxB.y >= pxA.y ? h : 0;
       hLine.setAttribute("x1", ax);
       hLine.setAttribute("y1", ay);
       hLine.setAttribute("x2", hx);
@@ -326,6 +366,24 @@
       setReadout(line1 + " · " + barLabel);
     }
 
+    function renderMeasure(a, b) {
+      if (!a || !b) return;
+      savedA = a;
+      savedB = b;
+      var pa = pixelOf(a);
+      var pb = pixelOf(b);
+      if (!pa || !pb) return;
+      paintMeasureBox(pa, pb, a, b);
+    }
+
+    function renderMeasureDrag(pxA, pxB, dataA, dataB) {
+      if (dataA && dataB) {
+        savedA = dataA;
+        savedB = dataB;
+      }
+      paintMeasureBox(pxA, pxB, dataA, dataB);
+    }
+
     function repaintIfSaved() {
       if (dragging) return;
       if (savedA && savedB) renderMeasure(savedA, savedB);
@@ -334,28 +392,32 @@
     chart.timeScale().subscribeVisibleTimeRangeChange(repaintIfSaved);
     window.addEventListener("resize", repaintIfSaved, { passive: true });
 
-    var dragRaf = 0;
-    var dragEndPt = null;
+    var dragPointerId = null;
+    var anchorPx = null;
+    var anchorData = null;
 
-    function scheduleDragPaint(pt) {
-      dragEndPt = pt;
-      if (dragRaf) return;
-      dragRaf = requestAnimationFrame(function () {
-        dragRaf = 0;
-        if (dragging && anchor && dragEndPt) renderMeasure(anchor, dragEndPt);
-      });
+    function blockTouchScroll(e) {
+      if (dragging) e.preventDefault();
     }
 
     function bindDragListeners() {
       window.addEventListener("pointermove", onWindowPointerMove, { passive: false });
       window.addEventListener("pointerup", onWindowPointerUp);
-      window.addEventListener("pointercancel", onWindowPointerUp);
+      window.addEventListener("pointercancel", onWindowPointerCancel);
+      window.addEventListener("mousemove", onWindowMouseMove, { passive: false });
+      window.addEventListener("mouseup", onWindowMouseUp);
+      document.addEventListener("selectstart", blockTouchScroll);
+      document.addEventListener("touchmove", blockTouchScroll, { passive: false });
     }
 
     function unbindDragListeners() {
       window.removeEventListener("pointermove", onWindowPointerMove);
       window.removeEventListener("pointerup", onWindowPointerUp);
-      window.removeEventListener("pointercancel", onWindowPointerUp);
+      window.removeEventListener("pointercancel", onWindowPointerCancel);
+      window.removeEventListener("mousemove", onWindowMouseMove);
+      window.removeEventListener("mouseup", onWindowMouseUp);
+      document.removeEventListener("selectstart", blockTouchScroll);
+      document.removeEventListener("touchmove", blockTouchScroll);
     }
 
     function finishDrag(e) {
@@ -363,27 +425,55 @@
       dragging = false;
       unbindDragListeners();
       try {
-        if (layer.releasePointerCapture && e && e.pointerId != null) {
-          layer.releasePointerCapture(e.pointerId);
+        if (layer.releasePointerCapture && dragPointerId != null) {
+          layer.releasePointerCapture(dragPointerId);
         }
       } catch (err) {
         /* ignore */
       }
-      var pt = e ? pointFromClient(e.clientX, e.clientY) : dragEndPt;
-      if (anchor && pt) renderMeasure(anchor, pt);
-      anchor = null;
-      dragEndPt = null;
+      if (anchorPx && e) {
+        var endPx = clientToPixel(e.clientX, e.clientY);
+        var endData = dataFromPixel(endPx.x, endPx.y);
+        renderMeasureDrag(anchorPx, endPx, anchorData, endData);
+      } else if (anchorPx && anchorData && savedA && savedB) {
+        renderMeasure(savedA, savedB);
+      }
+      anchorPx = null;
+      anchorData = null;
+      dragPointerId = null;
+    }
+
+    function dragMove(clientX, clientY) {
+      if (!dragging || !anchorPx || !anchorData) return;
+      var endPx = clientToPixel(clientX, clientY);
+      var endData = dataFromPixel(endPx.x, endPx.y);
+      renderMeasureDrag(anchorPx, endPx, anchorData, endData);
     }
 
     function onWindowPointerMove(e) {
-      if (!dragging || !anchor) return;
-      var pt = pointFromClient(e.clientX, e.clientY);
-      if (!pt) return;
+      if (!dragging || e.pointerId !== dragPointerId) return;
       e.preventDefault();
-      scheduleDragPaint(pt);
+      dragMove(e.clientX, e.clientY);
+    }
+
+    function onWindowMouseMove(e) {
+      if (!dragging || dragPointerId != null) return;
+      e.preventDefault();
+      dragMove(e.clientX, e.clientY);
     }
 
     function onWindowPointerUp(e) {
+      if (e.pointerId !== dragPointerId) return;
+      finishDrag(e);
+    }
+
+    function onWindowPointerCancel(e) {
+      if (e.pointerId !== dragPointerId) return;
+      finishDrag(e);
+    }
+
+    function onWindowMouseUp(e) {
+      if (dragPointerId != null || !dragging) return;
       finishDrag(e);
     }
 
@@ -418,14 +508,24 @@
 
     function onPointerDown(e) {
       if (!active || e.button !== 0) return;
-      var pt = pointFromClient(e.clientX, e.clientY);
-      if (!pt) return;
+      var px = clientToPixel(e.clientX, e.clientY);
+      var data = dataFromPixel(px.x, px.y);
+      if (!data) {
+        var py = series.coordinateToPrice(px.y);
+        if (py == null || !isFinite(py)) return;
+        data = {
+          time: extrapolateTime(px.x, plotWidth()) || (candles.length ? candles[candles.length - 1].time : 0),
+          price: py,
+          logical: chart.timeScale().coordinateToLogical(px.x),
+        };
+      }
       e.preventDefault();
       e.stopPropagation();
       dragging = true;
-      anchor = pt;
-      dragEndPt = pt;
-      renderMeasure(anchor, anchor);
+      dragPointerId = e.pointerId;
+      anchorPx = px;
+      anchorData = data;
+      renderMeasureDrag(anchorPx, anchorPx, anchorData, anchorData);
       bindDragListeners();
       if (layer.setPointerCapture) {
         try {
