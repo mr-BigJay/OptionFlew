@@ -475,13 +475,12 @@ def _y_line(meta: dict[str, Any], bars: list[OhlcBar], *, upper: bool) -> list[d
 
 
 def position_overlays(pos: dict[str, Any], *, mark: float | None = None) -> dict[str, Any]:
+    del mark
     hlines = [
         _hline(float(pos["entry_price"]), color="#fbbf24", label="Entry", style="solid"),
         _hline(float(pos["sl_price"]), color="#f87171", label="SL"),
         _hline(float(pos["tp_price"]), color="#34d399", label="TP"),
     ]
-    if mark is not None and mark > 0:
-        hlines.append(_hline(float(mark), color="#60a5fa", label="Mark", style="dotted"))
     return {"hlines": hlines, "segments": [], "lines": [], "markers": []}
 
 
@@ -673,6 +672,27 @@ def bar_indices_for_unix_range(
     return g0, g1
 
 
+def _without_trade_labels(spec: dict[str, Any]) -> dict[str, Any]:
+    """روی چارت پوزیشن فقط Entry / SL / TP می‌ماند؛ برچسب الگوی ورود تکرار نشود."""
+    drop = {"ورود", "entry", "mark", "sl", "tp"}
+    hlines = [
+        h
+        for h in (spec.get("hlines") or [])
+        if str(h.get("label") or "").strip().lower() not in drop
+    ]
+    markers = [
+        mk
+        for mk in (spec.get("markers") or [])
+        if str(mk.get("text") or "").strip().lower() not in drop
+    ]
+    return {
+        "hlines": hlines,
+        "segments": list(spec.get("segments") or []),
+        "lines": list(spec.get("lines") or []),
+        "markers": markers,
+    }
+
+
 def merge_overlay_specs(*specs: dict[str, Any]) -> dict[str, Any]:
     out: dict[str, Any] = {
         "hlines": [],
@@ -705,7 +725,10 @@ def build_live_chart_payload(
     cat = (category or "").strip().lower()
     specs: list[dict[str, Any]] = []
     if category and m:
-        specs.append(pattern_overlays(category, m, bars))
+        spec = pattern_overlays(category, m, bars)
+        if position:
+            spec = _without_trade_labels(spec)
+        specs.append(spec)
     if position:
         specs.append(position_overlays(position, mark=mark))
     overlays = merge_overlay_specs(*specs)

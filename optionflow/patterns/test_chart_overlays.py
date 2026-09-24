@@ -228,8 +228,11 @@ def test_position_and_pattern_merge() -> None:
         position=pos,
         mark=90200.0,
     )
-    assert len(payload["candles"]) == 40
-    assert len(payload["overlays"]["hlines"]) >= 4
+    labels = [h.get("label") for h in payload["overlays"]["hlines"]]
+    assert labels.count("Entry") == 1
+    assert "SL" in labels and "TP" in labels
+    assert "Mark" not in labels
+    assert "ورود" not in labels
 
 
 def test_position_chart_draws_pattern_and_zooms_on_signal() -> None:

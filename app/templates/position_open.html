@@ -19,12 +19,9 @@
       {% endif %}
     </div>
     <div class="pos-trade-meta">
-      <span>ورود {{ "{:,.0f}".format(pos.entry_price) }}</span>
+      <span>Entry {{ "{:,.0f}".format(pos.entry_price) }}</span>
       <span>SL {{ "{:,.0f}".format(pos.sl_price) }}</span>
       <span>TP {{ "{:,.0f}".format(pos.tp_price) }}</span>
-      {% if mark_price %}
-      <span>Mark {{ "{:,.0f}".format(mark_price) }}</span>
-      {% endif %}
     </div>
     {% if pnl_usdt is not none %}
     <p class="pos-trade-pnl {% if pnl_usdt >= 0 %}pos{% else %}neg{% endif %}">
