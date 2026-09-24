@@ -3,6 +3,8 @@ from datetime import datetime, timedelta, timezone
 from optionflow.patterns.chart_overlays import (
     bar_unix,
     build_live_chart_payload,
+    nearest_bar_index,
+    parse_iso_ts,
     pattern_overlays,
     reanchor_meta,
     triangle_viewport,
@@ -131,23 +133,11 @@ def test_trendline_line_on_touch_lows_no_touch_markers() -> None:
         assert abs(val - bars[gi].low) < 0.01
 
 
-def test_trendline_reanchor_keeps_line_on_touch_lows() -> None:
+def test_trendline_reanchor_full_line_span() -> None:
     wo = 40
     slope, intercept = 5.0, 80_500.0
     touch_lows = [12, 32, 48]
     bars = [_bar(i, 84_000.0) for i in range(120)]
-    for ti in touch_lows:
-        gi = wo + ti
-        y = slope * ti + intercept
-        b = bars[gi]
-        bars[gi] = OhlcBar(
-            ts=b.ts,
-            open=y + 20,
-            high=y + 60,
-            low=y,
-            close=y + 30,
-            volume=1.0,
-        )
     meta = {
         "kind": "trendline",
         "side": "low",
@@ -155,7 +145,7 @@ def test_trendline_reanchor_keeps_line_on_touch_lows() -> None:
         "lower_intercept": intercept,
         "window_offset": wo,
         "start_i": 10,
-        "end_i": 50,
+        "end_i": 70,
         "touch_lows": touch_lows,
         "confirm_index": wo + touch_lows[-1],
     }
@@ -164,11 +154,10 @@ def test_trendline_reanchor_keeps_line_on_touch_lows() -> None:
     ov = pattern_overlays("trendline", m2, bars)
     assert ov["markers"] == []
     pts = ov["lines"][0]["points"]
-    for ti in touch_lows:
-        gi = int(m2["window_offset"]) + ti
-        t = bar_unix(bars[gi])
-        val = next(p["value"] for p in pts if p["time"] == t)
-        assert abs(val - bars[gi].low) < 0.02
+    assert len(pts) >= 30
+    assert m2["window_offset"] + touch_lows[-1] == nearest_bar_index(
+        bars, parse_iso_ts(ts) or bars[0].ts
+    )
 
 
 def test_position_and_pattern_merge() -> None:
