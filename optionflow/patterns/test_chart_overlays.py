@@ -131,6 +131,46 @@ def test_trendline_line_on_touch_lows_no_touch_markers() -> None:
         assert abs(val - bars[gi].low) < 0.01
 
 
+def test_trendline_reanchor_keeps_line_on_touch_lows() -> None:
+    wo = 40
+    slope, intercept = 5.0, 80_500.0
+    touch_lows = [12, 32, 48]
+    bars = [_bar(i, 84_000.0) for i in range(120)]
+    for ti in touch_lows:
+        gi = wo + ti
+        y = slope * ti + intercept
+        b = bars[gi]
+        bars[gi] = OhlcBar(
+            ts=b.ts,
+            open=y + 20,
+            high=y + 60,
+            low=y,
+            close=y + 30,
+            volume=1.0,
+        )
+    meta = {
+        "kind": "trendline",
+        "side": "low",
+        "lower_slope": slope,
+        "lower_intercept": intercept,
+        "window_offset": wo,
+        "start_i": 10,
+        "end_i": 50,
+        "touch_lows": touch_lows,
+        "confirm_index": wo + touch_lows[-1],
+    }
+    ts = bars[wo + touch_lows[-1]].ts.isoformat().replace("+00:00", "Z")
+    m2 = reanchor_meta(bars, dict(meta), created_at=ts, category="trendline")
+    ov = pattern_overlays("trendline", m2, bars)
+    assert ov["markers"] == []
+    pts = ov["lines"][0]["points"]
+    for ti in touch_lows:
+        gi = int(m2["window_offset"]) + ti
+        t = bar_unix(bars[gi])
+        val = next(p["value"] for p in pts if p["time"] == t)
+        assert abs(val - bars[gi].low) < 0.02
+
+
 def test_position_and_pattern_merge() -> None:
     bars = [_bar(i, 90_000 + i) for i in range(40)]
     pos = {

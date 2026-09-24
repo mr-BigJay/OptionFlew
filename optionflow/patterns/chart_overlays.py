@@ -56,6 +56,10 @@ def nearest_bar_index(bars: list[OhlcBar], ts: datetime) -> int:
     return best_i
 
 
+def _global_bar_index(v: int, wo: int) -> int:
+    return v if v >= wo else wo + v
+
+
 def reanchor_meta(
     bars: list[OhlcBar],
     meta: dict[str, Any],
@@ -72,10 +76,14 @@ def reanchor_meta(
     end_i = int(m.get("end_i") or len(bars) - 1)
     old_wo = int(m.get("window_offset") or 0)
     ref = m.get("confirm_index")
-    if not isinstance(ref, int):
+    if isinstance(ref, int):
+        ref = _global_bar_index(ref, old_wo)
+    else:
         ref = m.get("early_index")
-    if not isinstance(ref, int):
-        ref = old_wo + end_i
+        if isinstance(ref, int):
+            ref = _global_bar_index(ref, old_wo)
+        else:
+            ref = old_wo + end_i
     shift = idx - ref
     m["window_offset"] = max(0, old_wo + shift)
     for key in (
@@ -89,7 +97,7 @@ def reanchor_meta(
     ):
         v = m.get(key)
         if isinstance(v, int):
-            m[key] = v + shift
+            m[key] = _global_bar_index(v, old_wo) + shift
     cat = (category or str(m.get("kind") or "")).lower()
     if cat == "divergence" or m.get("pivot_a"):
         for key in ("pivot_a", "pivot_b", "pivot_mid"):
@@ -281,28 +289,73 @@ def triangle_viewport(meta: dict[str, Any], bars: list[OhlcBar]) -> dict[str, fl
     }
 
 
+def _trendline_line_from_touches(
+    meta: dict[str, Any], bars: list[OhlcBar], *, side: str
+) -> tuple[float, float, int, int] | None:
+    key = "touch_lows" if side == "low" else "touch_highs"
+    touches = meta.get(key) or []
+    wo = int(meta.get("window_offset") or 0)
+    pts: list[tuple[int, float]] = []
+    for ti in touches:
+        gi = wo + int(ti)
+        if gi < 0 or gi >= len(bars):
+            continue
+        p = bars[gi].low if side == "low" else bars[gi].high
+        pts.append((int(ti), float(p)))
+    if len(pts) < 2:
+        return None
+    pts.sort(key=lambda x: x[0])
+    i0, p0 = pts[0]
+    i1, p1 = pts[-1]
+    if i1 <= i0:
+        return None
+    slope = (p1 - p0) / (i1 - i0)
+    intercept = p0 - slope * i0
+    end_i = meta.get("end_i")
+    li_end = int(end_i) if isinstance(end_i, int) else i1
+    li_end = max(i1, li_end, len(bars) - 1 - wo)
+    return slope, intercept, i0, li_end
+
+
 def _trendline_line_points(
     meta: dict[str, Any], bars: list[OhlcBar], *, upper: bool
 ) -> list[dict[str, float | int]]:
     sk = "upper_slope" if upper else "lower_slope"
     ik = "upper_intercept" if upper else "lower_intercept"
-    slope, intercept = meta.get(sk), meta.get(ik)
-    if not isinstance(slope, (int, float)) or not isinstance(intercept, (int, float)):
-        return []
     side = meta.get("side")
     if meta.get("kind") == "trendline":
         if side == "low" and upper:
             return []
         if side == "high" and not upper:
             return []
-    wo = int(meta.get("window_offset") or 0)
-    i0 = meta.get("start_i")
-    i1 = meta.get("end_i")
-    if isinstance(i0, int) and isinstance(i1, int):
-        li0, li1 = int(i0), int(i1)
+        touch_side = "high" if upper else "low"
+        fitted = _trendline_line_from_touches(meta, bars, side=touch_side)
+        if fitted:
+            slope, intercept, li0, li_end = fitted
+        else:
+            slope, intercept = meta.get(sk), meta.get(ik)
+            if not isinstance(slope, (int, float)) or not isinstance(intercept, (int, float)):
+                return []
+            i0 = meta.get("start_i")
+            i1 = meta.get("end_i")
+            if isinstance(i0, int) and isinstance(i1, int):
+                li0, li_end = int(i0), int(i1)
+            else:
+                li0, li_end = 0, max(0, len(bars) - 1 - int(meta.get("window_offset") or 0))
+            li_end = max(li_end, len(bars) - 1 - int(meta.get("window_offset") or 0))
     else:
-        li0, li1 = 0, max(0, len(bars) - 1 - wo)
-    li_end = max(li1, len(bars) - 1 - wo)
+        slope, intercept = meta.get(sk), meta.get(ik)
+        if not isinstance(slope, (int, float)) or not isinstance(intercept, (int, float)):
+            return []
+        wo = int(meta.get("window_offset") or 0)
+        i0 = meta.get("start_i")
+        i1 = meta.get("end_i")
+        if isinstance(i0, int) and isinstance(i1, int):
+            li0, li1 = int(i0), int(i1)
+        else:
+            li0, li1 = 0, max(0, len(bars) - 1 - wo)
+        li_end = max(li1, len(bars) - 1 - wo)
+    wo = int(meta.get("window_offset") or 0)
     g0 = max(0, wo + li0)
     g1 = min(len(bars) - 1, wo + li_end)
     pts: list[dict[str, float | int]] = []
@@ -438,9 +491,6 @@ def pattern_overlays(
             lines.append({"color": "#ffb74d", "label": "مقاومت", "points": up_pts, "width": 1})
         if lo_pts:
             lines.append({"color": "#81c784", "label": "حمایت", "points": lo_pts, "width": 1})
-        ei = meta.get("entry_index", meta.get("early_index", meta.get("confirm_index")))
-        if isinstance(ei, int):
-            markers.append(_marker(bars, ei, text="ورود", color="#fbbf24", position="belowBar"))
 
     elif cat == "ema50":
         ep, sl = meta.get("entry_px"), meta.get("sl_px")

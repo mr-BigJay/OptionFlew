@@ -701,13 +701,6 @@ def _render_price_pattern(
         _mark_early_entry(
             ax, bars, meta, start, end, color="#fbbf24" if hit.category == "trendline" else None
         )
-        if hit.category == "trendline":
-            cf = meta.get("confirm_index")
-            side = meta.get("side")
-            if isinstance(cf, int):
-                _mark_index_arrow(
-                    ax, bars, cf, start, end, side=side, color="#42a5f5"
-                )
         if hit.category == "trendline" and isinstance(meta.get("exit_index"), int):
             _mark_trendline_path(ax, xs, start, meta, outcome_success)
             exit_i = meta.get("exit_index")
