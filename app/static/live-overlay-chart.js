@@ -619,6 +619,20 @@
 
   function makeVisibleAutoscale(chart, payload, overlays) {
     return function () {
+      var vp = payload.viewport;
+      if (
+        vp &&
+        typeof vp.priceMin === "number" &&
+        typeof vp.priceMax === "number" &&
+        vp.priceMax > vp.priceMin
+      ) {
+        return {
+          priceRange: {
+            minValue: vp.priceMin,
+            maxValue: vp.priceMax,
+          },
+        };
+      }
       var tr = visibleTimeRange(chart, payload);
       if (!tr) return null;
       var r = priceRangeForWindow(tr.from, tr.to, payload.candles, overlays);
@@ -659,7 +673,11 @@
         vertLines: { color: "rgba(42,52,65,0.6)" },
         horzLines: { color: "rgba(42,52,65,0.6)" },
       },
-      rightPriceScale: { borderColor: "#2a3441" },
+      rightPriceScale: {
+        borderColor: "#2a3441",
+        autoScale: true,
+        scaleMargins: { top: 0.06, bottom: 0.06 },
+      },
       timeScale: { borderColor: "#2a3441", timeVisible: true, secondsVisible: false },
     });
 
@@ -728,9 +746,9 @@
 
     function applyViewport() {
       var vp = payload.viewport;
+      refreshPriceScale(scaledSeries, scaleFn);
       if (!vp || vp.from == null || vp.to == null) {
         chart.timeScale().fitContent();
-        refreshPriceScale(scaledSeries, scaleFn);
         return;
       }
       try {
@@ -742,6 +760,9 @@
         chart.timeScale().fitContent();
       }
       refreshPriceScale(scaledSeries, scaleFn);
+      window.setTimeout(function () {
+        refreshPriceScale(scaledSeries, scaleFn);
+      }, 0);
     }
 
     chart.timeScale().subscribeVisibleTimeRangeChange(function () {
@@ -765,6 +786,8 @@
             if (!data || !data.candles) return;
             series.setData(data.candles);
             payload.candles = data.candles;
+            if (data.viewport) payload.viewport = data.viewport;
+            scaleFn = makeVisibleAutoscale(chart, payload, ov);
             refreshPriceScale(scaledSeries, scaleFn);
             if (data.mark != null && typeof data.mark === "number") {
               /* mark line refresh omitted — full reload would duplicate price lines */

@@ -1598,7 +1598,11 @@ async def api_live_chart_patterns_scan(request: Request):
             payload = payload_from_pattern_hit(hit)
             if payload:
                 return JSONResponse(
-                    {"candles": payload["candles"], "overlays": payload["overlays"]}
+                    {
+                        "candles": payload["candles"],
+                        "overlays": payload["overlays"],
+                        "viewport": payload.get("viewport"),
+                    }
                 )
     return JSONResponse({"candles": [], "overlays": {}})
 
@@ -1614,7 +1618,13 @@ async def api_live_chart_pattern_event(request: Request, event_id: int):
     payload = payload_from_pattern_event(event)
     if not payload:
         return JSONResponse({"error": "no_data"}, status_code=503)
-    return JSONResponse({"candles": payload["candles"], "overlays": payload["overlays"]})
+    return JSONResponse(
+        {
+            "candles": payload["candles"],
+            "overlays": payload["overlays"],
+            "viewport": payload.get("viewport"),
+        }
+    )
 
 
 @app.get("/api/chart/live/pattern/category/{category}")
@@ -1631,7 +1641,13 @@ async def api_live_chart_pattern_category(request: Request, category: str):
     payload = payload_from_pattern_hit(hit)
     if not payload:
         return JSONResponse({"error": "no_data"}, status_code=503)
-    return JSONResponse({"candles": payload["candles"], "overlays": payload["overlays"]})
+    return JSONResponse(
+        {
+            "candles": payload["candles"],
+            "overlays": payload["overlays"],
+            "viewport": payload.get("viewport"),
+        }
+    )
 
 
 @app.get("/api/chart/live/position/{position_id}")
@@ -1651,6 +1667,7 @@ async def api_live_chart_position(request: Request, position_id: int):
         {
             "candles": payload["candles"],
             "overlays": payload["overlays"],
+            "viewport": payload.get("viewport"),
             "mark": mark,
         }
     )

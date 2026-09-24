@@ -160,6 +160,33 @@ def test_trendline_reanchor_full_line_span() -> None:
     )
 
 
+def test_live_payload_slices_candles_to_pattern_viewport() -> None:
+    bars = [_bar(i, 87_000.0 - i * 20) for i in range(120)]
+    meta = {
+        "kind": "trendline",
+        "side": "low",
+        "lower_slope": 1.5,
+        "lower_intercept": 83_000.0,
+        "upper_slope": None,
+        "upper_intercept": None,
+        "window_offset": 0,
+        "start_i": 72,
+        "end_i": 115,
+        "touch_lows": [75, 90, 105],
+        "touch_highs": [],
+    }
+    payload = build_live_chart_payload(
+        timeframe="5m",
+        bars=bars,
+        category="trendline",
+        meta=meta,
+    )
+    assert len(payload["candles"]) < len(bars)
+    vp = payload["viewport"]
+    assert vp is not None
+    assert float(vp["priceMax"]) - float(vp["priceMin"]) < 4000
+
+
 def test_trendline_viewport_exports_price_bounds() -> None:
     from optionflow.patterns.chart_overlays import _trendline_focus_viewport
 

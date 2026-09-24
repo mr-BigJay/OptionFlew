@@ -351,12 +351,15 @@ def _trendline_focus_viewport(meta: dict[str, Any], bars: list[OhlcBar]) -> dict
         return None
     t_from = bar_unix(bars[g0])
     t_to = bar_unix(bars[g1])
-    p_lo, p_hi = _viewport_price_bounds(bars, meta, g0, g1, "trendline")
+    # محور Y روی بدنهٔ الگو — نه کندل‌های قدیمیِ دورتر در همان پنجرهٔ زمانی
+    price_g0 = max(g0, wo + li_from - max(6, int(span * 0.06)))
+    p_lo, p_hi = _viewport_price_bounds(bars, meta, price_g0, g1, "trendline")
     return {
         "from": t_from,
         "to": t_to,
         "priceMin": p_lo,
         "priceMax": p_hi,
+        "candleFrom": bar_unix(bars[price_g0]),
     }
 
 
@@ -598,6 +601,26 @@ def pattern_overlays(
     }
 
 
+def bar_indices_for_unix_range(
+    bars: list[OhlcBar], t_from: int, t_to: int
+) -> tuple[int, int]:
+    if not bars:
+        return 0, 0
+    g0 = 0
+    g1 = len(bars) - 1
+    for i, b in enumerate(bars):
+        if bar_unix(b) >= t_from:
+            g0 = i
+            break
+    for i in range(len(bars) - 1, -1, -1):
+        if bar_unix(bars[i]) <= t_to:
+            g1 = i
+            break
+    if g1 < g0:
+        return 0, max(0, len(bars) - 1)
+    return g0, g1
+
+
 def merge_overlay_specs(*specs: dict[str, Any]) -> dict[str, Any]:
     out: dict[str, Any] = {
         "hlines": [],
@@ -644,6 +667,13 @@ def build_live_chart_payload(
         vp = live_pattern_viewport(cat, m, bars)
         if vp:
             payload["viewport"] = vp
+            t_lo = int(vp["from"])
+            t_hi = int(vp["to"])
+            g0, g1 = bar_indices_for_unix_range(bars, t_lo, t_hi)
+            candle_from = vp.get("candleFrom")
+            if isinstance(candle_from, (int, float)):
+                g0, _ = bar_indices_for_unix_range(bars, int(candle_from), t_hi)
+            payload["candles"] = candles_payload(bars[g0 : g1 + 1])
     return payload
 
 
