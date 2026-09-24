@@ -43,6 +43,13 @@ def latest_btc_price() -> float | None:
     return None
 
 
+def pattern_hit_allows_entry(hit: PatternHit) -> bool:
+    """ترندلاین فقط وقتی پوزیشن می‌سازد که کندل جاری به خط رسیده باشد."""
+    if str(hit.category or "") != "trendline":
+        return True
+    return bool((hit.meta or {}).get("testing"))
+
+
 def _direction_from_pattern(meta: dict[str, Any]) -> str | None:
     d = meta.get("direction")
     if d == "up":
@@ -155,6 +162,8 @@ def try_open_from_pattern_hit(user_id: int, hit: PatternHit) -> int | None:
         return None
     cat = str(hit.category or "")
     if cat not in (cfg.get("pattern_categories") or []):
+        return None
+    if not pattern_hit_allows_entry(hit):
         return None
     tf = str(hit.timeframe or "")
     if tf not in selected_timeframes(cfg, cat):

@@ -15,3 +15,30 @@ def test_try_open_requires_direction_in_meta() -> None:
         meta={},
     )
     assert try_open_from_pattern_hit(999_999, hit) is None
+
+
+def test_trendline_entry_requires_a_touch() -> None:
+    from app.paper_engine import pattern_hit_allows_entry
+
+    away = PatternHit(
+        category="trendline",
+        timeframe="5m",
+        pattern_id="trendline_low_early",
+        title_fa="ترندلاین حمایت",
+        status_fa="",
+        summary_fa="",
+        forecast_fa="",
+        meta={"direction": "up", "testing": False, "y_now": 83000},
+    )
+    touched = PatternHit(
+        category="trendline",
+        timeframe="5m",
+        pattern_id="trendline_low_early",
+        title_fa="ترندلاین حمایت",
+        status_fa="",
+        summary_fa="",
+        forecast_fa="",
+        meta={"direction": "up", "testing": True, "y_now": 83000},
+    )
+    assert pattern_hit_allows_entry(away) is False
+    assert pattern_hit_allows_entry(touched) is True

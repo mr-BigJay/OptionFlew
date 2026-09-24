@@ -547,6 +547,7 @@ def detect_trendline(
             "touch_highs": touch_highs,
             "touch_lows": touch_lows,
             "y_now": primary["y_now"],
+            "testing": bool(primary.get("testing")),
             "early_index": early_ix,
             "confirm_index": confirm_ix,
             "last_close": last.close,
