@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from app.storage import connect
+from optionflow.patterns.dedupe import backtest_dedupe_key
 from optionflow.patterns.types import PatternHit
 
 logger = logging.getLogger("optionflow.pattern_store")
@@ -55,11 +56,34 @@ def _meta_pivot_price(value: Any) -> int | None:
     return None
 
 
+def _trendline_line_signature(
+    category: str,
+    pattern_id: str,
+    meta: dict[str, Any],
+    timeframe: str,
+) -> str:
+    """همان خط، با وجود جابه‌جایی قیمت لحظه‌ای، یک سیگنال است."""
+    hit = PatternHit(
+        category=category,
+        timeframe=timeframe or "15m",
+        pattern_id=pattern_id,
+        title_fa="",
+        status_fa="",
+        summary_fa="",
+        forecast_fa="",
+        meta=meta,
+    )
+    key = backtest_dedupe_key(hit)
+    prefix = f"{category}:"
+    return key[len(prefix) :] if key.startswith(prefix) else key
+
+
 def pattern_content_signature(
     *,
     category: str,
     pattern_id: str,
     meta: dict[str, Any],
+    timeframe: str = "",
 ) -> str:
     """هویت پایدار الگو — بدون وابستگی به اندیس کندل که با اسکن جابه‌جا می‌شود."""
     alert = meta.get("alert_key")
@@ -79,10 +103,7 @@ def pattern_content_signature(
         px = int(round(float(ep))) if isinstance(ep, (int, float)) else 0
         return f"{pattern_id}:e{px}"
     if category in ("trendline", "channel"):
-        side = meta.get("side") or meta.get("early_side") or ""
-        y = meta.get("y_now")
-        yk = int(round(float(y))) if isinstance(y, (int, float)) else 0
-        return f"{pattern_id}:{stage}:{side}:y{yk}"
+        return _trendline_line_signature(category, pattern_id, meta, timeframe)
     if category == "triangle":
         kind = meta.get("kind") or ""
         u = meta.get("upper_now")
@@ -129,10 +150,9 @@ def trade_signature_for_hit(hit: PatternHit) -> str:
         px = int(round(float(ep))) if isinstance(ep, (int, float)) else 0
         return f"{pattern_id}:e{px}"
     if category in ("trendline", "channel"):
-        side = meta.get("side") or meta.get("early_side") or ""
-        y = meta.get("y_now")
-        yk = int(round(float(y))) if isinstance(y, (int, float)) else 0
-        return f"{pattern_id}:{side}:y{yk}"
+        return _trendline_line_signature(
+            category, pattern_id, meta, str(hit.timeframe or "")
+        )
     if category == "triangle":
         kind = meta.get("kind") or ""
         u = meta.get("upper_now")
@@ -172,6 +192,7 @@ def event_key_for_hit(hit: PatternHit) -> str:
         category=hit.category,
         pattern_id=hit.pattern_id,
         meta=meta,
+        timeframe=str(hit.timeframe or ""),
     )
     return f"{hit.category}:{hit.timeframe}:{sig}"
 
@@ -186,6 +207,7 @@ def _dedupe_event_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             category=str(d.get("category") or ""),
             pattern_id=str(d.get("pattern_id") or ""),
             meta=meta,
+            timeframe=str(d.get("timeframe") or ""),
         )
         bucket = f"{d.get('category')}:{d.get('timeframe')}:{sig}"
         if bucket in seen:

@@ -33,7 +33,7 @@ def test_trade_key_finds_event_that_includes_stage() -> None:
     ev = get_pattern_event_by_trade_key(trade_key_for_hit(hit))
     assert ev is not None
     assert ev["meta"]["stage"] == "early"
-    assert "early" in ev["event_key"]
+    assert "low" in ev["event_key"]
 
 
 def test_trade_key_ignores_stage_for_trendline() -> None:
@@ -64,12 +64,12 @@ def test_trade_key_ignores_stage_for_trendline() -> None:
         meta=meta_conf,
     )
     assert trade_key_for_hit(h1) == trade_key_for_hit(h2)
-    assert event_key_for_hit(h1) != event_key_for_hit(h2)
+    assert event_key_for_hit(h1) == event_key_for_hit(h2)
 
 
 def test_signal_consumed_after_close() -> None:
     init_position_db()
-    uid = 9999301
+    uid = 9999308
     deposit(uid, 500.0)
     cfg = get_config(uid)
     key = "trendline:1h:setup-a"
