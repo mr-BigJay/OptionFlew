@@ -74,25 +74,25 @@ def reanchor_meta(
     cat = (category or str(m.get("kind") or "")).lower()
 
     if cat in ("trendline", "channel"):
-        touches = m.get("touch_lows") or m.get("touch_highs") or []
-        if touches:
-            last_ti = int(touches[-1])
-            new_wo = max(0, idx - last_ti)
-            shift = new_wo - old_wo
-            m["window_offset"] = new_wo
-            for key in (
-                "confirm_index",
-                "early_index",
-                "entry_index",
-                "final_index",
-                "break_index",
-                "pullback_index",
-                "signal_index",
-            ):
-                v = m.get(key)
-                if isinstance(v, int):
-                    m[key] = v + shift
-            return m
+        # end_i کندل تشخیص است، نه آخرین برخورد. سیگنال اولیه چند کندل بعد از
+        # برخورد ثبت می‌شود؛ اگر خط را به زمان ثبت بچسبانیم از کف‌ها جدا می‌شود.
+        end_local = int(m.get("end_i") or 0)
+        ref = old_wo + end_local
+        shift = idx - ref
+        m["window_offset"] = max(0, old_wo + shift)
+        for key in (
+            "confirm_index",
+            "early_index",
+            "entry_index",
+            "final_index",
+            "break_index",
+            "pullback_index",
+            "signal_index",
+        ):
+            v = m.get(key)
+            if isinstance(v, int):
+                m[key] = v + shift
+        return m
 
     ref = m.get("confirm_index")
     if not isinstance(ref, int):

@@ -150,15 +150,17 @@ def test_trendline_reanchor_full_line_span() -> None:
         "touch_lows": touch_lows,
         "confirm_index": wo + touch_lows[-1],
     }
-    ts = bars[wo + touch_lows[-1]].ts.isoformat().replace("+00:00", "Z")
+    ts = bars[wo + 70].ts.isoformat().replace("+00:00", "Z")
     m2 = reanchor_meta(bars, dict(meta), created_at=ts, category="trendline")
     ov = pattern_overlays("trendline", m2, bars)
     assert ov["markers"] == []
     pts = ov["lines"][0]["points"]
     assert len(pts) >= 45
-    assert m2["window_offset"] + touch_lows[-1] == nearest_bar_index(
-        bars, parse_iso_ts(ts) or bars[0].ts
-    )
+    assert m2["window_offset"] == wo
+    gi = wo + touch_lows[-1]
+    t = bar_unix(bars[gi])
+    val = next(p["value"] for p in pts if p["time"] == t)
+    assert abs(val - (slope * touch_lows[-1] + intercept)) < 1.0
 
 
 def test_live_payload_keeps_all_candles_and_time_viewport() -> None:
