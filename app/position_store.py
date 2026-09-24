@@ -35,6 +35,14 @@ PATTERN_TIMEFRAMES: dict[str, tuple[str, ...]] = {
     "three_rp": ("1h",),
 }
 
+# الگوهایی که سیگنال «تأیید اولیه» جدا از تأیید نهایی دارند.
+PATTERN_EARLY_CATEGORIES = (
+    "divergence",
+    "trendline",
+    "channel",
+    "ema50",
+)
+
 SCALP_SCENARIOS = (
     ("scalp_breakout", "شکست رنج 5m"),
     ("scalp_4h_rr", "۴HRR (رنج نیویork)"),
@@ -78,6 +86,7 @@ def init_position_db() -> None:
                 report_kinds TEXT NOT NULL DEFAULT '[]',
                 source_overrides TEXT NOT NULL DEFAULT '{}',
                 pattern_timeframes TEXT NOT NULL DEFAULT '{}',
+                pattern_early TEXT NOT NULL DEFAULT '[]',
                 updated_at TEXT NOT NULL DEFAULT ''
             );
             CREATE TABLE IF NOT EXISTS paper_positions (
@@ -143,6 +152,13 @@ def _migrate_paper_config(conn) -> None:
             ADD COLUMN pattern_timeframes TEXT NOT NULL DEFAULT '{}'
             """
         )
+    if "pattern_early" not in cols:
+        conn.execute(
+            """
+            ALTER TABLE paper_config
+            ADD COLUMN pattern_early TEXT NOT NULL DEFAULT '[]'
+            """
+        )
 
 
 def _json_list(raw: str) -> list[str]:
@@ -186,6 +202,13 @@ def selected_timeframes(cfg: dict[str, Any], category: str) -> list[str]:
     if category in stored:
         return list(stored[category])
     return list(pattern_timeframes_for(category))
+
+
+def normalize_pattern_early(raw: Any) -> list[str]:
+    if not isinstance(raw, list):
+        return []
+    allowed = set(PATTERN_EARLY_CATEGORIES)
+    return [str(cat) for cat in PATTERN_EARLY_CATEGORIES if str(cat) in {str(x) for x in raw} and str(cat) in allowed]
 
 
 def pattern_timeframes_from_form(values: list[str]) -> dict[str, list[str]]:
@@ -232,8 +255,8 @@ def get_config(user_id: int) -> dict[str, Any]:
                     user_id, enabled, margin_usdt, leverage, stop_loss_pct,
                     take_profit_pct, fee_rate, fee_profile_id, pattern_categories,
                     scalp_scenarios, report_kinds, source_overrides,
-                    pattern_timeframes, updated_at
-                ) VALUES (?, 0, 100, 5, 1.0, 0.5, ?, ?, '[]', '[]', '[]', '{}', '{}', ?)
+                    pattern_timeframes, pattern_early, updated_at
+                ) VALUES (?, 0, 100, 5, 1.0, 0.5, ?, ?, '[]', '[]', '[]', '{}', '{}', '[]', ?)
                 """,
                 (user_id, DEFAULT_FEE_RATE, DEFAULT_FEE_PROFILE_ID, now),
             )
@@ -247,6 +270,9 @@ def get_config(user_id: int) -> dict[str, Any]:
         d["source_overrides"] = _json_dict(d.get("source_overrides") or "{}")
         d["pattern_timeframes"] = normalize_pattern_timeframes(
             _json_dict(d.get("pattern_timeframes") or "{}")
+        )
+        d["pattern_early"] = normalize_pattern_early(
+            _json_list(d.get("pattern_early") or "[]")
         )
         d["enabled"] = bool(d.get("enabled"))
         pid = str(d.get("fee_profile_id") or DEFAULT_FEE_PROFILE_ID)
@@ -279,6 +305,7 @@ def save_config(user_id: int, **fields: Any) -> None:
                 report_kinds = ?,
                 source_overrides = ?,
                 pattern_timeframes = ?,
+                pattern_early = ?,
                 updated_at = ?
             WHERE user_id = ?
             """,
@@ -296,6 +323,10 @@ def save_config(user_id: int, **fields: Any) -> None:
                 json.dumps(cfg.get("source_overrides") or {}, ensure_ascii=False),
                 json.dumps(
                     normalize_pattern_timeframes(cfg.get("pattern_timeframes") or {}),
+                    ensure_ascii=False,
+                ),
+                json.dumps(
+                    normalize_pattern_early(cfg.get("pattern_early") or []),
                     ensure_ascii=False,
                 ),
                 now,

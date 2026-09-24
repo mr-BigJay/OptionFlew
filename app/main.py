@@ -76,6 +76,7 @@ from app.paper_engine import (
 )
 from app.position_store import (
     PATTERN_CATEGORIES,
+    PATTERN_EARLY_CATEGORIES,
     PATTERN_TIMEFRAMES,
     REPORT_KINDS,
     SCALP_SCENARIOS,
@@ -1528,6 +1529,7 @@ async def position_page(
             ledger=ledger,
             pattern_categories=PATTERN_CATEGORIES,
             pattern_timeframes=PATTERN_TIMEFRAMES,
+            pattern_early_categories=PATTERN_EARLY_CATEGORIES,
             tf_labels=PATTERN_TF_LABELS,
             scalp_scenarios=SCALP_SCENARIOS,
             report_kinds=REPORT_KINDS,
@@ -1576,6 +1578,7 @@ async def position_settings_save(request: Request):
             pattern_timeframes=pattern_timeframes_from_form(
                 [str(v) for v in form.getlist("pattern_timeframes")]
             ),
+            pattern_early=[str(v) for v in form.getlist("pattern_early")],
             scalp_scenarios=form.getlist("scalp_scenarios"),
             report_kinds=form.getlist("report_kinds"),
         )

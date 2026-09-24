@@ -43,11 +43,21 @@ def latest_btc_price() -> float | None:
     return None
 
 
-def pattern_hit_allows_entry(hit: PatternHit) -> bool:
-    """ترندلاین فقط وقتی پوزیشن می‌سازد که کندل جاری به خط رسیده باشد."""
-    if str(hit.category or "") != "trendline":
+def pattern_hit_allows_entry(hit: PatternHit, cfg: dict[str, Any] | None = None) -> bool:
+    """ترندلاین فقط با لمس خط. الگوهای دارای تأیید اولیه طبق تیک تنظیمات."""
+    cat = str(hit.category or "")
+    meta = hit.meta or {}
+    if cat == "trendline" and not meta.get("testing"):
+        return False
+    from app.position_store import PATTERN_EARLY_CATEGORIES
+
+    if cat not in PATTERN_EARLY_CATEGORIES:
         return True
-    return bool((hit.meta or {}).get("testing"))
+    want_early = cat in ((cfg or {}).get("pattern_early") or [])
+    stage = str(meta.get("stage") or "")
+    if want_early:
+        return stage == "early"
+    return stage != "early"
 
 
 def _direction_from_pattern(meta: dict[str, Any]) -> str | None:
@@ -163,7 +173,7 @@ def try_open_from_pattern_hit(user_id: int, hit: PatternHit) -> int | None:
     cat = str(hit.category or "")
     if cat not in (cfg.get("pattern_categories") or []):
         return None
-    if not pattern_hit_allows_entry(hit):
+    if not pattern_hit_allows_entry(hit, cfg):
         return None
     tf = str(hit.timeframe or "")
     if tf not in selected_timeframes(cfg, cat):

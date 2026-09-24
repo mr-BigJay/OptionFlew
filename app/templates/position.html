@@ -122,6 +122,9 @@
           {% for tf in tfs %}
           <label class="pos-tf-chip"><input type="checkbox" name="pattern_timeframes" value="{{ cat }}|{{ tf }}" {% if cat not in config.pattern_categories %}disabled{% endif %} {% if chosen is none or tf in chosen %}checked{% endif %}><span>{{ tf_labels.get(tf, tf) }}</span></label>
           {% endfor %}
+          {% if cat in pattern_early_categories %}
+          <label class="pos-tf-chip"><input type="checkbox" name="pattern_early" value="{{ cat }}" {% if cat not in config.pattern_categories %}disabled{% endif %} {% if cat in config.pattern_early %}checked{% endif %}><span>تأیید اولیه</span></label>
+          {% endif %}
         </div>
       </div>
       {% endfor %}
@@ -135,7 +138,7 @@
       var cat = row.querySelector('input[name="pattern_categories"]');
       var on = !!(cat && cat.checked);
       row.classList.toggle("is-off", !on);
-      row.querySelectorAll('input[name="pattern_timeframes"]').forEach(function (tf) {
+      row.querySelectorAll('input[name="pattern_timeframes"], input[name="pattern_early"]').forEach(function (tf) {
         tf.disabled = !on;
       });
     }
@@ -145,7 +148,7 @@
       if (cat) cat.addEventListener("change", function () { sync(row); });
     });
     form.addEventListener("submit", function () {
-      form.querySelectorAll('input[name="pattern_timeframes"]').forEach(function (tf) {
+      form.querySelectorAll('input[name="pattern_timeframes"], input[name="pattern_early"]').forEach(function (tf) {
         tf.disabled = false;
       });
     });
