@@ -1607,6 +1607,24 @@ async def api_live_chart_patterns_scan(request: Request):
     return JSONResponse({"candles": [], "overlays": {}})
 
 
+@app.get("/api/chart/live/history")
+async def api_live_chart_history(request: Request, tf: str = "5m", before: int = 0):
+    user = current_user(request)
+    if not user:
+        return JSONResponse({"error": "auth"}, status_code=401)
+    if before <= 0 or tf not in ("5m", "15m", "1h", "4h", "1d"):
+        return JSONResponse({"candles": []})
+    from optionflow.patterns.chart_overlays import candles_payload
+    from optionflow.patterns.ohlc import load_btcusdt_before
+
+    try:
+        bars = load_btcusdt_before(tf, before, limit=500)
+    except Exception:
+        logger.exception("chart history fetch failed")
+        return JSONResponse({"candles": []}, status_code=503)
+    return JSONResponse({"candles": candles_payload(bars)})
+
+
 @app.get("/api/chart/live/pattern/event/{event_id}")
 async def api_live_chart_pattern_event(request: Request, event_id: int):
     user = current_user(request)

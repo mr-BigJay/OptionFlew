@@ -658,25 +658,94 @@
       series.setMarkers(ov.markers);
     }
 
+    function candleIndexAt(time, side) {
+      var cs = payload.candles || [];
+      if (!cs.length) return 0;
+      if (side === "from") {
+        for (var i = 0; i < cs.length; i++) {
+          if (cs[i].time >= time) return i;
+        }
+        return cs.length - 1;
+      }
+      for (var j = cs.length - 1; j >= 0; j--) {
+        if (cs[j].time <= time) return j;
+      }
+      return 0;
+    }
+
     function applyViewport() {
       chart.priceScale("right").applyOptions({
         autoScale: true,
         scaleMargins: { top: 0.04, bottom: 0.04 },
       });
       var vp = payload.viewport;
-      if (!vp || vp.from == null || vp.to == null) {
+      var cs = payload.candles || [];
+      if (!vp || vp.from == null || vp.to == null || cs.length < 2) {
         chart.timeScale().fitContent();
         return;
       }
+      var fromIdx = candleIndexAt(vp.from, "from");
+      var toIdx = candleIndexAt(vp.to, "to");
+      if (toIdx <= fromIdx) toIdx = Math.min(cs.length - 1, fromIdx + 1);
       try {
-        chart.timeScale().setVisibleRange({
-          from: vp.from,
-          to: vp.to,
-        });
+        chart.timeScale().setVisibleLogicalRange({ from: fromIdx, to: toIdx });
       } catch (e) {
         chart.timeScale().fitContent();
       }
     }
+
+    var loadingOlder = false;
+    var historyDone = false;
+    chart.timeScale().subscribeVisibleLogicalRangeChange(function (range) {
+      if (!range || loadingOlder || historyDone) return;
+      if (range.from > 12) return;
+      var first = payload.candles && payload.candles[0];
+      if (!first) return;
+      loadingOlder = true;
+      var tf = payload.timeframe || "5m";
+      fetch(
+        "/api/chart/live/history?tf=" + encodeURIComponent(tf) + "&before=" + first.time,
+        { credentials: "same-origin" }
+      )
+        .then(function (r) {
+          return r.ok ? r.json() : null;
+        })
+        .then(function (data) {
+          var older = (data && data.candles) || [];
+          if (!older.length) {
+            historyDone = true;
+            return;
+          }
+          var seen = {};
+          payload.candles.forEach(function (c) {
+            seen[c.time] = 1;
+          });
+          var fresh = [];
+          older.forEach(function (c) {
+            if (!seen[c.time]) fresh.push(c);
+          });
+          if (!fresh.length) {
+            historyDone = true;
+            return;
+          }
+          fresh.sort(function (a, b) {
+            return a.time - b.time;
+          });
+          var prev = chart.timeScale().getVisibleLogicalRange();
+          payload.candles = fresh.concat(payload.candles);
+          series.setData(payload.candles);
+          if (prev) {
+            chart.timeScale().setVisibleLogicalRange({
+              from: prev.from + fresh.length,
+              to: prev.to + fresh.length,
+            });
+          }
+        })
+        .catch(function () {})
+        .then(function () {
+          loadingOlder = false;
+        });
+    });
 
     requestAnimationFrame(function () {
       requestAnimationFrame(applyViewport);
