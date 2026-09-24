@@ -271,6 +271,52 @@ def _meta_for_sliced_bars(meta: dict[str, Any], g0: int) -> dict[str, Any]:
     return m
 
 
+def _viewport_price_bounds(
+    bars: list[OhlcBar],
+    meta: dict[str, Any],
+    g0: int,
+    g1: int,
+    category: str,
+) -> tuple[float, float]:
+    g0 = max(0, min(g0, len(bars) - 1))
+    g1 = max(g0, min(g1, len(bars) - 1))
+    window = bars[g0 : g1 + 1]
+    lo = min(b.low for b in window)
+    hi = max(b.high for b in window)
+    cat = (category or "").strip().lower()
+    if cat in ("triangle", "trendline", "channel"):
+        wo = int(meta.get("window_offset") or 0)
+        i0 = int(meta.get("start_i", 0))
+        i1 = int(meta.get("end_i", i0))
+        li0 = max(i0, g0 - wo)
+        li1 = min(i1, g1 - wo)
+        if li1 >= li0:
+            for sl, ic in (
+                (meta.get("upper_slope"), meta.get("upper_intercept")),
+                (meta.get("lower_slope"), meta.get("lower_intercept")),
+            ):
+                if sl is None or ic is None:
+                    continue
+                y0 = float(sl) * li0 + float(ic)
+                y1 = float(sl) * li1 + float(ic)
+                lo = min(lo, y0, y1)
+                hi = max(hi, y0, y1)
+        for ti in (meta.get("touch_highs") or []) + (meta.get("touch_lows") or []):
+            gi = wo + int(ti)
+            if g0 <= gi <= g1:
+                lo = min(lo, bars[gi].low)
+                hi = max(hi, bars[gi].high)
+    for key in ("tp_px", "entry_px", "entry_blended_px", "sl_px"):
+        v = meta.get(key)
+        if isinstance(v, (int, float)):
+            px = float(v)
+            lo = min(lo, px)
+            hi = max(hi, px)
+    span = hi - lo
+    pad = span * 0.10 if span > 0 else max(abs(hi) * 0.002, 1.0)
+    return lo - pad, hi + pad
+
+
 def triangle_viewport(meta: dict[str, Any], bars: list[OhlcBar]) -> dict[str, float | int] | None:
     rng = _triangle_range(meta, bars)
     if rng is None:
@@ -278,10 +324,13 @@ def triangle_viewport(meta: dict[str, Any], bars: list[OhlcBar]) -> dict[str, fl
     g0, g1, _ap = rng
     t_from = bar_unix(bars[g0])
     t_to = bar_unix(bars[g1])
+    p_lo, p_hi = _viewport_price_bounds(bars, meta, g0, g1, "triangle")
     # Viewport = initial pan/zoom only; apex line extends in overlays, not empty future time.
     return {
         "from": t_from,
         "to": t_to,
+        "priceMin": p_lo,
+        "priceMax": p_hi,
     }
 
 
@@ -302,9 +351,12 @@ def _trendline_focus_viewport(meta: dict[str, Any], bars: list[OhlcBar]) -> dict
         return None
     t_from = bar_unix(bars[g0])
     t_to = bar_unix(bars[g1])
+    p_lo, p_hi = _viewport_price_bounds(bars, meta, g0, g1, "trendline")
     return {
         "from": t_from,
         "to": t_to,
+        "priceMin": p_lo,
+        "priceMax": p_hi,
     }
 
 

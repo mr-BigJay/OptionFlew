@@ -160,6 +160,29 @@ def test_trendline_reanchor_full_line_span() -> None:
     )
 
 
+def test_trendline_viewport_exports_price_bounds() -> None:
+    from optionflow.patterns.chart_overlays import _trendline_focus_viewport
+
+    bars = [_bar(i, 84_000.0 + (i % 7) * 5) for i in range(100)]
+    meta = {
+        "kind": "trendline",
+        "side": "low",
+        "lower_slope": 1.0,
+        "lower_intercept": 83_900.0,
+        "upper_slope": None,
+        "upper_intercept": None,
+        "window_offset": 10,
+        "start_i": 20,
+        "end_i": 80,
+        "touch_lows": [25, 45, 70],
+        "touch_highs": [],
+    }
+    vp = _trendline_focus_viewport(meta, bars)
+    assert vp is not None
+    assert vp["from"] < vp["to"]
+    assert float(vp["priceMin"]) < float(vp["priceMax"])
+
+
 def test_position_and_pattern_merge() -> None:
     bars = [_bar(i, 90_000 + i) for i in range(40)]
     pos = {

@@ -556,6 +556,90 @@
     });
   }
 
+  function visibleTimeRange(chart, payload) {
+    var vr = chart.timeScale().getVisibleRange();
+    if (vr && vr.from != null && vr.to != null) {
+      return { from: vr.from, to: vr.to };
+    }
+    var vp = payload.viewport;
+    if (vp && vp.from != null && vp.to != null) {
+      return { from: vp.from, to: vp.to };
+    }
+    var cs = payload.candles;
+    if (!cs || !cs.length) return null;
+    return { from: cs[0].time, to: cs[cs.length - 1].time };
+  }
+
+  function timeOverlaps(from, to, t0, t1) {
+    var a = Math.min(t0, t1);
+    var b = Math.max(t0, t1);
+    return b >= from && a <= to;
+  }
+
+  function priceRangeForWindow(from, to, candles, overlays) {
+    var lo = Infinity;
+    var hi = -Infinity;
+    var n = 0;
+    for (var i = 0; i < candles.length; i++) {
+      var c = candles[i];
+      if (c.time < from || c.time > to) continue;
+      lo = Math.min(lo, c.low);
+      hi = Math.max(hi, c.high);
+      n++;
+    }
+    var ov = overlays || {};
+    (ov.hlines || []).forEach(function (hl) {
+      if (!hl || typeof hl.price !== "number") return;
+      lo = Math.min(lo, hl.price);
+      hi = Math.max(hi, hl.price);
+    });
+    (ov.segments || []).forEach(function (seg) {
+      if (!seg || seg.t0 == null || seg.t1 == null) return;
+      if (!timeOverlaps(from, to, seg.t0, seg.t1)) return;
+      if (typeof seg.p0 === "number") {
+        lo = Math.min(lo, seg.p0);
+        hi = Math.max(hi, seg.p0);
+      }
+      if (typeof seg.p1 === "number") {
+        lo = Math.min(lo, seg.p1);
+        hi = Math.max(hi, seg.p1);
+      }
+    });
+    (ov.lines || []).forEach(function (ln) {
+      (ln.points || []).forEach(function (p) {
+        if (p.time >= from && p.time <= to && typeof p.value === "number") {
+          lo = Math.min(lo, p.value);
+          hi = Math.max(hi, p.value);
+        }
+      });
+    });
+    if (!n || !isFinite(lo) || !isFinite(hi)) return null;
+    return { lo: lo, hi: hi };
+  }
+
+  function makeVisibleAutoscale(chart, payload, overlays) {
+    return function () {
+      var tr = visibleTimeRange(chart, payload);
+      if (!tr) return null;
+      var r = priceRangeForWindow(tr.from, tr.to, payload.candles, overlays);
+      if (!r) return null;
+      var span = r.hi - r.lo;
+      var pad = Math.max(span * 0.1, r.hi * 0.00035);
+      return {
+        priceRange: {
+          minValue: r.lo - pad,
+          maxValue: r.hi + pad,
+        },
+      };
+    };
+  }
+
+  function refreshPriceScale(seriesList, scaleFn) {
+    for (var i = 0; i < seriesList.length; i++) {
+      seriesList[i].applyOptions({ autoscaleInfoProvider: scaleFn });
+    }
+  }
+
   function initMount(mount) {
     if (mount.dataset.liveChartReady === "1") return;
     var payload = readPayload(mount);
@@ -579,16 +663,20 @@
       timeScale: { borderColor: "#2a3441", timeVisible: true, secondsVisible: false },
     });
 
+    var ov = payload.overlays || {};
+    var scaleFn = makeVisibleAutoscale(chart, payload, ov);
+    var scaledSeries = [];
+
     var series = chart.addCandlestickSeries({
       upColor: "#34d399",
       downColor: "#f87171",
       borderVisible: false,
       wickUpColor: "#34d399",
       wickDownColor: "#f87171",
+      autoscaleInfoProvider: scaleFn,
     });
+    scaledSeries.push(series);
     series.setData(payload.candles);
-
-    var ov = payload.overlays || {};
     (ov.hlines || []).forEach(function (hl) {
       if (!hl || typeof hl.price !== "number") return;
       series.createPriceLine({
@@ -610,7 +698,9 @@
         crosshairMarkerVisible: false,
         priceLineVisible: false,
         lastValueVisible: false,
+        autoscaleInfoProvider: scaleFn,
       });
+      scaledSeries.push(ls);
       ls.setData([
         { time: seg.t0, value: seg.p0 },
         { time: seg.t1, value: seg.p1 },
@@ -626,7 +716,9 @@
         crosshairMarkerVisible: false,
         priceLineVisible: false,
         lastValueVisible: false,
+        autoscaleInfoProvider: scaleFn,
       });
+      scaledSeries.push(ls);
       ls.setData(ln.points);
     });
 
@@ -638,6 +730,7 @@
       var vp = payload.viewport;
       if (!vp || vp.from == null || vp.to == null) {
         chart.timeScale().fitContent();
+        refreshPriceScale(scaledSeries, scaleFn);
         return;
       }
       try {
@@ -648,7 +741,12 @@
       } catch (e) {
         chart.timeScale().fitContent();
       }
+      refreshPriceScale(scaledSeries, scaleFn);
     }
+
+    chart.timeScale().subscribeVisibleTimeRangeChange(function () {
+      refreshPriceScale(scaledSeries, scaleFn);
+    });
 
     requestAnimationFrame(function () {
       requestAnimationFrame(applyViewport);
@@ -666,6 +764,8 @@
           .then(function (data) {
             if (!data || !data.candles) return;
             series.setData(data.candles);
+            payload.candles = data.candles;
+            refreshPriceScale(scaledSeries, scaleFn);
             if (data.mark != null && typeof data.mark === "number") {
               /* mark line refresh omitted — full reload would duplicate price lines */
             }
