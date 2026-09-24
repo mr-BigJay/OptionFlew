@@ -5,7 +5,11 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
-from optionflow.patterns.chart_overlays import _triangle_range, time_at_local_index
+from optionflow.patterns.chart_overlays import (
+    TRENDLINE_LINE_EXTEND_RATIO,
+    _triangle_range,
+    time_at_local_index,
+)
 from optionflow.patterns.ohlc import OhlcBar
 from optionflow.patterns.types import PatternHit
 
@@ -673,31 +677,35 @@ def _render_price_pattern(
     elif hit.category in ("trendline", "channel"):
         wo = meta.get("window_offset", max(0, len(bars) - 120))
         i0, i1 = meta["start_i"], meta["end_i"]
-        g0, g1 = wo + i0, wo + i1
-        g0 = max(start, min(g0, end - 1))
-        g1 = max(start, min(g1, end - 1))
-        if g1 >= g0 and 0 <= g0 < len(bars) and 0 <= g1 < len(bars):
-            x0 = mdates.date2num(bars[g0].ts)
-            x1 = mdates.date2num(bars[g1].ts)
-            li0, li1 = g0 - wo, g1 - wo
-            su, iu = meta.get("upper_slope"), meta.get("upper_intercept")
-            sl, il = meta.get("lower_slope"), meta.get("lower_intercept")
-            if su is not None and iu is not None:
-                ax.plot(
-                    [x0, x1],
-                    [su * li0 + iu, su * li1 + iu],
-                    color="#ffb74d",
-                    linewidth=1.0,
-                    label="مقاومت",
-                )
-            if sl is not None and il is not None:
-                ax.plot(
-                    [x0, x1],
-                    [sl * li0 + il, sl * li1 + il],
-                    color="#81c784",
-                    linewidth=1.0,
-                    label="حمایت",
-                )
+        li0, li1 = int(i0), int(i1)
+        li_end = max(li1, len(bars) - 1 - int(wo))
+        span = max(1, li_end - li0)
+        pad = int(round(span * TRENDLINE_LINE_EXTEND_RATIO))
+        li_a, li_b = li0 - pad, li_end + pad
+
+        def _x_at(li: float) -> float:
+            return mdates.date2num(
+                datetime.fromtimestamp(time_at_local_index(bars, int(wo), li), tz=timezone.utc)
+            )
+
+        su, iu = meta.get("upper_slope"), meta.get("upper_intercept")
+        sl, il = meta.get("lower_slope"), meta.get("lower_intercept")
+        if su is not None and iu is not None:
+            ax.plot(
+                [_x_at(li_a), _x_at(li_b)],
+                [float(su) * li_a + float(iu), float(su) * li_b + float(iu)],
+                color="#ffb74d",
+                linewidth=1.0,
+                label="مقاومت",
+            )
+        if sl is not None and il is not None:
+            ax.plot(
+                [_x_at(li_a), _x_at(li_b)],
+                [float(sl) * li_a + float(il), float(sl) * li_b + float(il)],
+                color="#81c784",
+                linewidth=1.0,
+                label="حمایت",
+            )
         _mark_early_entry(
             ax, bars, meta, start, end, color="#fbbf24" if hit.category == "trendline" else None
         )

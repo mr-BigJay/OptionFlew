@@ -303,6 +303,15 @@ def triangle_viewport(meta: dict[str, Any], bars: list[OhlcBar]) -> dict[str, fl
     }
 
 
+TRENDLINE_LINE_EXTEND_RATIO = 0.5
+
+
+def _trendline_extended_local_range(li0: int, li_end: int) -> tuple[int, int]:
+    span = max(1, li_end - li0)
+    pad = int(round(span * TRENDLINE_LINE_EXTEND_RATIO))
+    return li0 - pad, li_end + pad
+
+
 def _trendline_line_points(
     meta: dict[str, Any], bars: list[OhlcBar], *, upper: bool
 ) -> list[dict[str, float | int]]:
@@ -325,15 +334,16 @@ def _trendline_line_points(
     else:
         li0, li1 = 0, max(0, len(bars) - 1 - wo)
     li_end = max(li1, len(bars) - 1 - wo)
-    g0 = max(0, wo + li0)
-    g1 = min(len(bars) - 1, wo + li_end)
-    if g1 <= g0:
-        return []
+    li_from, li_to = _trendline_extended_local_range(li0, li_end)
     pts: list[dict[str, float | int]] = []
-    for gi in range(g0, g1 + 1):
-        li = gi - wo
+    seen_t: set[int] = set()
+    for li in range(li_from, li_to + 1):
+        t = time_at_local_index(bars, wo, li)
+        if t in seen_t:
+            continue
+        seen_t.add(t)
         y = float(slope) * li + float(intercept)
-        pts.append({"time": bar_unix(bars[gi]), "value": y})
+        pts.append({"time": t, "value": y})
     return pts
 
 

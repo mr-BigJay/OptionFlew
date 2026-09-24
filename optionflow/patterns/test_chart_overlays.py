@@ -154,7 +154,7 @@ def test_trendline_reanchor_full_line_span() -> None:
     ov = pattern_overlays("trendline", m2, bars)
     assert ov["markers"] == []
     pts = ov["lines"][0]["points"]
-    assert len(pts) >= 30
+    assert len(pts) >= 45
     assert m2["window_offset"] + touch_lows[-1] == nearest_bar_index(
         bars, parse_iso_ts(ts) or bars[0].ts
     )
