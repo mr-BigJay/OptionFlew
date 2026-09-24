@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 from optionflow.patterns.chart_overlays import (
+    _trendline_line_points,
     bar_unix,
     build_live_chart_payload,
     nearest_bar_index,
@@ -257,3 +258,21 @@ def test_position_chart_draws_pattern_and_zooms_on_signal() -> None:
     assert any(h.get("label") == "Entry" for h in payload["overlays"]["hlines"])
     sig = bar_unix(bars[55])
     assert payload["viewport"]["from"] <= sig <= payload["viewport"]["to"]
+
+
+def test_trendline_extends_half_the_span_each_side() -> None:
+    bars = [_bar(i, 80_000.0) for i in range(100)]
+    meta = {
+        "kind": "trendline",
+        "side": "low",
+        "lower_slope": 2.0,
+        "lower_intercept": 80_000.0,
+        "window_offset": 0,
+        "start_i": 40,
+        "end_i": 60,
+    }
+    pts = _trendline_line_points(meta, bars, upper=False)
+    assert pts[0]["time"] == bar_unix(bars[30])
+    assert pts[-1]["time"] == bar_unix(bars[70])
+    assert pts[0]["value"] == 80_000.0 + 2.0 * 30
+    assert pts[-1]["value"] == 80_000.0 + 2.0 * 70

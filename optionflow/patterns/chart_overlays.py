@@ -135,6 +135,19 @@ def _bar_step_seconds(bars: list[OhlcBar]) -> int:
     return max(60, int(step))
 
 
+def _time_at_extended_index(bars: list[OhlcBar], wo: int, li: int) -> int:
+    """زمان اندیس محلی، حتی اگر خط از اولین یا آخرین کندل بیرون بزند."""
+    if not bars:
+        return 0
+    step = _bar_step_seconds(bars)
+    gi = wo + int(li)
+    if gi < 0:
+        return bar_unix(bars[0]) + gi * step
+    if gi >= len(bars):
+        return bar_unix(bars[-1]) + (gi - (len(bars) - 1)) * step
+    return bar_unix(bars[gi])
+
+
 def time_at_local_index(bars: list[OhlcBar], wo: int, li: float) -> int:
     """زمان کندل برای اندیس محلی؛ اگر apex بعد از آخرین کندل باشد، خارج از داده extrapolate می‌شود."""
     if not bars:
@@ -440,21 +453,17 @@ def _trendline_line_points(
         li0, li1 = int(i0), int(i1)
     else:
         li0, li1 = 0, max(0, len(bars) - 1 - wo)
-    li_end = max(li1, len(bars) - 1 - wo)
-    li_from, li_to = _trendline_extended_local_range(li0, li_end)
+    if li1 < li0:
+        li0, li1 = li1, li0
+    li_from, li_to = _trendline_extended_local_range(li0, li1)
     pts: list[dict[str, float | int]] = []
     seen_t: set[int] = set()
-    last_li = len(bars) - 1 - wo
-    for li in range(max(0, li_from), min(li_to, last_li) + 1):
-        gi = wo + li
-        if gi < 0 or gi >= len(bars):
-            continue
-        t = bar_unix(bars[gi])
+    for li in range(li_from, li_to + 1):
+        t = _time_at_extended_index(bars, wo, li)
         if t in seen_t:
             continue
         seen_t.add(t)
-        y = float(slope) * li + float(intercept)
-        pts.append({"time": t, "value": y})
+        pts.append({"time": t, "value": float(slope) * li + float(intercept)})
     return pts
 
 
