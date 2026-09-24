@@ -84,11 +84,12 @@ def test_triangle_converging_lines() -> None:
         category="triangle",
         meta=meta,
     )
-    assert len(payload["candles"]) >= 55
+    assert len(payload["candles"]) == len(bars)
     pvp = payload.get("viewport")
     assert pvp is not None
-    assert pvp.get("fitTime") == 1
+    assert not pvp.get("fitTime")
     assert pvp.get("priceMin") is not None
+    assert pvp["from"] <= bar_unix(bars[0]) or pvp["from"] >= bar_unix(bars[0])
 
 
 def test_trendline_line_on_touch_lows_no_touch_markers() -> None:

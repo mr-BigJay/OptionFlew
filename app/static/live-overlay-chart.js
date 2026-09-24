@@ -430,16 +430,20 @@
       } catch (err) {
         /* ignore */
       }
+      var didMeasure = false;
       if (anchorPx && e) {
         var endPx = clientToPixel(e.clientX, e.clientY);
         var endData = dataFromPixel(endPx.x, endPx.y);
         renderMeasureDrag(anchorPx, endPx, anchorData, endData);
+        didMeasure = true;
       } else if (anchorPx && anchorData && savedA && savedB) {
         renderMeasure(savedA, savedB);
+        didMeasure = true;
       }
       anchorPx = null;
       anchorData = null;
       dragPointerId = null;
+      if (active && didMeasure) leaveMeasureToolAfterUse();
     }
 
     function dragMove(clientX, clientY) {
@@ -474,6 +478,16 @@
     function onWindowMouseUp(e) {
       if (dragPointerId != null || !dragging) return;
       finishDrag(e);
+    }
+
+    function leaveMeasureToolAfterUse() {
+      active = false;
+      btn.classList.remove("on");
+      btn.setAttribute("aria-pressed", "false");
+      wrap.classList.remove("measure-on");
+      layer.setAttribute("aria-hidden", "true");
+      setPanZoom(true);
+      setReadout("");
     }
 
     function deactivate() {

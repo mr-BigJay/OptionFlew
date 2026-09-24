@@ -243,9 +243,8 @@ def _triangle_range(
     core_g0 = wo + int(i0)
     core_g1 = wo + int(li_end)
     core_len = max(1, core_g1 - core_g0 + 1)
-    # ~۲۰٪ زوم کمتر: حدود ۱۰٪ حاشیه در هر طرف + سابقهٔ قبل از الگو
-    zoom_out = max(6, int(core_len * 0.10))
-    history = max(14, int((int(i1) - int(i0)) * 0.35))
+    history = max(30, int((int(i1) - int(i0)) * 0.55))
+    zoom_out = max(8, int(core_len * 0.12))
     g0 = max(0, core_g0 - history - zoom_out)
     g1 = min(len(bars) - 1, core_g1 + pad_right + zoom_out)
     if g1 <= g0:
@@ -280,18 +279,18 @@ def triangle_viewport(meta: dict[str, Any], bars: list[OhlcBar]) -> dict[str, fl
     wo = int(meta.get("window_offset") or 0)
     su, iu = meta.get("upper_slope"), meta.get("upper_intercept")
     sl, il = meta.get("lower_slope"), meta.get("lower_intercept")
-    t_from = bar_unix(bars[0])
-    t_to = bar_unix(bars[-1])
-    if len(bars) > 1 and ap is not None:
+    t_from = bar_unix(bars[g0])
+    t_to = bar_unix(bars[g1])
+    if ap is not None:
         t_to = max(t_to, time_at_local_index(bars, wo, ap + 1.0))
     prices: list[float] = []
-    for gi in range(0, len(bars)):
+    for gi in range(g0, g1 + 1):
         prices.append(float(bars[gi].high))
         prices.append(float(bars[gi].low))
     if ap is not None and all(isinstance(x, (int, float)) for x in (su, iu, sl, il)):
         prices.append(float(su) * ap + float(iu))
     if not prices:
-        return {"from": t_from, "to": t_to, "fitTime": 1}
+        return {"from": t_from, "to": t_to}
     lo_p, hi_p = min(prices), max(prices)
     pad = max(30.0, (hi_p - lo_p) * 0.12)
     return {
@@ -299,8 +298,49 @@ def triangle_viewport(meta: dict[str, Any], bars: list[OhlcBar]) -> dict[str, fl
         "to": t_to,
         "priceMin": lo_p - pad,
         "priceMax": hi_p + pad,
-        "fitTime": 1,
     }
+
+
+def _trendline_focus_viewport(meta: dict[str, Any], bars: list[OhlcBar]) -> dict[str, float | int] | None:
+    wo = int(meta.get("window_offset") or 0)
+    i0 = meta.get("start_i")
+    i1 = meta.get("end_i")
+    if not isinstance(i0, int) or not isinstance(i1, int):
+        return None
+    li_end = max(i1, len(bars) - 1 - wo)
+    li_from, li_to = _trendline_extended_local_range(i0, li_end)
+    span = max(1, li_to - li_from)
+    history = max(24, int(span * 0.45))
+    pad_right = max(8, int(span * 0.15))
+    g0 = max(0, wo + li_from - history)
+    g1 = min(len(bars) - 1, wo + li_to + pad_right)
+    if g1 <= g0:
+        return None
+    t_from = bar_unix(bars[g0])
+    t_to = bar_unix(bars[g1])
+    prices: list[float] = []
+    for gi in range(g0, g1 + 1):
+        prices.append(float(bars[gi].high))
+        prices.append(float(bars[gi].low))
+    lo_p, hi_p = min(prices), max(prices)
+    pad = max(25.0, (hi_p - lo_p) * 0.1)
+    return {
+        "from": t_from,
+        "to": t_to,
+        "priceMin": lo_p - pad,
+        "priceMax": hi_p + pad,
+    }
+
+
+def live_pattern_viewport(
+    category: str, meta: dict[str, Any], bars: list[OhlcBar]
+) -> dict[str, float | int] | None:
+    cat = (category or "").strip().lower()
+    if cat == "triangle":
+        return triangle_viewport(meta, bars)
+    if cat in ("trendline", "channel") and meta:
+        return _trendline_focus_viewport(meta, bars)
+    return None
 
 
 TRENDLINE_LINE_EXTEND_RATIO = 0.5
@@ -560,28 +600,20 @@ def build_live_chart_payload(
     if created_at:
         m = reanchor_meta(bars, m, created_at=created_at, category=category)
     cat = (category or "").strip().lower()
-    chart_bars = bars
-    m_chart = m
-    if cat == "triangle" and m:
-        rng = _triangle_range(m, bars)
-        if rng:
-            g0, g1, _ap = rng
-            chart_bars = bars[g0 : g1 + 1]
-            m_chart = _meta_for_sliced_bars(m, g0)
     specs: list[dict[str, Any]] = []
-    if category and m_chart:
-        specs.append(pattern_overlays(category, m_chart, chart_bars))
+    if category and m:
+        specs.append(pattern_overlays(category, m, bars))
     if position:
         specs.append(position_overlays(position, mark=mark))
     overlays = merge_overlay_specs(*specs)
     payload: dict[str, Any] = {
         "timeframe": timeframe,
         "title": title,
-        "candles": candles_payload(chart_bars),
+        "candles": candles_payload(bars),
         "overlays": overlays,
     }
-    if cat == "triangle" and m_chart:
-        vp = triangle_viewport(m_chart, chart_bars)
+    if m:
+        vp = live_pattern_viewport(cat, m, bars)
         if vp:
             payload["viewport"] = vp
     return payload
