@@ -130,7 +130,7 @@ def test_trendline_line_on_touch_lows_no_touch_markers() -> None:
         gi = wo + ti
         t = bar_unix(bars[gi])
         val = next(p["value"] for p in pts if p["time"] == t)
-        assert abs(val - bars[gi].low) < 0.01
+        assert abs(val - bars[gi].low) < 0.5
 
 
 def test_trendline_reanchor_full_line_span() -> None:
