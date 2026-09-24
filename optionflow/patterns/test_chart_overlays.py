@@ -160,7 +160,7 @@ def test_trendline_reanchor_full_line_span() -> None:
     )
 
 
-def test_live_payload_slices_candles_to_pattern_viewport() -> None:
+def test_live_payload_keeps_all_candles_and_time_viewport() -> None:
     bars = [_bar(i, 87_000.0 - i * 20) for i in range(120)]
     meta = {
         "kind": "trendline",
@@ -181,10 +181,11 @@ def test_live_payload_slices_candles_to_pattern_viewport() -> None:
         category="trendline",
         meta=meta,
     )
-    assert len(payload["candles"]) < len(bars)
+    assert len(payload["candles"]) == len(bars)
     vp = payload["viewport"]
     assert vp is not None
-    assert float(vp["priceMax"]) - float(vp["priceMin"]) < 4000
+    assert vp["from"] < vp["to"]
+    assert "priceMin" not in vp
 
 
 def test_trendline_viewport_exports_price_bounds() -> None:

@@ -666,14 +666,10 @@ def build_live_chart_payload(
     if m:
         vp = live_pattern_viewport(cat, m, bars)
         if vp:
-            payload["viewport"] = vp
-            t_lo = int(vp["from"])
-            t_hi = int(vp["to"])
-            g0, g1 = bar_indices_for_unix_range(bars, t_lo, t_hi)
-            candle_from = vp.get("candleFrom")
-            if isinstance(candle_from, (int, float)):
-                g0, _ = bar_indices_for_unix_range(bars, int(candle_from), t_hi)
-            payload["candles"] = candles_payload(bars[g0 : g1 + 1])
+            payload["viewport"] = {
+                "from": vp["from"],
+                "to": vp["to"],
+            }
     return payload
 
 
