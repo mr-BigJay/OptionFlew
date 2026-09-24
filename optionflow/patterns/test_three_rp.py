@@ -84,6 +84,29 @@ def test_large_candle_no_touch_within_eight_bars_returns_none() -> None:
     assert detect_three_rp_at(bars, "1h", 2) is None
 
 
+def test_large_candle_mid_touch_on_forming_bar_signals() -> None:
+    from optionflow.patterns.three_rp import third_candle_mid
+
+    now = datetime.now(timezone.utc).replace(minute=10, second=0, microsecond=0)
+    t0 = now - timedelta(hours=3)
+    bars = [
+        _bar(100, 100, 90, 92, 0),
+        _bar(91, 94, 88, 90, 1),
+        _bar(90, 105, 89, 102, 2),
+        _bar(102, 104, 100, 101, 3),
+    ]
+    for i, b in enumerate(bars):
+        b.ts = t0 + timedelta(hours=i)
+    mid = third_candle_mid(bars[2])
+    assert bars[3].low > mid
+    assert detect_three_rp(bars, "1h") is None
+    bars[3].low = mid - 1
+    hit = detect_three_rp(bars, "1h")
+    assert hit is not None
+    assert hit.meta["entry_mode"] == "mid_touch"
+    assert hit.meta["entry_index"] == 3
+
+
 def test_large_candle_on_last_bar_waits_for_mid() -> None:
     bars = [
         _bar(100, 100, 90, 92, 0),

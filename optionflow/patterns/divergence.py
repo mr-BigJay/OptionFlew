@@ -10,7 +10,7 @@ from optionflow.patterns.indicators import (
 from optionflow.patterns.ohlc import OhlcBar
 from optionflow.patterns.types import PatternHit
 
-# BigBeluga Trading Toolkit — Regular RSI divergence (Pine) + تأیید اولیه ۲ کندل
+# BigBeluga Trading Toolkit — Regular RSI divergence (Pine) + تأیید اولیه ۱ کندل
 RSI_PERIOD = 24
 LOOKBACK_LEFT = 10
 LOOKBACK_RIGHT = 10

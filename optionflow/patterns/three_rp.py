@@ -372,13 +372,14 @@ def detect_three_rp(
     last = last_closed_index(bars, timeframe)
     if last < 2:
         return None
-    closed = bars[: last + 1]
     lo = max(2, last - PULLBACK_WAIT_BARS)
+    forming = len(bars) - 1
     for sig in range(lo, last + 1):
-        hit = detect_three_rp_at(closed, timeframe, sig, pattern_type=pattern_type)
+        hit = detect_three_rp_at(bars, timeframe, sig, pattern_type=pattern_type)
         if hit is None:
             continue
         entry_i = int(hit.meta.get("entry_index", sig))
-        if entry_i == last:
+        # الگوی سه‌کندلی باید بسته شده باشد؛ تاچ ۵۰٪ می‌تواند روی کندل جاری باشد.
+        if entry_i == last or entry_i == forming:
             return hit
     return None
