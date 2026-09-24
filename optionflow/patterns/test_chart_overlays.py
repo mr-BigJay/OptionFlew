@@ -229,3 +229,31 @@ def test_position_and_pattern_merge() -> None:
     )
     assert len(payload["candles"]) == 40
     assert len(payload["overlays"]["hlines"]) >= 4
+
+
+def test_position_chart_draws_pattern_and_zooms_on_signal() -> None:
+    bars = [_bar(i, 80_000.0) for i in range(90)]
+    opened = bars[55].ts.isoformat().replace("+00:00", "Z")
+    payload = build_live_chart_payload(
+        timeframe="5m",
+        bars=bars,
+        category="divergence",
+        meta={
+            "pivot_a": (20, 81000),
+            "pivot_b": (48, 79000),
+            "direction": "down",
+            "confirm_index": 55,
+        },
+        position={
+            "entry_price": 80000.0,
+            "sl_price": 81000.0,
+            "tp_price": 78000.0,
+            "opened_at": opened,
+            "timeframe": "5m",
+        },
+    )
+    assert payload["timeframe"] == "5m"
+    assert payload["overlays"]["segments"]
+    assert any(h.get("label") == "Entry" for h in payload["overlays"]["hlines"])
+    sig = bar_unix(bars[55])
+    assert payload["viewport"]["from"] <= sig <= payload["viewport"]["to"]

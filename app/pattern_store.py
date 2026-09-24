@@ -327,23 +327,13 @@ def get_pattern_event(event_id: int) -> dict[str, Any] | None:
         return d
 
 
-def get_pattern_event_by_key(event_key: str) -> dict[str, Any] | None:
-    key = (event_key or "").strip()
-    if not key:
-        return None
-    with connect() as conn:
-        row = conn.execute(
-            "SELECT * FROM pattern_events WHERE event_key = ?",
-            (key,),
-        ).fetchone()
-        if not row:
-            return None
-        d = dict(row)
-        try:
-            d["meta"] = json.loads(d.pop("meta_json") or "{}")
-        except json.JSONDecodeError:
-            d["meta"] = {}
-        return d
+def _event_from_row(row: Any) -> dict[str, Any]:
+    d = dict(row)
+    try:
+        d["meta"] = json.loads(d.pop("meta_json") or "{}")
+    except json.JSONDecodeError:
+        d["meta"] = {}
+    return d
 
 
 def get_pattern_event_by_key(event_key: str) -> dict[str, Any] | None:
@@ -355,11 +345,41 @@ def get_pattern_event_by_key(event_key: str) -> dict[str, Any] | None:
             "SELECT * FROM pattern_events WHERE event_key = ?",
             (key,),
         ).fetchone()
-        if not row:
-            return None
-        d = dict(row)
-        try:
-            d["meta"] = json.loads(d.pop("meta_json") or "{}")
-        except json.JSONDecodeError:
-            d["meta"] = {}
-        return d
+    return _event_from_row(row) if row else None
+
+
+def get_pattern_event_by_trade_key(trade_key: str) -> dict[str, Any] | None:
+    """پوزیشن با trade_key ذخیره می‌شود؛ رویداد با event_key (شامل stage)."""
+    key = (trade_key or "").strip()
+    parts = key.split(":", 2)
+    if len(parts) < 3:
+        return None
+    category, timeframe, _sig = parts
+    direct = get_pattern_event_by_key(key)
+    if direct:
+        return direct
+    with connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT * FROM pattern_events
+            WHERE category = ? AND timeframe = ?
+            ORDER BY created_at DESC
+            LIMIT 300
+            """,
+            (category, timeframe),
+        ).fetchall()
+    for row in rows:
+        ev = _event_from_row(row)
+        hit = PatternHit(
+            category=str(ev.get("category") or ""),
+            timeframe=str(ev.get("timeframe") or ""),
+            pattern_id=str(ev.get("pattern_id") or ""),
+            title_fa=str(ev.get("title_fa") or ""),
+            status_fa="",
+            summary_fa="",
+            forecast_fa="",
+            meta=ev.get("meta") if isinstance(ev.get("meta"), dict) else {},
+        )
+        if trade_key_for_hit(hit) == key:
+            return ev
+    return None

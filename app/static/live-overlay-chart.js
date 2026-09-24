@@ -556,6 +556,31 @@
     });
   }
 
+  function tehranParts(time) {
+    var sec = typeof time === "number" ? time : time && time.timestamp;
+    if (!sec) return null;
+    var d = new Date(sec * 1000);
+    return {
+      date: new Intl.DateTimeFormat("fa-IR-u-ca-persian", {
+        timeZone: "Asia/Tehran",
+        month: "numeric",
+        day: "numeric",
+      }).format(d),
+      clock: new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Asia/Tehran",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      }).format(d),
+    };
+  }
+
+  function formatAxisTime(time, withDate) {
+    var p = tehranParts(time);
+    if (!p) return "";
+    return withDate ? p.date + " " + p.clock : p.clock;
+  }
+
   function candleAutoscale(original) {
     var base = original ? original() : null;
     if (!base || !base.priceRange) return base;
@@ -575,9 +600,10 @@
     mount.dataset.liveChartReady = "1";
     mount.style.direction = "ltr";
     var w = mount.clientWidth || 320;
+    var chartH = Math.max(280, mount.clientHeight || 320);
     var chart = LightweightCharts.createChart(mount, {
       width: w,
-      height: Math.max(300, mount.clientHeight || 360),
+      height: chartH,
       layout: {
         background: { color: "#121a26" },
         textColor: "#90a4ae",
@@ -591,6 +617,12 @@
         autoScale: true,
         scaleMargins: { top: 0.04, bottom: 0.04 },
       },
+      localization: {
+        locale: "fa-IR",
+        timeFormatter: function (time) {
+          return formatAxisTime(time, true);
+        },
+      },
       timeScale: {
         borderColor: "#2a3441",
         timeVisible: true,
@@ -598,6 +630,9 @@
         rightOffset: 6,
         fixLeftEdge: false,
         lockVisibleTimeRangeOnResize: false,
+        tickMarkFormatter: function (time, tickMarkType) {
+          return formatAxisTime(time, tickMarkType < 3);
+        },
       },
     });
 

@@ -355,6 +355,50 @@ def _trendline_focus_viewport(meta: dict[str, Any], bars: list[OhlcBar]) -> dict
     }
 
 
+def signal_bar_index(
+    meta: dict[str, Any],
+    bars: list[OhlcBar],
+    *,
+    created_at: str | None = None,
+) -> int | None:
+    if not bars:
+        return None
+    for key in (
+        "confirm_index",
+        "entry_index",
+        "signal_index",
+        "final_index",
+        "break_index",
+        "pullback_index",
+    ):
+        v = meta.get(key)
+        if isinstance(v, int):
+            return max(0, min(v, len(bars) - 1))
+    ts = parse_iso_ts(created_at or "")
+    if ts is not None:
+        return nearest_bar_index(bars, ts)
+    return None
+
+
+def signal_focus_viewport(
+    meta: dict[str, Any],
+    bars: list[OhlcBar],
+    *,
+    created_at: str | None = None,
+    pad_left: int = 40,
+    pad_right: int = 18,
+) -> dict[str, int] | None:
+    """زوم اولیه دور کندلی که الگو سیگنال شده."""
+    idx = signal_bar_index(meta, bars, created_at=created_at)
+    if idx is None:
+        return None
+    g0 = max(0, idx - pad_left)
+    g1 = min(len(bars) - 1, idx + pad_right)
+    if g1 <= g0:
+        return None
+    return {"from": bar_unix(bars[g0]), "to": bar_unix(bars[g1])}
+
+
 def live_pattern_viewport(
     category: str, meta: dict[str, Any], bars: list[OhlcBar]
 ) -> dict[str, float | int] | None:
@@ -659,13 +703,15 @@ def build_live_chart_payload(
         "candles": candles_payload(bars),
         "overlays": overlays,
     }
-    if m:
-        vp = live_pattern_viewport(cat, m, bars)
-        if vp:
-            payload["viewport"] = {
-                "from": vp["from"],
-                "to": vp["to"],
-            }
+    vp = live_pattern_viewport(cat, m, bars) if m else None
+    if vp is None and position:
+        opened = str(position.get("opened_at") or "") or (created_at or "")
+        vp = signal_focus_viewport(m, bars, created_at=opened)
+    if vp:
+        payload["viewport"] = {
+            "from": vp["from"],
+            "to": vp["to"],
+        }
     return payload
 
 

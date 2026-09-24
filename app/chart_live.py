@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.pattern_store import get_pattern_event_by_key
+from app.pattern_store import get_pattern_event_by_key, get_pattern_event_by_trade_key
 from app.paper_chart import _load_pattern_bars, _pick_interval
 from optionflow.patterns.chart_overlays import build_live_chart_payload, overlays_json
 from optionflow.patterns.types import PatternHit
@@ -49,12 +49,12 @@ def _pattern_event_for_position(pos: dict[str, Any]) -> dict[str, Any] | None:
     sk = str(pos.get("source_key") or "").strip()
     if not sk:
         return None
-    return get_pattern_event_by_key(sk)
+    return get_pattern_event_by_key(sk) or get_pattern_event_by_trade_key(sk)
 
 
 def payload_from_position(pos: dict[str, Any], *, mark: float | None = None) -> dict[str, Any] | None:
     ev = _pattern_event_for_position(pos)
-    tf = _pick_interval(str((ev or {}).get("timeframe") or pos.get("timeframe") or "15m"))
+    tf = _pick_interval(str(pos.get("timeframe") or (ev or {}).get("timeframe") or "15m"))
     try:
         bars = _load_pattern_bars(tf)
     except Exception:

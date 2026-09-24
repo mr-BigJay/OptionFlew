@@ -11,6 +11,31 @@ from app.position_store import (
 )
 
 
+def test_trade_key_finds_event_that_includes_stage() -> None:
+    from app.pattern_store import (
+        get_pattern_event_by_trade_key,
+        init_pattern_events_db,
+        save_pattern_hit,
+    )
+
+    init_pattern_events_db()
+    hit = PatternHit(
+        category="trendline",
+        timeframe="5m",
+        pattern_id="trendline_low",
+        title_fa="ترند",
+        status_fa="",
+        summary_fa="",
+        forecast_fa="",
+        meta={"stage": "early", "side": "low", "y_now": 83446.0, "start_i": 10, "end_i": 40},
+    )
+    save_pattern_hit(hit)
+    ev = get_pattern_event_by_trade_key(trade_key_for_hit(hit))
+    assert ev is not None
+    assert ev["meta"]["stage"] == "early"
+    assert "early" in ev["event_key"]
+
+
 def test_trade_key_ignores_stage_for_trendline() -> None:
     meta_early = {
         "stage": "early",
