@@ -116,6 +116,12 @@
     var wrap = mount.closest(".live-ov-chart-wrap");
     if (!wrap) return;
     var inner = mount.closest(".live-ov-chart-inner");
+    if (!inner && mount.parentNode) {
+      inner = document.createElement("div");
+      inner.className = "live-ov-chart-inner";
+      mount.parentNode.insertBefore(inner, mount);
+      inner.appendChild(mount);
+    }
     if (!inner) return;
     var payloadId = mount.getAttribute("data-payload-id");
     var btn = wrap.querySelector('[data-measure-for="' + payloadId + '"]');
@@ -175,6 +181,11 @@
 
     function pointFromXY(x, y) {
       var ts = chart.timeScale();
+      var w = mount.clientWidth || 1;
+      var h = mount.clientHeight || 1;
+      x = Math.max(0, Math.min(w, x));
+      y = Math.max(0, Math.min(h, y));
+
       var time = null;
       var logical = null;
       if (typeof ts.coordinateToTime === "function") {
@@ -187,6 +198,18 @@
           if (bar) time = bar.time;
         }
       }
+      if (time == null && typeof ts.coordinateToLogical === "function") {
+        var logL = ts.coordinateToLogical(0);
+        var logR = ts.coordinateToLogical(w);
+        if (logL != null && logR != null && logR !== logL) {
+          var frac = x / w;
+          logical = logL + (logR - logL) * frac;
+          if (typeof series.dataByIndex === "function") {
+            var bar2 = series.dataByIndex(Math.round(logical));
+            if (bar2) time = bar2.time;
+          }
+        }
+      }
       var tUnix = timeToUnix(time);
       if (tUnix == null) return null;
       var price = series.coordinateToPrice(y);
@@ -196,10 +219,7 @@
 
     function pointFromClient(clientX, clientY) {
       var rect = mount.getBoundingClientRect();
-      var x = clientX - rect.left;
-      var y = clientY - rect.top;
-      if (x < 0 || y < 0 || x > rect.width || y > rect.height) return null;
-      return pointFromXY(x, y);
+      return pointFromXY(clientX - rect.left, clientY - rect.top);
     }
 
     function pixelOf(pt) {
@@ -307,16 +327,70 @@
     }
 
     function repaintIfSaved() {
+      if (dragging) return;
       if (savedA && savedB) renderMeasure(savedA, savedB);
     }
 
     chart.timeScale().subscribeVisibleTimeRangeChange(repaintIfSaved);
     window.addEventListener("resize", repaintIfSaved, { passive: true });
 
+    var dragRaf = 0;
+    var dragEndPt = null;
+
+    function scheduleDragPaint(pt) {
+      dragEndPt = pt;
+      if (dragRaf) return;
+      dragRaf = requestAnimationFrame(function () {
+        dragRaf = 0;
+        if (dragging && anchor && dragEndPt) renderMeasure(anchor, dragEndPt);
+      });
+    }
+
+    function bindDragListeners() {
+      window.addEventListener("pointermove", onWindowPointerMove, { passive: false });
+      window.addEventListener("pointerup", onWindowPointerUp);
+      window.addEventListener("pointercancel", onWindowPointerUp);
+    }
+
+    function unbindDragListeners() {
+      window.removeEventListener("pointermove", onWindowPointerMove);
+      window.removeEventListener("pointerup", onWindowPointerUp);
+      window.removeEventListener("pointercancel", onWindowPointerUp);
+    }
+
+    function finishDrag(e) {
+      if (!dragging) return;
+      dragging = false;
+      unbindDragListeners();
+      try {
+        if (layer.releasePointerCapture && e && e.pointerId != null) {
+          layer.releasePointerCapture(e.pointerId);
+        }
+      } catch (err) {
+        /* ignore */
+      }
+      var pt = e ? pointFromClient(e.clientX, e.clientY) : dragEndPt;
+      if (anchor && pt) renderMeasure(anchor, pt);
+      anchor = null;
+      dragEndPt = null;
+    }
+
+    function onWindowPointerMove(e) {
+      if (!dragging || !anchor) return;
+      var pt = pointFromClient(e.clientX, e.clientY);
+      if (!pt) return;
+      e.preventDefault();
+      scheduleDragPaint(pt);
+    }
+
+    function onWindowPointerUp(e) {
+      finishDrag(e);
+    }
+
     function deactivate() {
       active = false;
-      dragging = false;
-      anchor = null;
+      finishDrag(null);
+      unbindDragListeners();
       btn.classList.remove("on");
       btn.setAttribute("aria-pressed", "false");
       wrap.classList.remove("measure-on");
@@ -350,36 +424,19 @@
       e.stopPropagation();
       dragging = true;
       anchor = pt;
-      hideMeasure();
+      dragEndPt = pt;
       renderMeasure(anchor, anchor);
-      if (layer.setPointerCapture) layer.setPointerCapture(e.pointerId);
-    }
-
-    function onPointerMove(e) {
-      if (!dragging || !anchor) return;
-      var pt = pointFromClient(e.clientX, e.clientY);
-      if (!pt) return;
-      e.preventDefault();
-      renderMeasure(anchor, pt);
-    }
-
-    function onPointerUp(e) {
-      if (!dragging) return;
-      dragging = false;
-      try {
-        if (layer.releasePointerCapture) layer.releasePointerCapture(e.pointerId);
-      } catch (err) {
-        /* ignore */
+      bindDragListeners();
+      if (layer.setPointerCapture) {
+        try {
+          layer.setPointerCapture(e.pointerId);
+        } catch (err2) {
+          /* ignore */
+        }
       }
-      var pt = pointFromClient(e.clientX, e.clientY);
-      if (anchor && pt) renderMeasure(anchor, pt);
-      anchor = null;
     }
 
     layer.addEventListener("pointerdown", onPointerDown, { passive: false });
-    layer.addEventListener("pointermove", onPointerMove, { passive: false });
-    layer.addEventListener("pointerup", onPointerUp);
-    layer.addEventListener("pointercancel", onPointerUp);
 
     window.addEventListener("keydown", function (e) {
       if (e.key === "Escape" && active) deactivate();
