@@ -591,6 +591,135 @@
     return null;
   }
 
+  function fmtNum(n, digits) {
+    return Number(n).toLocaleString("en-US", {
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits,
+    });
+  }
+
+  function drawPositionBox(chart, series, mount, payload) {
+    var box = payload.position_box;
+    if (!box || !mount.parentElement) return function () {};
+    var layer = document.createElement("div");
+    layer.className = "live-ov-pos-layer";
+    layer.style.cssText =
+      "position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:3;";
+    mount.parentElement.appendChild(layer);
+
+    function zone(top, height, color) {
+      var el = document.createElement("div");
+      el.style.cssText =
+        "position:absolute;left:" +
+        "0;background:" +
+        color +
+        ";border:1px solid " +
+        color.replace("0.045", "0.55") +
+        ";box-sizing:border-box;";
+      return el;
+    }
+
+    function tag(text, bg) {
+      var el = document.createElement("div");
+      el.textContent = text;
+      el.style.cssText =
+        "position:absolute;transform:translate(-50%,-50%);padding:2px 6px;border-radius:3px;font:11px/1.3 ui-sans-serif,system-ui,sans-serif;color:#fff;white-space:nowrap;background:" +
+        bg +
+        ";";
+      return el;
+    }
+
+    function handle(x, y) {
+      var el = document.createElement("div");
+      el.style.cssText =
+        "position:absolute;width:7px;height:7px;margin:-4px 0 0 -4px;background:#2962ff;border:1px solid #fff;box-sizing:border-box;";
+      el.style.left = x + "px";
+      el.style.top = y + "px";
+      return el;
+    }
+
+    function paint() {
+      layer.innerHTML = "";
+      var yE = series.priceToCoordinate(box.entry);
+      var yTp = series.priceToCoordinate(box.tp);
+      var ySl = series.priceToCoordinate(box.sl);
+      var x1 = chart.timeScale().timeToCoordinate(box.time);
+      var plotW = chart.timeScale().width();
+      if (yE == null || yTp == null || ySl == null || x1 == null || !plotW) return;
+      var x2 = Math.max(x1 + 72, plotW - 4);
+      var profitTop = Math.min(yE, yTp);
+      var profitH = Math.max(2, Math.abs(yTp - yE));
+      var stopTop = Math.min(yE, ySl);
+      var stopH = Math.max(2, Math.abs(ySl - yE));
+      var green = "rgba(8,153,129,0.045)";
+      var red = "rgba(242,54,69,0.045)";
+      var profit = zone(profitTop, profitH, green);
+      var stop = zone(stopTop, stopH, red);
+      [profit, stop].forEach(function (el) {
+        el.style.left = x1 + "px";
+        el.style.width = Math.max(8, x2 - x1) + "px";
+      });
+      profit.style.top = profitTop + "px";
+      profit.style.height = profitH + "px";
+      stop.style.top = stopTop + "px";
+      stop.style.height = stopH + "px";
+      var entryLine = document.createElement("div");
+      entryLine.style.cssText =
+        "position:absolute;height:0;border-top:1px solid rgba(226,232,240,0.85);";
+      entryLine.style.left = x1 + "px";
+      entryLine.style.width = Math.max(8, x2 - x1) + "px";
+      entryLine.style.top = yE + "px";
+      var distTp = Math.abs(box.tp - box.entry);
+      var distSl = Math.abs(box.sl - box.entry);
+      var pctTp = (distTp / box.entry) * 100;
+      var pctSl = (distSl / box.entry) * 100;
+      var qty = Number(box.qty) || 0;
+      var pnlTp = qty * distTp;
+      var pnlSl = qty * distSl;
+      var rr = distSl > 0 ? distTp / distSl : 0;
+      var tpText =
+        fmtNum(distTp, 2) +
+        " (" +
+        fmtNum(pctTp, 3) +
+        "%)" +
+        (qty ? " " + fmtNum(pnlTp, 2) : "");
+      var slText =
+        fmtNum(distSl, 2) +
+        " (" +
+        fmtNum(pctSl, 3) +
+        "%)" +
+        (qty ? " " + fmtNum(pnlSl, 2) : "");
+      var tpTag = tag(tpText, "#089981");
+      var slTag = tag(slText, "#f23645");
+      var midTag = tag(fmtNum(rr, 2), "rgba(8,153,129,0.92)");
+      var midX = (x1 + x2) / 2;
+      tpTag.style.left = midX + "px";
+      tpTag.style.top = profitTop + profitH / 2 + "px";
+      slTag.style.left = midX + "px";
+      slTag.style.top = stopTop + stopH / 2 + "px";
+      midTag.style.left = midX + "px";
+      midTag.style.top = yE + "px";
+      layer.appendChild(profit);
+      layer.appendChild(stop);
+      layer.appendChild(entryLine);
+      layer.appendChild(tpTag);
+      layer.appendChild(slTag);
+      layer.appendChild(midTag);
+      [x1, x2].forEach(function (x) {
+        [Math.min(profitTop, stopTop), Math.max(profitTop + profitH, stopTop + stopH)].forEach(
+          function (y) {
+            layer.appendChild(handle(x, y));
+          }
+        );
+        layer.appendChild(handle(x, yE));
+      });
+    }
+
+    chart.timeScale().subscribeVisibleLogicalRangeChange(paint);
+    chart.timeScale().subscribeVisibleTimeRangeChange(paint);
+    return paint;
+  }
+
   function initMount(mount) {
     if (mount.dataset.liveChartReady === "1") return;
     var payload = readPayload(mount);
@@ -763,6 +892,7 @@
         chart.timeScale().fitContent();
       }
       applyingView = false;
+      paintPosition();
     }
 
     var loadingOlder = false;
@@ -823,6 +953,7 @@
       requestAnimationFrame(applyViewport);
     });
 
+    var paintPosition = drawPositionBox(chart, series, mount, payload);
     setupMeasure(chart, series, mount, payload);
 
     var pollUrl = mount.getAttribute("data-poll-url");

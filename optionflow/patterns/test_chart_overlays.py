@@ -229,10 +229,10 @@ def test_position_and_pattern_merge() -> None:
         mark=90200.0,
     )
     labels = [h.get("label") for h in payload["overlays"]["hlines"]]
-    assert labels.count("Entry") == 1
-    assert "SL" in labels and "TP" in labels
-    assert "Mark" not in labels
-    assert "ورود" not in labels
+    assert "Entry" not in labels and "SL" not in labels and "TP" not in labels
+    assert "Mark" not in labels and "ورود" not in labels
+    box = payload["position_box"]
+    assert box["entry"] == 90100.0 and box["tp"] == 91000.0 and box["sl"] == 89500.0
 
 
 def test_position_chart_draws_pattern_and_zooms_on_signal() -> None:
@@ -258,7 +258,8 @@ def test_position_chart_draws_pattern_and_zooms_on_signal() -> None:
     )
     assert payload["timeframe"] == "5m"
     assert payload["overlays"]["segments"]
-    assert any(h.get("label") == "Entry" for h in payload["overlays"]["hlines"])
+    assert payload["position_box"]["direction"] == "long"
+    assert payload["position_box"]["time"] == bar_unix(bars[55])
     sig = bar_unix(bars[55])
     assert payload["viewport"]["from"] <= sig <= payload["viewport"]["to"]
 

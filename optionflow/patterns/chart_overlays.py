@@ -475,13 +475,41 @@ def _y_line(meta: dict[str, Any], bars: list[OhlcBar], *, upper: bool) -> list[d
 
 
 def position_overlays(pos: dict[str, Any], *, mark: float | None = None) -> dict[str, Any]:
-    del mark
-    hlines = [
-        _hline(float(pos["entry_price"]), color="#fbbf24", label="Entry", style="solid"),
-        _hline(float(pos["sl_price"]), color="#f87171", label="SL"),
-        _hline(float(pos["tp_price"]), color="#34d399", label="TP"),
-    ]
-    return {"hlines": hlines, "segments": [], "lines": [], "markers": []}
+    del pos, mark
+    return {"hlines": [], "segments": [], "lines": [], "markers": []}
+
+
+def position_box_payload(pos: dict[str, Any], bars: list[OhlcBar]) -> dict[str, Any] | None:
+    """باکس لانگ/شورت مثل ابزار TradingView؛ بدون خط Entry/SL/TP."""
+    try:
+        entry = float(pos["entry_price"])
+        sl = float(pos["sl_price"])
+        tp = float(pos["tp_price"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if entry <= 0:
+        return None
+    notional = pos.get("notional_usdt")
+    qty = float(notional) / entry if isinstance(notional, (int, float)) and notional > 0 else 0.0
+    t = bar_unix(bars[-1]) if bars else 0
+    opened = str(pos.get("opened_at") or "").strip()
+    if opened and bars:
+        try:
+            dt = datetime.fromisoformat(opened.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            target = int(dt.timestamp())
+            t = min((bar_unix(b) for b in bars), key=lambda u: abs(u - target))
+        except ValueError:
+            pass
+    return {
+        "direction": "short" if str(pos.get("direction") or "") == "short" else "long",
+        "entry": entry,
+        "sl": sl,
+        "tp": tp,
+        "qty": qty,
+        "time": t,
+    }
 
 
 def _triangle_lines(
@@ -732,12 +760,15 @@ def build_live_chart_payload(
     if position:
         specs.append(position_overlays(position, mark=mark))
     overlays = merge_overlay_specs(*specs)
+    box = position_box_payload(position, bars) if position else None
     payload: dict[str, Any] = {
         "timeframe": timeframe,
         "title": title,
         "candles": candles_payload(bars),
         "overlays": overlays,
     }
+    if box:
+        payload["position_box"] = box
     vp = live_pattern_viewport(cat, m, bars) if m else None
     if vp is None and position:
         opened = str(position.get("opened_at") or "") or (created_at or "")
