@@ -44,17 +44,19 @@ def test_normal_bull_reversal_rejected() -> None:
     assert detect_three_rp_at(bars, "1h", 2) is None
 
 
-def test_bullish_enhanced_small_candle_entry_on_close() -> None:
+def test_bullish_enhanced_small_candle_enters_next_bar() -> None:
     bars = [
         _bar(100, 100, 90, 92, 0),
         _bar(91, 94, 88, 90, 1),
         _bar(101, 102, 101.2, 102, 2),
+        _bar(102.4, 103, 102, 102.5, 3),
     ]
+    assert detect_three_rp_at(bars[:3], "1h", 2) is None
     hit = detect_three_rp(bars, "1h")
     assert hit is not None
-    assert hit.meta["entry_mode"] == "close_third"
-    assert hit.meta["entry_index"] == 2
-    assert hit.meta["entry_px"] == 102
+    assert hit.meta["entry_mode"] == "next_open"
+    assert hit.meta["entry_index"] == 3
+    assert hit.meta["entry_px"] == 102.4
     assert third_candle_range_pct(bars[2]) < 1.0
 
 
@@ -87,7 +89,7 @@ def test_large_candle_no_touch_within_eight_bars_returns_none() -> None:
 def test_large_candle_mid_touch_on_forming_bar_signals() -> None:
     from optionflow.patterns.three_rp import third_candle_mid
 
-    now = datetime.now(timezone.utc).replace(minute=10, second=0, microsecond=0)
+    now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
     t0 = now - timedelta(hours=3)
     bars = [
         _bar(100, 100, 90, 92, 0),
@@ -132,12 +134,15 @@ def test_bearish_enhanced_confirmed() -> None:
         _bar(90, 100, 89, 98, 0),
         _bar(99, 102, 97, 101, 1),
         _bar(88.6, 89.05, 88.25, 88.3, 2),
+        _bar(88.1, 88.4, 87.5, 87.8, 3),
     ]
     hit = detect_three_rp_at(bars, "1h", 2)
     assert hit is not None
     assert hit.pattern_id == "three_rp_bear"
     assert hit.meta.get("stage") == "confirmed"
-    assert hit.meta["entry_mode"] == "close_third"
+    assert hit.meta["entry_mode"] == "next_open"
+    assert hit.meta["entry_index"] == 3
+    assert hit.meta["entry_px"] == 88.1
 
 
 def test_enumerate_counts_each_bar_once() -> None:

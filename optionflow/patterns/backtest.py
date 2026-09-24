@@ -218,7 +218,11 @@ def evaluate_target_profit(
     exit_i: int | None = None
     exit_px: float | None = None
     if hit.category == "three_rp":
-        start_i = idx if hit.meta.get("entry_mode") == "mid_touch" else idx + 1
+        mode = hit.meta.get("entry_mode")
+        if mode in ("mid_touch", "next_open"):
+            start_i = int(hit.meta.get("entry_index", idx))
+        else:
+            start_i = idx + 1
     else:
         start_i = idx + 1
     for i in range(start_i, len(bars)):
@@ -273,16 +277,21 @@ def evaluate_outcome(
     if hit.category == "ema50":
         return evaluate_ema50_path(bars, idx, hit)
     if hit.category == "three_rp":
-        mode = hit.meta.get("entry_mode", "close_third")
+        mode = hit.meta.get("entry_mode", "next_open")
         entry = hit.meta.get("entry_px")
         if isinstance(entry, (int, float)) and entry > 0:
             entry_px = float(entry)
         else:
             entry_px = bars[idx].close
         fwd = FORWARD_BARS.get(timeframe, 12)
-        if mode == "close_third":
+        entry_i = int(hit.meta.get("entry_index", idx + 1))
+        if mode == "next_open":
+            if entry_i + fwd > len(bars):
+                return None, "کندل کافی بعد از سیگنال برای ارزیابی نبود."
+            future = bars[entry_i : entry_i + fwd]
+        elif mode == "close_third":
             if idx + fwd >= len(bars):
-                return None, "کندل کافی بعد از سیگnal برای ارزیابی نبود."
+                return None, "کندل کافی بعد از سیگنال برای ارزیابی نبود."
             future = bars[idx + 1 : idx + 1 + fwd]
         else:
             if idx + fwd > len(bars):

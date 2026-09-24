@@ -142,11 +142,14 @@ def resolve_three_rp_entry(
     support: float,
     resistance: float,
 ) -> tuple[int, float, str] | None:
-    """ورود: کوچک → close کندل سوم؛ بزرگ → تاچ ۵۰٪ در حداکثر ۸ کندل (OHLC)."""
+    """ورود: کمتر از ۱٪ → open کندل بعد؛ ۱٪ یا بیشتر → تاچ ۵۰٪ تا ۸ کندل."""
     i = signal_index
     rng = third_candle_range_pct(b2)
     if rng < LARGE_CANDLE_RANGE_PCT:
-        return i, float(b2.close), "close_third"
+        nxt = i + 1
+        if nxt >= len(bars):
+            return None
+        return nxt, float(bars[nxt].open), "next_open"
 
     mid = third_candle_mid(b2)
     last_j = min(len(bars) - 1, i + PULLBACK_WAIT_BARS)
@@ -233,6 +236,8 @@ def detect_three_rp_at(
             summary += (
                 f" ورود پس از تاچ ۵۰٪ کندل سوم ({entry_px:,.0f}) در کندل {entry_i - i}."
             )
+        elif entry_mode == "next_open":
+            summary += f" ورود در کندل بعدی ({entry_px:,.0f})."
         meta = {
             "direction": "up",
             "stage": stage,
@@ -300,6 +305,8 @@ def detect_three_rp_at(
             summary += (
                 f" ورود پس از تاچ ۵۰٪ کندل سوم ({entry_px:,.0f}) در کندل {entry_i - i}."
             )
+        elif entry_mode == "next_open":
+            summary += f" ورود در کندل بعدی ({entry_px:,.0f})."
         meta = {
             "direction": "down",
             "stage": stage,
