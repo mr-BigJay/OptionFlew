@@ -101,6 +101,11 @@
     );
   }
 
+  function timeToUnix(t) {
+    if (typeof t === "number") return t;
+    return null;
+  }
+
   function setupMeasure(chart, series, mount, payload) {
     var wrap = mount.closest(".live-ov-chart-wrap");
     if (!wrap) return;
@@ -113,46 +118,80 @@
     var active = false;
     var dragging = false;
     var startPt = null;
+    var lastCross = null;
     var lineSeries = null;
-    var boxSeries = null;
+    var bandTop = null;
+    var bandBot = null;
 
-    function setInteraction(on) {
+    function setPanZoom(enabled) {
       chart.applyOptions({
-        handleScroll: on,
-        handleScale: on,
-        kineticScroll: { touch: on, mouse: on },
+        handleScroll: enabled,
+        handleScale: enabled,
       });
     }
 
+    function removeSeries(ref) {
+      if (ref) {
+        chart.removeSeries(ref);
+      }
+      return null;
+    }
+
     function clearGraphics() {
-      if (lineSeries) {
-        chart.removeSeries(lineSeries);
-        lineSeries = null;
-      }
-      if (boxSeries) {
-        chart.removeSeries(boxSeries);
-        boxSeries = null;
-      }
+      lineSeries = removeSeries(lineSeries);
+      bandTop = removeSeries(bandTop);
+      bandBot = removeSeries(bandBot);
     }
 
     function setReadout(text) {
       if (readout) readout.textContent = text || "";
     }
 
-    function pointFromEvent(e) {
-      var rect = mount.getBoundingClientRect();
-      var x = e.clientX - rect.left;
-      var y = e.clientY - rect.top;
-      if (x < 0 || y < 0 || x > rect.width || y > rect.height) return null;
-      var time = chart.timeScale().coordinateToTime(x);
+    function pointFromXY(x, y) {
+      var ts = chart.timeScale();
+      var time = null;
+      if (typeof ts.coordinateToTime === "function") {
+        time = ts.coordinateToTime(x);
+      }
+      if (time == null && typeof ts.coordinateToLogical === "function") {
+        var logical = ts.coordinateToLogical(x);
+        if (logical != null && typeof series.dataByIndex === "function") {
+          var bar = series.dataByIndex(Math.round(logical));
+          if (bar) time = bar.time;
+        }
+      }
+      var tUnix = timeToUnix(time);
+      if (tUnix == null) return null;
       var price = series.coordinateToPrice(y);
-      if (time == null || price == null || !isFinite(price)) return null;
-      var candle = nearestCandle(candles, time);
+      if (price == null || !isFinite(price)) return null;
+      var candle = nearestCandle(candles, tUnix);
       if (!candle) return null;
       return snapToCandle(candle, price);
     }
 
+    function pointFromClient(clientX, clientY) {
+      var rect = mount.getBoundingClientRect();
+      return pointFromXY(clientX - rect.left, clientY - rect.top);
+    }
+
+    function pointFromCrosshair(param) {
+      if (!param || param.time == null || !param.point) return null;
+      return pointFromXY(param.point.x, param.point.y);
+    }
+
+    function ensureLineSeries(color, style, width) {
+      return chart.addLineSeries({
+        color: color,
+        lineWidth: width,
+        lineStyle: style,
+        crosshairMarkerVisible: false,
+        priceLineVisible: false,
+        lastValueVisible: false,
+      });
+    }
+
     function drawMeasure(a, b) {
+      if (!a || !b) return;
       var t0 = a.time <= b.time ? a.time : b.time;
       var t1 = a.time <= b.time ? b.time : a.time;
       var p0 = a.time <= b.time ? a.price : b.price;
@@ -161,51 +200,27 @@
       var pLo = Math.min(p0, p1);
       var up = p1 >= p0;
       var col = up ? "#34d399" : "#f87171";
-      var boxCol = up ? "rgba(52, 211, 153, 0.55)" : "rgba(248, 113, 113, 0.55)";
+      var bandCol = up ? "rgba(52, 211, 153, 0.7)" : "rgba(248, 113, 113, 0.7)";
 
-      if (!lineSeries) {
-        lineSeries = chart.addLineSeries({
-          color: col,
-          lineWidth: 2,
-          lineStyle: 0,
-          crosshairMarkerVisible: false,
-          priceLineVisible: false,
-          lastValueVisible: false,
-        });
-      } else {
-        lineSeries.applyOptions({ color: col });
-      }
+      if (!lineSeries) lineSeries = ensureLineSeries(col, 0, 2);
+      else lineSeries.applyOptions({ color: col });
       lineSeries.setData([
-        { time: a.time, value: a.price },
-        { time: b.time, value: b.price },
+        { time: t0, value: a.time <= b.time ? a.price : b.price },
+        { time: t1, value: a.time <= b.time ? b.price : a.price },
       ]);
 
-      if (!boxSeries) {
-        boxSeries = chart.addLineSeries({
-          color: boxCol,
-          lineWidth: 1,
-          lineStyle: 2,
-          crosshairMarkerVisible: false,
-          priceLineVisible: false,
-          lastValueVisible: false,
-        });
-      } else {
-        boxSeries.applyOptions({ color: boxCol });
-      }
-      if (t0 === t1) {
-        boxSeries.setData([
-          { time: t0, value: pLo },
-          { time: t0, value: pHi },
-        ]);
-      } else {
-        boxSeries.setData([
-          { time: t0, value: pLo },
-          { time: t1, value: pLo },
-          { time: t1, value: pHi },
-          { time: t0, value: pHi },
-          { time: t0, value: pLo },
-        ]);
-      }
+      if (!bandBot) bandBot = ensureLineSeries(bandCol, 2, 1);
+      else bandBot.applyOptions({ color: bandCol });
+      if (!bandTop) bandTop = ensureLineSeries(bandCol, 2, 1);
+      else bandTop.applyOptions({ color: bandCol });
+      bandBot.setData([
+        { time: t0, value: pLo },
+        { time: t1, value: pLo },
+      ]);
+      bandTop.setData([
+        { time: t0, value: pHi },
+        { time: t1, value: pHi },
+      ]);
 
       setReadout(measureReadout(candles, p0, p1, t0, t1));
     }
@@ -217,11 +232,21 @@
       btn.classList.remove("on");
       btn.setAttribute("aria-pressed", "false");
       wrap.classList.remove("measure-on");
-      setInteraction(true);
+      setPanZoom(true);
+      clearGraphics();
       setReadout("");
     }
 
-    btn.addEventListener("click", function () {
+    chart.subscribeCrosshairMove(function (param) {
+      if (param.time != null && param.point) lastCross = param;
+      if (dragging && startPt && param.time != null && param.point) {
+        var end = pointFromCrosshair(param);
+        if (end) drawMeasure(startPt, end);
+      }
+    });
+
+    btn.addEventListener("click", function (e) {
+      e.preventDefault();
       if (active) {
         deactivate();
         return;
@@ -231,56 +256,53 @@
       btn.setAttribute("aria-pressed", "true");
       wrap.classList.add("measure-on");
       clearGraphics();
-      setReadout("کلیک کنید و بکشید (مثل TradingView)");
+      setPanZoom(false);
+      setReadout("کلیک و بکشید روی چارت");
     });
 
-    mount.addEventListener(
-      "pointerdown",
-      function (e) {
-        if (!active || e.button !== 0) return;
-        var pt = pointFromEvent(e);
-        if (!pt) return;
-        e.preventDefault();
-        dragging = true;
-        startPt = pt;
-        mount.setPointerCapture(e.pointerId);
-        setInteraction(false);
-        drawMeasure(startPt, startPt);
-      },
-      { passive: false }
-    );
+    function onPointerDown(e) {
+      if (!active || e.button !== 0) return;
+      var pt = pointFromClient(e.clientX, e.clientY) || pointFromCrosshair(lastCross);
+      if (!pt) {
+        setReadout("اول نشانگر را روی چارت بگذارید، بعد کلیک و بکشید");
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      dragging = true;
+      startPt = pt;
+      if (mount.setPointerCapture) mount.setPointerCapture(e.pointerId);
+      drawMeasure(startPt, startPt);
+    }
 
-    mount.addEventListener("pointermove", function (e) {
+    function onPointerMove(e) {
       if (!dragging || !startPt) return;
-      var pt = pointFromEvent(e);
-      if (!pt) return;
-      drawMeasure(startPt, pt);
-    });
+      var pt = pointFromClient(e.clientX, e.clientY) || pointFromCrosshair(lastCross);
+      if (pt) drawMeasure(startPt, pt);
+    }
 
-    function endDrag(e) {
+    function onPointerUp(e) {
       if (!dragging) return;
       dragging = false;
       try {
-        mount.releasePointerCapture(e.pointerId);
+        if (mount.releasePointerCapture) mount.releasePointerCapture(e.pointerId);
       } catch (err) {
         /* ignore */
       }
-      setInteraction(true);
       if (startPt) {
-        var pt = pointFromEvent(e);
+        var pt = pointFromClient(e.clientX, e.clientY) || pointFromCrosshair(lastCross);
         if (pt) drawMeasure(startPt, pt);
       }
       startPt = null;
     }
 
-    mount.addEventListener("pointerup", endDrag);
-    mount.addEventListener("pointercancel", endDrag);
+    mount.addEventListener("pointerdown", onPointerDown, true);
+    mount.addEventListener("pointermove", onPointerMove, true);
+    mount.addEventListener("pointerup", onPointerUp, true);
+    mount.addEventListener("pointercancel", onPointerUp, true);
 
     window.addEventListener("keydown", function (e) {
-      if (e.key === "Escape" && active) {
-        clearGraphics();
-        deactivate();
-      }
+      if (e.key === "Escape" && active) deactivate();
     });
   }
 
