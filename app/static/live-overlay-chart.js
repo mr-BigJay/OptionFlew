@@ -40,6 +40,67 @@
     return n;
   }
 
+  function nearestCandle(candles, time) {
+    if (!candles || !candles.length) return null;
+    var best = candles[0];
+    var bestD = Math.abs(best.time - time);
+    for (var i = 1; i < candles.length; i++) {
+      var d = Math.abs(candles[i].time - time);
+      if (d < bestD) {
+        bestD = d;
+        best = candles[i];
+      }
+    }
+    return best;
+  }
+
+  function snapToCandle(candle, price) {
+    var o = candle.open;
+    var h = candle.high;
+    var l = candle.low;
+    var c = candle.close;
+    var best = o;
+    if (Math.abs(h - price) < Math.abs(best - price)) best = h;
+    if (Math.abs(l - price) < Math.abs(best - price)) best = l;
+    if (Math.abs(c - price) < Math.abs(best - price)) best = c;
+    return { time: candle.time, price: best };
+  }
+
+  function candleStepSec(candles) {
+    if (!candles || candles.length < 2) return 300;
+    return Math.max(60, Math.abs(candles[1].time - candles[0].time));
+  }
+
+  function durationFa(candles, t0, t1) {
+    var a = Math.min(t0, t1);
+    var b = Math.max(t0, t1);
+    var bars = barCountBetween(candles, a, b);
+    if (bars <= 1) return "1 کندل";
+    var sec = candleStepSec(candles) * (bars - 1);
+    if (sec < 3600) return bars + " کندل · " + Math.round(sec / 60) + " دقیقه";
+    if (sec < 86400) {
+      var h = Math.floor(sec / 3600);
+      var m = Math.round((sec % 3600) / 60);
+      return bars + " کندل · " + h + "س " + (m > 0 ? m + "د" : "");
+    }
+    return bars + " کندل · " + Math.round(sec / 86400) + " روز";
+  }
+
+  function measureReadout(candles, p0, p1, t0, t1) {
+    var dPrice = p1 - p0;
+    var pct = p0 !== 0 ? (dPrice / p0) * 100 : 0;
+    var sign = dPrice >= 0 ? "+" : "−";
+    return (
+      sign +
+      fmtNum(dPrice) +
+      " (" +
+      sign +
+      Math.abs(pct).toFixed(2) +
+      "%) · " +
+      durationFa(candles, t0, t1)
+    );
+  }
+
   function setupMeasure(chart, series, mount, payload) {
     var wrap = mount.closest(".live-ov-chart-wrap");
     if (!wrap) return;
@@ -48,14 +109,29 @@
     var readout = wrap.querySelector(".live-ov-measure-readout");
     if (!btn) return;
 
+    var candles = payload.candles || [];
     var active = false;
-    var ptA = null;
-    var measureSeries = null;
+    var dragging = false;
+    var startPt = null;
+    var lineSeries = null;
+    var boxSeries = null;
 
-    function clearLine() {
-      if (measureSeries) {
-        chart.removeSeries(measureSeries);
-        measureSeries = null;
+    function setInteraction(on) {
+      chart.applyOptions({
+        handleScroll: on,
+        handleScale: on,
+        kineticScroll: { touch: on, mouse: on },
+      });
+    }
+
+    function clearGraphics() {
+      if (lineSeries) {
+        chart.removeSeries(lineSeries);
+        lineSeries = null;
+      }
+      if (boxSeries) {
+        chart.removeSeries(boxSeries);
+        boxSeries = null;
       }
     }
 
@@ -63,66 +139,148 @@
       if (readout) readout.textContent = text || "";
     }
 
-    btn.addEventListener("click", function () {
-      active = !active;
-      btn.classList.toggle("on", active);
-      btn.setAttribute("aria-pressed", active ? "true" : "false");
-      ptA = null;
-      clearLine();
-      if (active) {
-        setReadout("نقطهٔ اول را روی چارت بزنید");
+    function pointFromEvent(e) {
+      var rect = mount.getBoundingClientRect();
+      var x = e.clientX - rect.left;
+      var y = e.clientY - rect.top;
+      if (x < 0 || y < 0 || x > rect.width || y > rect.height) return null;
+      var time = chart.timeScale().coordinateToTime(x);
+      var price = series.coordinateToPrice(y);
+      if (time == null || price == null || !isFinite(price)) return null;
+      var candle = nearestCandle(candles, time);
+      if (!candle) return null;
+      return snapToCandle(candle, price);
+    }
+
+    function drawMeasure(a, b) {
+      var t0 = a.time <= b.time ? a.time : b.time;
+      var t1 = a.time <= b.time ? b.time : a.time;
+      var p0 = a.time <= b.time ? a.price : b.price;
+      var p1 = a.time <= b.time ? b.price : a.price;
+      var pHi = Math.max(p0, p1);
+      var pLo = Math.min(p0, p1);
+      var up = p1 >= p0;
+      var col = up ? "#34d399" : "#f87171";
+      var boxCol = up ? "rgba(52, 211, 153, 0.55)" : "rgba(248, 113, 113, 0.55)";
+
+      if (!lineSeries) {
+        lineSeries = chart.addLineSeries({
+          color: col,
+          lineWidth: 2,
+          lineStyle: 0,
+          crosshairMarkerVisible: false,
+          priceLineVisible: false,
+          lastValueVisible: false,
+        });
       } else {
-        setReadout("");
+        lineSeries.applyOptions({ color: col });
       }
-    });
-
-    chart.subscribeClick(function (param) {
-      if (!active || !param.point || param.time == null) return;
-      var price = series.coordinateToPrice(param.point.y);
-      if (price == null || !isFinite(price)) return;
-
-      if (!ptA) {
-        ptA = { time: param.time, price: price };
-        clearLine();
-        setReadout("نقطهٔ دوم را بزنید");
-        return;
-      }
-
-      var ptB = { time: param.time, price: price };
-      var t0 = ptA.time <= ptB.time ? ptA.time : ptB.time;
-      var t1 = ptA.time <= ptB.time ? ptB.time : ptA.time;
-      var p0 = ptA.time <= ptB.time ? ptA.price : ptB.price;
-      var p1 = ptA.time <= ptB.time ? ptB.price : ptA.price;
-      var dPrice = p1 - p0;
-      var pct = p0 !== 0 ? (dPrice / p0) * 100 : 0;
-      var bars = barCountBetween(payload.candles, t0, t1);
-      var sign = dPrice >= 0 ? "+" : "−";
-
-      clearLine();
-      measureSeries = chart.addLineSeries({
-        color: "#a78bfa",
-        lineWidth: 2,
-        lineStyle: 0,
-        crosshairMarkerVisible: true,
-        priceLineVisible: false,
-        lastValueVisible: false,
-      });
-      measureSeries.setData([
-        { time: t0, value: p0 },
-        { time: t1, value: p1 },
+      lineSeries.setData([
+        { time: a.time, value: a.price },
+        { time: b.time, value: b.price },
       ]);
 
-      setReadout(
-        sign +
-          fmtNum(dPrice) +
-          " USDT (" +
-          sign +
-          Math.abs(pct).toFixed(2) +
-          "٪) · " +
-          bars +
-          " کندل"
-      );
-      ptA = null;
+      if (!boxSeries) {
+        boxSeries = chart.addLineSeries({
+          color: boxCol,
+          lineWidth: 1,
+          lineStyle: 2,
+          crosshairMarkerVisible: false,
+          priceLineVisible: false,
+          lastValueVisible: false,
+        });
+      } else {
+        boxSeries.applyOptions({ color: boxCol });
+      }
+      if (t0 === t1) {
+        boxSeries.setData([
+          { time: t0, value: pLo },
+          { time: t0, value: pHi },
+        ]);
+      } else {
+        boxSeries.setData([
+          { time: t0, value: pLo },
+          { time: t1, value: pLo },
+          { time: t1, value: pHi },
+          { time: t0, value: pHi },
+          { time: t0, value: pLo },
+        ]);
+      }
+
+      setReadout(measureReadout(candles, p0, p1, t0, t1));
+    }
+
+    function deactivate() {
+      active = false;
+      dragging = false;
+      startPt = null;
+      btn.classList.remove("on");
+      btn.setAttribute("aria-pressed", "false");
+      wrap.classList.remove("measure-on");
+      setInteraction(true);
+      setReadout("");
+    }
+
+    btn.addEventListener("click", function () {
+      if (active) {
+        deactivate();
+        return;
+      }
+      active = true;
+      btn.classList.add("on");
+      btn.setAttribute("aria-pressed", "true");
+      wrap.classList.add("measure-on");
+      clearGraphics();
+      setReadout("کلیک کنید و بکشید (مثل TradingView)");
+    });
+
+    mount.addEventListener(
+      "pointerdown",
+      function (e) {
+        if (!active || e.button !== 0) return;
+        var pt = pointFromEvent(e);
+        if (!pt) return;
+        e.preventDefault();
+        dragging = true;
+        startPt = pt;
+        mount.setPointerCapture(e.pointerId);
+        setInteraction(false);
+        drawMeasure(startPt, startPt);
+      },
+      { passive: false }
+    );
+
+    mount.addEventListener("pointermove", function (e) {
+      if (!dragging || !startPt) return;
+      var pt = pointFromEvent(e);
+      if (!pt) return;
+      drawMeasure(startPt, pt);
+    });
+
+    function endDrag(e) {
+      if (!dragging) return;
+      dragging = false;
+      try {
+        mount.releasePointerCapture(e.pointerId);
+      } catch (err) {
+        /* ignore */
+      }
+      setInteraction(true);
+      if (startPt) {
+        var pt = pointFromEvent(e);
+        if (pt) drawMeasure(startPt, pt);
+      }
+      startPt = null;
+    }
+
+    mount.addEventListener("pointerup", endDrag);
+    mount.addEventListener("pointercancel", endDrag);
+
+    window.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && active) {
+        clearGraphics();
+        deactivate();
+      }
     });
   }
 

@@ -215,6 +215,11 @@ html, body {
   line-height: 1.4;
 }
 
+.live-ov-chart-wrap.measure-on .live-ov-chart-mount {
+  cursor: crosshair;
+  touch-action: none;
+}
+
 .live-ov-measure-readout:empty {
   display: none;
 }
