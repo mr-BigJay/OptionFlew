@@ -163,7 +163,6 @@
       chart.applyOptions({
         handleScroll: enabled,
         handleScale: enabled,
-        kineticScroll: enabled,
       });
     }
 
