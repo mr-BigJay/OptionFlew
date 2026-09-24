@@ -674,39 +674,54 @@
       return 0;
     }
 
+    var applyingView = false;
+    var userPanned = false;
+
     function applyViewport() {
+      if (userPanned) {
+        chart.applyOptions({ width: Math.max(280, mount.clientWidth || w) });
+        return;
+      }
       chart.priceScale("right").applyOptions({
         autoScale: true,
         scaleMargins: { top: 0.04, bottom: 0.04 },
       });
-      var vp = payload.viewport;
       var cs = payload.candles || [];
-      if (!vp || vp.from == null || vp.to == null || cs.length < 2) {
-        chart.timeScale().fitContent();
-        return;
-      }
-      var fromIdx = candleIndexAt(vp.from, "from");
-      var toIdx = candleIndexAt(vp.to, "to");
-      if (toIdx <= fromIdx) toIdx = Math.min(cs.length - 1, fromIdx + 1);
       var plotW = Math.max(280, mount.clientWidth || w);
       chart.applyOptions({ width: plotW });
-      var barsInView = Math.max(1, toIdx - fromIdx + 1);
+      if (cs.length < 2) return;
+      var vp = payload.viewport;
+      var end = cs.length - 1;
+      if (vp && vp.to != null) {
+        end = candleIndexAt(vp.to, "to");
+        end = Math.min(cs.length - 1, end + 6);
+      }
+      var spacing = 6;
+      var capacity = Math.max(24, Math.floor((plotW - 52) / spacing));
+      var fromIdx = Math.max(0, end - capacity + 1);
+      var barsInView = end - fromIdx + 1;
+      if (barsInView < capacity) {
+        spacing = Math.max(2, (plotW - 52) / barsInView);
+      }
+      applyingView = true;
       chart.timeScale().applyOptions({
-        barSpacing: Math.max(4, (plotW - 56) / barsInView),
-        rightOffset: 2,
+        barSpacing: spacing,
+        rightOffset: 1,
         fixLeftEdge: false,
       });
       try {
-        chart.timeScale().setVisibleLogicalRange({ from: fromIdx, to: toIdx });
+        chart.timeScale().setVisibleLogicalRange({ from: fromIdx, to: end });
       } catch (e) {
         chart.timeScale().fitContent();
       }
+      applyingView = false;
     }
 
     var loadingOlder = false;
     var historyDone = false;
     chart.timeScale().subscribeVisibleLogicalRangeChange(function (range) {
-      if (!range || loadingOlder || historyDone) return;
+      if (!applyingView && range) userPanned = true;
+      if (!range || loadingOlder || historyDone || applyingView) return;
       if (range.from > 12) return;
       var first = payload.candles && payload.candles[0];
       if (!first) return;
@@ -784,7 +799,7 @@
     window.addEventListener(
       "resize",
       function () {
-        chart.applyOptions({ width: mount.clientWidth });
+        applyViewport();
       },
       { passive: true }
     );
