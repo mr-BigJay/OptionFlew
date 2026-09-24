@@ -6,6 +6,9 @@ from app.position_store import (
     has_open_pattern_category,
     init_position_db,
     insert_open_position,
+    pattern_timeframes_from_form,
+    save_config,
+    selected_timeframes,
 )
 
 
@@ -64,3 +67,34 @@ def test_paper_open_close_long_tp() -> None:
     assert ok is True
     w = get_wallet(uid)
     assert float(w["balance_usdt"]) > 400.0
+
+
+def test_pattern_timeframe_form_and_defaults() -> None:
+    parsed = pattern_timeframes_from_form(
+        ["trendline|1h", "trendline|5m", "three_rp|5m", "three_rp|1h", "flag|15m"]
+    )
+    assert parsed["trendline"] == ["5m", "1h"]
+    assert parsed["three_rp"] == ["1h"]
+    assert parsed["flag"] == ["15m"]
+    assert parsed["meaningful_behavior"] == []
+    assert selected_timeframes({}, "ema50") == ["5m", "15m", "1h"]
+    assert selected_timeframes({"pattern_timeframes": parsed}, "flag") == ["15m"]
+    assert selected_timeframes({"pattern_timeframes": parsed}, "meaningful_behavior") == []
+
+
+def test_pattern_timeframes_roundtrip() -> None:
+    init_position_db()
+    uid = 9999301
+    get_config(uid)
+    save_config(
+        uid,
+        pattern_categories=["trendline", "three_rp"],
+        pattern_timeframes=pattern_timeframes_from_form(
+            ["trendline|15m", "three_rp|1h"]
+        ),
+    )
+    cfg = get_config(uid)
+    assert cfg["pattern_timeframes"]["trendline"] == ["15m"]
+    assert cfg["pattern_timeframes"]["three_rp"] == ["1h"]
+    assert selected_timeframes(cfg, "trendline") == ["15m"]
+    assert "5m" not in selected_timeframes(cfg, "three_rp")

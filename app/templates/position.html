@@ -112,9 +112,18 @@
 
   <details class="pos-details" open>
     <summary>الگوها <span class="pos-count">{{ config.pattern_categories|length }}/{{ pattern_categories|length }}</span></summary>
-    <div class="pos-check-grid">
+    <div class="pos-pattern-list">
       {% for cat in pattern_categories %}
-      <label class="pos-chip"><input type="checkbox" name="pattern_categories" value="{{ cat }}" {% if cat in config.pattern_categories %}checked{% endif %}><span>{{ category_fa(cat) }}</span></label>
+      {% set tfs = pattern_timeframes.get(cat, []) %}
+      {% set chosen = config.pattern_timeframes.get(cat) %}
+      <div class="pos-pattern-row">
+        <label class="pos-chip pos-pattern-name"><input type="checkbox" name="pattern_categories" value="{{ cat }}" {% if cat in config.pattern_categories %}checked{% endif %}><span>{{ category_fa(cat) }}</span></label>
+        <div class="pos-tf-picks">
+          {% for tf in tfs %}
+          <label class="pos-tf-chip"><input type="checkbox" name="pattern_timeframes" value="{{ cat }}|{{ tf }}" {% if chosen is none or tf in chosen %}checked{% endif %}><span>{{ tf_labels.get(tf, tf) }}</span></label>
+          {% endfor %}
+        </div>
+      </div>
       {% endfor %}
     </div>
   </details>

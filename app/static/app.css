@@ -2366,6 +2366,39 @@ bdi[dir="ltr"] {
   color: var(--accent);
 }
 .pos-chip input { accent-color: var(--accent); width: 14px; height: 14px; }
+.pos-pattern-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px 8px;
+  border-top: 1px solid var(--border);
+}
+.pos-pattern-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.pos-pattern-name { flex: 1 1 8rem; min-width: 7.5rem; }
+.pos-tf-picks { display: flex; flex-wrap: wrap; gap: 4px; }
+.pos-tf-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.68rem;
+  padding: 3px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  color: var(--muted);
+}
+.pos-tf-chip:has(input:checked) {
+  background: rgba(45, 212, 191, 0.16);
+  color: var(--accent);
+  border-color: rgba(45, 212, 191, 0.45);
+}
+.pos-tf-chip input { accent-color: var(--accent); width: 12px; height: 12px; }
 
 .pos-actions { margin-top: 10px; }
 .pos-scan-row { margin-bottom: 16px; }

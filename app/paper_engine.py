@@ -10,6 +10,7 @@ from app.position_store import (
     close_position,
     get_config,
     has_open_pattern_category,
+    selected_timeframes,
     has_open_report_kind,
     insert_open_position,
     list_positions,
@@ -154,6 +155,9 @@ def try_open_from_pattern_hit(user_id: int, hit: PatternHit) -> int | None:
         return None
     cat = str(hit.category or "")
     if cat not in (cfg.get("pattern_categories") or []):
+        return None
+    tf = str(hit.timeframe or "")
+    if tf not in selected_timeframes(cfg, cat):
         return None
     if has_open_pattern_category(user_id, cat):
         return None

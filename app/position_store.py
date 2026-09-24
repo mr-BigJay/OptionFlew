@@ -23,6 +23,18 @@ PATTERN_CATEGORIES = (
     "three_rp",
 )
 
+# تایم‌فریم‌هایی که اسکن زنده برای هر الگو واقعاً سیگنال می‌دهد.
+PATTERN_TIMEFRAMES: dict[str, tuple[str, ...]] = {
+    "triangle": ("5m", "15m", "1h"),
+    "flag": ("5m", "15m", "1h"),
+    "divergence": ("5m", "15m", "1h"),
+    "trendline": ("5m", "15m", "1h"),
+    "channel": ("5m", "15m", "1h"),
+    "ema50": ("5m", "15m", "1h"),
+    "meaningful_behavior": ("1h",),
+    "three_rp": ("1h",),
+}
+
 SCALP_SCENARIOS = (
     ("scalp_breakout", "شکست رنج 5m"),
     ("scalp_4h_rr", "۴HRR (رنج نیویork)"),
@@ -65,6 +77,7 @@ def init_position_db() -> None:
                 scalp_scenarios TEXT NOT NULL DEFAULT '[]',
                 report_kinds TEXT NOT NULL DEFAULT '[]',
                 source_overrides TEXT NOT NULL DEFAULT '{}',
+                pattern_timeframes TEXT NOT NULL DEFAULT '{}',
                 updated_at TEXT NOT NULL DEFAULT ''
             );
             CREATE TABLE IF NOT EXISTS paper_positions (
@@ -123,6 +136,13 @@ def _migrate_paper_config(conn) -> None:
             ADD COLUMN fee_profile_id TEXT NOT NULL DEFAULT 'binance_usdt_vip0'
             """
         )
+    if "pattern_timeframes" not in cols:
+        conn.execute(
+            """
+            ALTER TABLE paper_config
+            ADD COLUMN pattern_timeframes TEXT NOT NULL DEFAULT '{}'
+            """
+        )
 
 
 def _json_list(raw: str) -> list[str]:
@@ -139,6 +159,47 @@ def _json_dict(raw: str) -> dict[str, Any]:
         return v if isinstance(v, dict) else {}
     except json.JSONDecodeError:
         return {}
+
+
+def pattern_timeframes_for(category: str) -> tuple[str, ...]:
+    return PATTERN_TIMEFRAMES.get(category, ())
+
+
+def normalize_pattern_timeframes(raw: Any) -> dict[str, list[str]]:
+    """Keep only timeframes that pattern actually emits. Missing keys stay missing."""
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, list[str]] = {}
+    for cat, tfs in raw.items():
+        key = str(cat)
+        allowed = pattern_timeframes_for(key)
+        if not allowed or not isinstance(tfs, list):
+            continue
+        picked = [str(tf) for tf in allowed if str(tf) in {str(x) for x in tfs}]
+        out[key] = picked
+    return out
+
+
+def selected_timeframes(cfg: dict[str, Any], category: str) -> list[str]:
+    """Unset category means every timeframe that pattern scans."""
+    stored = cfg.get("pattern_timeframes") or {}
+    if category in stored:
+        return list(stored[category])
+    return list(pattern_timeframes_for(category))
+
+
+def pattern_timeframes_from_form(values: list[str]) -> dict[str, list[str]]:
+    buckets: dict[str, set[str]] = {cat: set() for cat in PATTERN_CATEGORIES}
+    for raw in values:
+        if "|" not in str(raw):
+            continue
+        cat, tf = str(raw).split("|", 1)
+        if cat in buckets and tf in pattern_timeframes_for(cat):
+            buckets[cat].add(tf)
+    return {
+        cat: [tf for tf in pattern_timeframes_for(cat) if tf in picked]
+        for cat, picked in buckets.items()
+    }
 
 
 def get_wallet(user_id: int) -> dict[str, Any]:
@@ -170,8 +231,9 @@ def get_config(user_id: int) -> dict[str, Any]:
                 INSERT INTO paper_config (
                     user_id, enabled, margin_usdt, leverage, stop_loss_pct,
                     take_profit_pct, fee_rate, fee_profile_id, pattern_categories,
-                    scalp_scenarios, report_kinds, source_overrides, updated_at
-                ) VALUES (?, 0, 100, 5, 1.0, 0.5, ?, ?, '[]', '[]', '[]', '{}', ?)
+                    scalp_scenarios, report_kinds, source_overrides,
+                    pattern_timeframes, updated_at
+                ) VALUES (?, 0, 100, 5, 1.0, 0.5, ?, ?, '[]', '[]', '[]', '{}', '{}', ?)
                 """,
                 (user_id, DEFAULT_FEE_RATE, DEFAULT_FEE_PROFILE_ID, now),
             )
@@ -183,6 +245,9 @@ def get_config(user_id: int) -> dict[str, Any]:
         d["scalp_scenarios"] = _json_list(d.get("scalp_scenarios") or "[]")
         d["report_kinds"] = _json_list(d.get("report_kinds") or "[]")
         d["source_overrides"] = _json_dict(d.get("source_overrides") or "{}")
+        d["pattern_timeframes"] = normalize_pattern_timeframes(
+            _json_dict(d.get("pattern_timeframes") or "{}")
+        )
         d["enabled"] = bool(d.get("enabled"))
         pid = str(d.get("fee_profile_id") or DEFAULT_FEE_PROFILE_ID)
         d["fee_profile_id"] = pid
@@ -213,6 +278,7 @@ def save_config(user_id: int, **fields: Any) -> None:
                 scalp_scenarios = ?,
                 report_kinds = ?,
                 source_overrides = ?,
+                pattern_timeframes = ?,
                 updated_at = ?
             WHERE user_id = ?
             """,
@@ -228,6 +294,10 @@ def save_config(user_id: int, **fields: Any) -> None:
                 json.dumps(cfg.get("scalp_scenarios") or [], ensure_ascii=False),
                 json.dumps(cfg.get("report_kinds") or [], ensure_ascii=False),
                 json.dumps(cfg.get("source_overrides") or {}, ensure_ascii=False),
+                json.dumps(
+                    normalize_pattern_timeframes(cfg.get("pattern_timeframes") or {}),
+                    ensure_ascii=False,
+                ),
                 now,
                 user_id,
             ),

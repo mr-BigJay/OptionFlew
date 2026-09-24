@@ -76,8 +76,10 @@ from app.paper_engine import (
 )
 from app.position_store import (
     PATTERN_CATEGORIES,
+    PATTERN_TIMEFRAMES,
     REPORT_KINDS,
     SCALP_SCENARIOS,
+    pattern_timeframes_from_form,
     close_position,
     deposit,
     get_config,
@@ -1525,6 +1527,8 @@ async def position_page(
             to_date=to_date,
             ledger=ledger,
             pattern_categories=PATTERN_CATEGORIES,
+            pattern_timeframes=PATTERN_TIMEFRAMES,
+            tf_labels=PATTERN_TF_LABELS,
             scalp_scenarios=SCALP_SCENARIOS,
             report_kinds=REPORT_KINDS,
             fee_profiles=list_fee_profiles(),
@@ -1569,6 +1573,9 @@ async def position_settings_save(request: Request):
             take_profit_pct=float(form.get("take_profit_pct") or 0.5),
             fee_profile_id=str(form.get("fee_profile_id") or "binance_usdt_vip0"),
             pattern_categories=form.getlist("pattern_categories"),
+            pattern_timeframes=pattern_timeframes_from_form(
+                [str(v) for v in form.getlist("pattern_timeframes")]
+            ),
             scalp_scenarios=form.getlist("scalp_scenarios"),
             report_kinds=form.getlist("report_kinds"),
         )
