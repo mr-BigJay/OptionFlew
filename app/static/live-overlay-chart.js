@@ -19,6 +19,113 @@
     return 2;
   }
 
+  function fmtNum(n) {
+    return Math.abs(n).toLocaleString("en-US", { maximumFractionDigits: 2 });
+  }
+
+  function barCountBetween(candles, t0, t1) {
+    if (!candles || !candles.length) return 0;
+    var a = t0;
+    var b = t1;
+    if (a > b) {
+      var tmp = a;
+      a = b;
+      b = tmp;
+    }
+    var n = 0;
+    for (var i = 0; i < candles.length; i++) {
+      var t = candles[i].time;
+      if (t >= a && t <= b) n++;
+    }
+    return n;
+  }
+
+  function setupMeasure(chart, series, mount, payload) {
+    var wrap = mount.closest(".live-ov-chart-wrap");
+    if (!wrap) return;
+    var payloadId = mount.getAttribute("data-payload-id");
+    var btn = wrap.querySelector('[data-measure-for="' + payloadId + '"]');
+    var readout = wrap.querySelector(".live-ov-measure-readout");
+    if (!btn) return;
+
+    var active = false;
+    var ptA = null;
+    var measureSeries = null;
+
+    function clearLine() {
+      if (measureSeries) {
+        chart.removeSeries(measureSeries);
+        measureSeries = null;
+      }
+    }
+
+    function setReadout(text) {
+      if (readout) readout.textContent = text || "";
+    }
+
+    btn.addEventListener("click", function () {
+      active = !active;
+      btn.classList.toggle("on", active);
+      btn.setAttribute("aria-pressed", active ? "true" : "false");
+      ptA = null;
+      clearLine();
+      if (active) {
+        setReadout("نقطهٔ اول را روی چارت بزنید");
+      } else {
+        setReadout("");
+      }
+    });
+
+    chart.subscribeClick(function (param) {
+      if (!active || !param.point || param.time == null) return;
+      var price = series.coordinateToPrice(param.point.y);
+      if (price == null || !isFinite(price)) return;
+
+      if (!ptA) {
+        ptA = { time: param.time, price: price };
+        clearLine();
+        setReadout("نقطهٔ دوم را بزنید");
+        return;
+      }
+
+      var ptB = { time: param.time, price: price };
+      var t0 = ptA.time <= ptB.time ? ptA.time : ptB.time;
+      var t1 = ptA.time <= ptB.time ? ptB.time : ptA.time;
+      var p0 = ptA.time <= ptB.time ? ptA.price : ptB.price;
+      var p1 = ptA.time <= ptB.time ? ptB.price : ptA.price;
+      var dPrice = p1 - p0;
+      var pct = p0 !== 0 ? (dPrice / p0) * 100 : 0;
+      var bars = barCountBetween(payload.candles, t0, t1);
+      var sign = dPrice >= 0 ? "+" : "−";
+
+      clearLine();
+      measureSeries = chart.addLineSeries({
+        color: "#a78bfa",
+        lineWidth: 2,
+        lineStyle: 0,
+        crosshairMarkerVisible: true,
+        priceLineVisible: false,
+        lastValueVisible: false,
+      });
+      measureSeries.setData([
+        { time: t0, value: p0 },
+        { time: t1, value: p1 },
+      ]);
+
+      setReadout(
+        sign +
+          fmtNum(dPrice) +
+          " USDT (" +
+          sign +
+          Math.abs(pct).toFixed(2) +
+          "٪) · " +
+          bars +
+          " کندل"
+      );
+      ptA = null;
+    });
+  }
+
   function initMount(mount) {
     if (mount.dataset.liveChartReady === "1") return;
     var payload = readPayload(mount);
@@ -132,6 +239,8 @@
     requestAnimationFrame(function () {
       requestAnimationFrame(applyViewport);
     });
+
+    setupMeasure(chart, series, mount, payload);
 
     var pollUrl = mount.getAttribute("data-poll-url");
     if (pollUrl) {

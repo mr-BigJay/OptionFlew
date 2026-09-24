@@ -168,6 +168,57 @@ html, body {
   line-height: 0;
 }
 
+.live-ov-chart-wrap {
+  width: 100%;
+}
+
+.live-ov-chart-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 8px 10px;
+  border-bottom: 1px solid #263238;
+  background: #121a26;
+}
+
+.live-ov-measure-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #90a4ae;
+  background: #1a2332;
+  border: 1px solid #2a3441;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.live-ov-measure-btn:hover {
+  color: #e2e8f0;
+  border-color: #3d4f5f;
+}
+
+.live-ov-measure-btn.on {
+  color: #c4b5fd;
+  border-color: #7c3aed;
+  background: rgba(124, 58, 237, 0.15);
+}
+
+.live-ov-measure-readout {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.75rem;
+  color: #a78bfa;
+  line-height: 1.4;
+}
+
+.live-ov-measure-readout:empty {
+  display: none;
+}
+
 .scenario-chart-frame .live-ov-chart-mount {
   width: 100%;
   height: clamp(220px, 52vw, 360px);
