@@ -197,6 +197,13 @@ def entry_price_for_hit(
         ep = meta.get("entry_px")
         if isinstance(ep, (int, float)) and ep > 0:
             return float(ep)
+    if hit.category == "divergence":
+        ep = meta.get("entry_px")
+        if isinstance(ep, (int, float)) and ep > 0:
+            return float(ep)
+        ei = meta.get("entry_index")
+        if isinstance(ei, int) and 0 <= ei < len(bars):
+            return float(bars[ei].close)
     if 0 <= idx < len(bars):
         return float(bars[idx].close)
     return None
@@ -674,6 +681,10 @@ def run_backtest(
             ei = hit.meta.get("entry_index")
             if isinstance(ei, int):
                 entry_ix = ei
+        elif hit.category == "divergence":
+            ei = hit.meta.get("entry_index")
+            if isinstance(ei, int):
+                entry_ix = ei
         ts = full[entry_ix].ts
         success, outcome_fa = evaluate_outcome(
             full,
@@ -699,6 +710,8 @@ def run_backtest(
                     "entry_index",
                     hit.meta.get("signal_index", idx),
                 )
+            elif hit.category == "divergence":
+                sig_ix = hit.meta.get("confirm_index", idx)
             else:
                 sig_ix = hit.meta.get("confirm_index", idx)
             if not isinstance(sig_ix, int):
