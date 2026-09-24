@@ -281,21 +281,40 @@ def triangle_viewport(meta: dict[str, Any], bars: list[OhlcBar]) -> dict[str, fl
     }
 
 
-def _y_line(meta: dict[str, Any], bars: list[OhlcBar], *, upper: bool) -> list[dict[str, float | int]]:
+def _trendline_line_points(
+    meta: dict[str, Any], bars: list[OhlcBar], *, upper: bool
+) -> list[dict[str, float | int]]:
     sk = "upper_slope" if upper else "lower_slope"
     ik = "upper_intercept" if upper else "lower_intercept"
     slope, intercept = meta.get(sk), meta.get(ik)
     if not isinstance(slope, (int, float)) or not isinstance(intercept, (int, float)):
         return []
+    side = meta.get("side")
+    if meta.get("kind") == "trendline":
+        if side == "low" and upper:
+            return []
+        if side == "high" and not upper:
+            return []
     wo = int(meta.get("window_offset") or 0)
-    i0 = max(0, len(bars) - 90)
-    i1 = len(bars) - 1
+    i0 = meta.get("start_i")
+    i1 = meta.get("end_i")
+    if isinstance(i0, int) and isinstance(i1, int):
+        li0, li1 = int(i0), int(i1)
+    else:
+        li0, li1 = 0, max(0, len(bars) - 1 - wo)
+    li_end = max(li1, len(bars) - 1 - wo)
+    g0 = max(0, wo + li0)
+    g1 = min(len(bars) - 1, wo + li_end)
     pts: list[dict[str, float | int]] = []
-    for gi in range(i0, i1 + 1):
+    for gi in range(g0, g1 + 1):
         li = gi - wo
         y = float(slope) * li + float(intercept)
         pts.append({"time": bar_unix(bars[gi]), "value": y})
     return pts
+
+
+def _y_line(meta: dict[str, Any], bars: list[OhlcBar], *, upper: bool) -> list[dict[str, float | int]]:
+    return _trendline_line_points(meta, bars, upper=upper)
 
 
 def position_overlays(pos: dict[str, Any], *, mark: float | None = None) -> dict[str, Any]:
@@ -413,19 +432,13 @@ def pattern_overlays(
             markers.append(_marker(bars, ei, text="ورود", color="#fbbf24", position="belowBar"))
 
     elif cat in ("trendline", "channel"):
-        up_pts = _y_line(meta, bars, upper=True)
-        lo_pts = _y_line(meta, bars, upper=False)
+        up_pts = _trendline_line_points(meta, bars, upper=True)
+        lo_pts = _trendline_line_points(meta, bars, upper=False)
         if up_pts:
-            lines.append({"color": "#ffb74d", "label": "مقاومت", "points": up_pts})
+            lines.append({"color": "#ffb74d", "label": "مقاومت", "points": up_pts, "width": 1})
         if lo_pts:
-            lines.append({"color": "#81c784", "label": "حمایت", "points": lo_pts})
-        for ti in meta.get("touch_highs") or []:
-            if isinstance(ti, int):
-                markers.append(_marker(bars, ti, text="▲", color="#ffb74d", position="aboveBar"))
-        for ti in meta.get("touch_lows") or []:
-            if isinstance(ti, int):
-                markers.append(_marker(bars, ti, text="▼", color="#81c784", position="belowBar"))
-        ei = meta.get("entry_index", meta.get("early_index"))
+            lines.append({"color": "#81c784", "label": "حمایت", "points": lo_pts, "width": 1})
+        ei = meta.get("entry_index", meta.get("early_index", meta.get("confirm_index")))
         if isinstance(ei, int):
             markers.append(_marker(bars, ei, text="ورود", color="#fbbf24", position="belowBar"))
 

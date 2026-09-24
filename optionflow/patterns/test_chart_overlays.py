@@ -1,11 +1,13 @@
+from datetime import datetime, timedelta, timezone
+
 from optionflow.patterns.chart_overlays import (
+    bar_unix,
     build_live_chart_payload,
     pattern_overlays,
     reanchor_meta,
     triangle_viewport,
 )
 from optionflow.patterns.ohlc import OhlcBar
-from datetime import datetime, timedelta, timezone
 
 
 def _bar(i: int, c: float) -> OhlcBar:
@@ -85,6 +87,48 @@ def test_triangle_converging_lines() -> None:
     assert pvp is not None
     assert pvp.get("fitTime") == 1
     assert pvp.get("priceMin") is not None
+
+
+def test_trendline_line_on_touch_lows_no_touch_markers() -> None:
+    wo = 30
+    slope, intercept = 6.0, 81_000.0
+    touch_lows = [18, 38, 55]
+    bars = [_bar(i, 84_000.0) for i in range(100)]
+    for ti in touch_lows:
+        gi = wo + ti
+        y = slope * ti + intercept
+        b = bars[gi]
+        bars[gi] = OhlcBar(
+            ts=b.ts,
+            open=y + 30,
+            high=y + 80,
+            low=y,
+            close=y + 40,
+            volume=1.0,
+        )
+    meta = {
+        "kind": "trendline",
+        "side": "low",
+        "lower_slope": slope,
+        "lower_intercept": intercept,
+        "upper_slope": None,
+        "upper_intercept": None,
+        "window_offset": wo,
+        "start_i": 15,
+        "end_i": 58,
+        "touch_lows": touch_lows,
+        "touch_highs": [],
+        "confirm_index": wo + touch_lows[-1],
+    }
+    ov = pattern_overlays("trendline", meta, bars)
+    assert len(ov["lines"]) == 1
+    assert all(m.get("text") not in ("▲", "▼") for m in ov["markers"])
+    pts = ov["lines"][0]["points"]
+    for ti in touch_lows:
+        gi = wo + ti
+        t = bar_unix(bars[gi])
+        val = next(p["value"] for p in pts if p["time"] == t)
+        assert abs(val - bars[gi].low) < 0.01
 
 
 def test_position_and_pattern_merge() -> None:

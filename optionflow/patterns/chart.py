@@ -687,7 +687,7 @@ def _render_price_pattern(
                     [x0, x1],
                     [su * li0 + iu, su * li1 + iu],
                     color="#ffb74d",
-                    linewidth=2,
+                    linewidth=1.0,
                     label="مقاومت",
                 )
             if sl is not None and il is not None:
@@ -695,34 +695,9 @@ def _render_price_pattern(
                     [x0, x1],
                     [sl * li0 + il, sl * li1 + il],
                     color="#81c784",
-                    linewidth=2,
+                    linewidth=1.0,
                     label="حمایت",
                 )
-            touch_c = "#eceff1" if hit.category == "trendline" else None
-            for ti in meta.get("touch_highs") or []:
-                gi = wo + int(ti)
-                if start <= gi < end:
-                    ax.scatter(
-                        [mdates.date2num(bars[gi].ts)],
-                        [bars[gi].high],
-                        c=touch_c or "#ffb74d",
-                        s=36,
-                        zorder=6,
-                        edgecolors="#fff",
-                        linewidths=0.4,
-                    )
-            for ti in meta.get("touch_lows") or []:
-                gi = wo + int(ti)
-                if start <= gi < end:
-                    ax.scatter(
-                        [mdates.date2num(bars[gi].ts)],
-                        [bars[gi].low],
-                        c=touch_c or "#81c784",
-                        s=36,
-                        zorder=6,
-                        edgecolors="#fff",
-                        linewidths=0.4,
-                    )
         _mark_early_entry(
             ax, bars, meta, start, end, color="#fbbf24" if hit.category == "trendline" else None
         )
