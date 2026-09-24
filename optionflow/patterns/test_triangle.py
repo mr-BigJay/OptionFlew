@@ -64,6 +64,7 @@ def test_textbook_ascending() -> None:
     assert hit is not None
     assert hit.meta["kind"] == "ascending"
     assert hit.meta.get("direction") is None
+    assert hit.meta.get("structure_key", "").startswith("ascending:H")
     assert detect_triangle(bars, "5m", require_breakout=True) is None
 
 

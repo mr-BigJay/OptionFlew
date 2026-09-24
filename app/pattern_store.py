@@ -84,11 +84,19 @@ def pattern_content_signature(
         yk = int(round(float(y))) if isinstance(y, (int, float)) else 0
         return f"{pattern_id}:{stage}:{side}:y{yk}"
     if category == "triangle":
+        sk = meta.get("structure_key")
+        if sk:
+            return f"{pattern_id}:{stage}:{sk}"
         kind = meta.get("kind") or ""
         u = meta.get("upper_now")
         lo = meta.get("lower_now")
-        uk = int(round(float(u))) if isinstance(u, (int, float)) else 0
-        lk = int(round(float(lo))) if isinstance(lo, (int, float)) else 0
+        # رویدادهای قدیمی: گرد کردن درشت‌تر تا تکرارهای نزدیک در UI یکی شوند
+        def _tri_bucket(v: Any) -> int:
+            if not isinstance(v, (int, float)):
+                return 0
+            return int(round(float(v) / 250.0) * 250)
+
+        uk, lk = _tri_bucket(u), _tri_bucket(lo)
         return f"{pattern_id}:{stage}:{kind}:u{uk}:l{lk}"
     if category == "flag":
         fh = meta.get("flag_high")
