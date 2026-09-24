@@ -1767,6 +1767,7 @@ async def position_open_detail(request: Request, position_id: int):
             pos=pos,
             mark_price=mark,
             pnl_usdt=pnl,
+            chart_levels_only=True,
             source_fa=_position_source_fa,
             status_fa=_position_status_fa,
             **live_ctx,

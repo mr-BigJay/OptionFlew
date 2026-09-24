@@ -20,6 +20,7 @@
           class="live-ov-chart-mount"
           data-live-overlay-chart
           data-payload-id="{{ chart_payload_id }}"
+          {% if chart_levels_only %}data-levels-only="1"{% endif %}
           {% if chart_poll_url %}data-poll-url="{{ chart_poll_url }}"{% endif %}
         ></div>
         <div class="live-ov-measure-layer" aria-hidden="true"></div>

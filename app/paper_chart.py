@@ -142,14 +142,12 @@ def _paper_hlines(pos: dict[str, Any], mark: float | None) -> list[tuple[float, 
     entry = float(pos["entry_price"])
     sl = float(pos["sl_price"])
     tp = float(pos["tp_price"])
-    lines: list[tuple[float, str, str, str]] = [
+    del mark
+    return [
         (entry, "#fbbf24", "-", f"Entry {entry:,.0f}"),
         (sl, "#f87171", "--", f"SL {sl:,.0f}"),
         (tp, "#34d399", "--", f"TP {tp:,.0f}"),
     ]
-    if mark is not None and mark > 0:
-        lines.append((mark, "#60a5fa", ":", f"Mark {mark:,.0f}"))
-    return lines
 
 
 def _load_pattern_bars(interval: str) -> list[OhlcBar]:

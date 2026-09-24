@@ -647,8 +647,15 @@
       autoscaleInfoProvider: candleAutoscale,
     });
     series.setData(payload.candles);
+    var levelsOnly = mount.getAttribute("data-levels-only") === "1";
+    function keepTradeLevel(label) {
+      if (!levelsOnly) return true;
+      var t = String(label || "").trim().toLowerCase();
+      return t === "entry" || t === "sl" || t === "tp";
+    }
     (ov.hlines || []).forEach(function (hl) {
       if (!hl || typeof hl.price !== "number") return;
+      if (!keepTradeLevel(hl.label)) return;
       series.createPriceLine({
         price: hl.price,
         color: hl.color || "#78909c",
@@ -691,7 +698,13 @@
     });
 
     if (ov.markers && ov.markers.length) {
-      series.setMarkers(ov.markers);
+      var markers = ov.markers;
+      if (levelsOnly) {
+        markers = markers.filter(function (mk) {
+          return keepTradeLevel(mk && mk.text);
+        });
+      }
+      if (markers.length) series.setMarkers(markers);
     }
 
     function candleIndexAt(time, side) {
