@@ -2213,7 +2213,7 @@ async def chart_v2_page(request: Request):
         "chart_v2.html",
         _page_ctx(
             request,
-            active="menu",
+            active="v2",
             caption=payload["caption"],
             payload_json=v2_payload_json(payload),
         ),
