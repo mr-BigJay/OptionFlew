@@ -3,11 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from optionflow.flow_analyzer import (
-    FlowAnalysis,
-    confident_first_strike,
-    top_strikes_near_spot,
-)
+from optionflow.flow_analyzer import FlowAnalysis, top_strikes_near_spot
 from optionflow.path_scenario import (
     MovementPath,
     effective_movement_path,
@@ -409,12 +405,6 @@ class ScenarioPlan:
     first_dir: str
     second_dir: str
     two_legs: bool
-    # False: no concentrated strike, so A→B must not be drawn or stated as a level.
-    first_confident: bool = True
-    zone_low: int | None = None
-    zone_high: int | None = None
-    band_low: int | None = None
-    band_high: int | None = None
 
 
 def resolve_scenario_plan(
@@ -438,37 +428,13 @@ def resolve_scenario_plan(
     if not path.legs:
         return None
     plan = _normalize_bc(path, support=support, target=target)
-    anchored = confident_first_strike(main, plan.first_dir)
-    if anchored is None:
-        return ScenarioPlan(
-            spot=spot,
-            b=plan.b,
-            c=plan.c,
-            first_dir=plan.first_dir,
-            second_dir=plan.second_dir,
-            two_legs=plan.two_legs,
-            first_confident=False,
-        )
     return ScenarioPlan(
         spot=spot,
-        b=anchored,
+        b=plan.b,
         c=plan.c,
         first_dir=plan.first_dir,
         second_dir=plan.second_dir,
         two_legs=plan.two_legs,
-        first_confident=True,
-    )
-
-
-def _unclear_first_leg(spot: float) -> str:
-    spot_disp = f"{spot:,.0f}"
-    return (
-        f"**سناریوی اصلی BTC**\nقیمت فعلی: {spot_disp} دلار\n\n"
-        "**حرکت اول**\nمقصد اول نامشخص\n\n"
-        "خرید کال یا خرید پوت در این پنجره روی یک استرایک جمع نشده است. "
-        "میانگین وزنی استرایک‌ها و فاصلهٔ ثابت از قیمت، مقصد محسوب نمی‌شود.\n\n"
-        "**جمع‌بندی**\n\n"
-        "تا وقتی حجم جهت‌دار روی یک استرایک غالب شود، مسیر A به B رسم نمی‌شود."
     )
 
 
@@ -526,10 +492,6 @@ def format_narrative_scenario(
         return "دادهٔ کافی برای سناریوی اصلی از قیمت فعلی در دسترس نیست."
 
     plan = _normalize_bc(path, support=support, target=target)
-    anchored = confident_first_strike(main, plan.first_dir)
-    if anchored is None:
-        return _unclear_first_leg(spot)
-    plan.b = anchored
     b, c = plan.b, plan.c
     spot_disp = f"{spot:,.0f}"
     buf = _sl_buffer(spot)
