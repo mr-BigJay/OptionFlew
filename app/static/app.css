@@ -1604,8 +1604,13 @@ bdi[dir="ltr"] {
   color: var(--danger);
 }
 
-.bt-cache-row.status-partial td:nth-child(2) {
+.bt-cache-row.status-partial td:nth-child(2),
+.bt-cache-row.status-stale td:nth-child(2) {
   color: #f39c12;
+}
+
+.bt-cache-row.status-ok td:nth-child(2) {
+  color: #7ec8a8;
 }
 
 .btn-compact {
