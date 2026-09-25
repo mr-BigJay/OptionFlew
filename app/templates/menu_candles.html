@@ -9,6 +9,9 @@
 {% endblock %}
 
 {% block content %}
+{% if history_dl.error %}
+<p class="flash err">{{ history_dl.message or 'خطا در دانلود' }}{% if history_dl.error %} — {{ history_dl.error }}{% endif %}</p>
+{% endif %}
 <section class="bt-cache-panel card">
   <h2 class="bt-section-title">وضعیت ذخیرهٔ کندل‌ها (BTCUSDT)</h2>
   <p class="muted bt-hint">پیش‌فرض نصب: حدود ۲ سال برای ۱m، ۵m، ۱۵m، ۱h، ۴h و روزانه. فقط کندل‌های جدید به انتهای داده اضافه می‌شوند.</p>
@@ -61,5 +64,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/candles.js?v=1" defer></script>
+<script src="/static/candles.js?v=2" defer></script>
 {% endblock %}

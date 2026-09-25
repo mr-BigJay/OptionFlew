@@ -35,7 +35,10 @@
           setTimeout(pollHistory, 800);
         } else {
           if (wrap.getAttribute("data-was-running") === "1") {
-            window.location.href = "/menu/candles";
+            var err = (dl.error || "").trim();
+            window.location.href = err
+              ? "/menu/candles?dl=error"
+              : "/menu/candles?dl=done";
             return;
           }
           wrap.hidden = true;

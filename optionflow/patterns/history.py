@@ -38,6 +38,9 @@ INTERVAL_LABEL_FA = {
 ProgressCallback = Callable[[int, str], None]
 
 DEFAULT_HISTORY_DAYS = 730
+# 1m × ~730 روز ≈ ۱M کندل — ذخیرهٔ تک‌فایل OOM می‌دهد؛ segment + flush دوره‌ای
+SEGMENT_FLUSH_BARS = 10_000
+_1M_SEGMENTS_DIRNAME = "btcusdt_1m_segments"
 
 SYNC_META_FILENAME = "sync_meta.json"
 
@@ -50,6 +53,100 @@ def history_data_dir(base: Path) -> Path:
 
 def _cache_file(data_dir: Path, interval: str) -> Path:
     return data_dir / f"btcusdt_{interval}.json.gz"
+
+
+def _1m_segments_dir(data_dir: Path) -> Path:
+    return data_dir / _1M_SEGMENTS_DIRNAME
+
+
+def _list_1m_segment_paths(data_dir: Path) -> list[Path]:
+    seg_dir = _1m_segments_dir(data_dir)
+    if not seg_dir.is_dir():
+        return []
+    return sorted(seg_dir.glob("seg_*.json.gz"))
+
+
+def _1m_has_cache(data_dir: Path) -> bool:
+    if _list_1m_segment_paths(data_dir):
+        return True
+    return _cache_file(data_dir, "1m").is_file()
+
+
+def _read_segment_payload(path: Path) -> dict[str, Any]:
+    with gzip.open(path, "rt", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _1m_cache_summary(data_dir: Path) -> dict[str, Any]:
+    """خلاصهٔ کش 1m بدون بارگذاری همهٔ کندل‌ها در حافظه."""
+    paths = _list_1m_segment_paths(data_dir)
+    if paths:
+        total = 0
+        from_iso = ""
+        to_iso = ""
+        for p in paths:
+            payload = _read_segment_payload(p)
+            rows = payload.get("bars") or []
+            total += int(payload.get("count") or len(rows))
+            if rows:
+                if not from_iso:
+                    from_iso = str(rows[0][0])
+                to_iso = str(rows[-1][0])
+        return {
+            "count": total,
+            "from_iso": from_iso,
+            "to_iso": to_iso,
+            "file_exists": True,
+        }
+    path = _cache_file(data_dir, "1m")
+    if not path.is_file():
+        return {"count": 0, "from_iso": "", "to_iso": "", "file_exists": False}
+    payload = _read_segment_payload(path)
+    rows = payload.get("bars") or []
+    return {
+        "count": int(payload.get("count") or len(rows)),
+        "from_iso": str(rows[0][0]) if rows else "",
+        "to_iso": str(rows[-1][0]) if rows else "",
+        "file_exists": True,
+    }
+
+
+def _last_1m_bar(data_dir: Path) -> OhlcBar | None:
+    paths = _list_1m_segment_paths(data_dir)
+    if paths:
+        payload = _read_segment_payload(paths[-1])
+        rows = payload.get("bars") or []
+        if rows:
+            return _row_to_bar(rows[-1])
+        return None
+    path = _cache_file(data_dir, "1m")
+    if not path.is_file():
+        return None
+    bars = load_cached_bars(data_dir, "1m")
+    return bars[-1] if bars else None
+
+
+def _save_1m_segment(data_dir: Path, bars: list[OhlcBar]) -> None:
+    if not bars:
+        return
+    uniq: dict[int, OhlcBar] = {}
+    for b in bars:
+        uniq[int(b.ts.timestamp() * 1000)] = b
+    merged = [uniq[k] for k in sorted(uniq)]
+    seg_dir = _1m_segments_dir(data_dir)
+    seg_dir.mkdir(parents=True, exist_ok=True)
+    first_ms = int(merged[0].ts.timestamp() * 1000)
+    path = seg_dir / f"seg_{first_ms}.json.gz"
+    payload = {
+        "symbol": "BTCUSDT",
+        "interval": "1m",
+        "updated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "count": len(merged),
+        "bars": [_bar_to_row(b) for b in merged],
+    }
+    with gzip.open(path, "wt", encoding="utf-8") as f:
+        json.dump(payload, f, separators=(",", ":"))
+    logger.info("1m segment saved: %s (%d bars)", path.name, len(merged))
 
 
 def _sync_meta_path(data_dir: Path) -> Path:
@@ -142,12 +239,24 @@ def _row_to_bar(row: list[Any]) -> OhlcBar:
 
 
 def load_cached_bars(data_dir: Path, interval: str) -> list[OhlcBar]:
+    if interval == "1m":
+        paths = _list_1m_segment_paths(data_dir)
+        if paths:
+            uniq: dict[int, OhlcBar] = {}
+            for p in paths:
+                try:
+                    payload = _read_segment_payload(p)
+                    for r in payload.get("bars") or []:
+                        b = _row_to_bar(r)
+                        uniq[int(b.ts.timestamp() * 1000)] = b
+                except Exception as e:
+                    logger.warning("Could not read 1m segment %s: %s", p, e)
+            return [uniq[k] for k in sorted(uniq)]
     path = _cache_file(data_dir, interval)
     if not path.is_file():
         return []
     try:
-        with gzip.open(path, "rt", encoding="utf-8") as f:
-            payload = json.load(f)
+        payload = _read_segment_payload(path)
         return [_row_to_bar(r) for r in payload.get("bars", [])]
     except Exception as e:
         logger.warning("Could not read history cache %s: %s", path, e)
@@ -204,6 +313,83 @@ def _estimate_pages(interval: str, start: datetime, end: datetime) -> int:
     return max(1, (bars + MAX_KLINES - 1) // MAX_KLINES)
 
 
+def _raw_page_to_bars(raw: list[list[Any]], end_ms: int) -> list[OhlcBar]:
+    out: list[OhlcBar] = []
+    for k in raw:
+        ts_ms = int(k[0])
+        if ts_ms > end_ms:
+            continue
+        out.append(
+            OhlcBar(
+                ts=datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc),
+                open=float(k[1]),
+                high=float(k[2]),
+                low=float(k[3]),
+                close=float(k[4]),
+                volume=float(k[5]),
+            )
+        )
+    return out
+
+
+def download_and_cache_1m_segmented(
+    data_dir: Path,
+    start: datetime,
+    end: datetime,
+    *,
+    on_progress: ProgressCallback | None = None,
+    progress_base: int = 0,
+    progress_span: int = 100,
+) -> tuple[list[OhlcBar], Path]:
+    """دانلود 1m با flush دوره‌ای به segment (جلوگیری از OOM)."""
+    if start.tzinfo is None:
+        start = start.replace(tzinfo=timezone.utc)
+    if end.tzinfo is None:
+        end = end.replace(tzinfo=timezone.utc)
+    if end <= start:
+        last = _last_1m_bar(data_dir)
+        return ([last] if last else []), _cache_file(data_dir, "1m")
+
+    start_ms = int(start.timestamp() * 1000)
+    end_ms = int(end.timestamp() * 1000)
+    step = INTERVAL_MS["1m"]
+    cursor = start_ms
+    total_pages = _estimate_pages("1m", start, end)
+    page = 0
+    buffer: list[OhlcBar] = []
+
+    while cursor < end_ms:
+        raw = _fetch_page("1m", cursor, end_ms)
+        page += 1
+        if on_progress and total_pages > 0:
+            pct = progress_base + int(page * progress_span / total_pages)
+            on_progress(
+                min(progress_base + progress_span, pct),
+                f"صفحه {page}/{total_pages}",
+            )
+        if not raw:
+            break
+        buffer.extend(_raw_page_to_bars(raw, end_ms))
+        if len(buffer) >= SEGMENT_FLUSH_BARS:
+            _save_1m_segment(data_dir, buffer)
+            buffer = []
+        last_open = int(raw[-1][0])
+        next_cursor = last_open + step
+        if next_cursor <= cursor:
+            break
+        cursor = next_cursor
+        if len(raw) < MAX_KLINES:
+            break
+
+    if buffer:
+        _save_1m_segment(data_dir, buffer)
+
+    paths = _list_1m_segment_paths(data_dir)
+    last_path = paths[-1] if paths else _cache_file(data_dir, "1m")
+    last = _last_1m_bar(data_dir)
+    return ([last] if last else []), last_path
+
+
 def fetch_klines_range(
     interval: str,
     start: datetime,
@@ -238,20 +424,7 @@ def fetch_klines_range(
             on_progress(min(progress_base + progress_span, pct), f"صفحه {page}/{total_pages}")
         if not raw:
             break
-        for k in raw:
-            ts_ms = int(k[0])
-            if ts_ms > end_ms:
-                continue
-            out.append(
-                OhlcBar(
-                    ts=datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc),
-                    open=float(k[1]),
-                    high=float(k[2]),
-                    low=float(k[3]),
-                    close=float(k[4]),
-                    volume=float(k[5]),
-                )
-            )
+        out.extend(_raw_page_to_bars(raw, end_ms))
         last_open = int(raw[-1][0])
         next_cursor = last_open + step
         if next_cursor <= cursor:
@@ -289,6 +462,15 @@ def download_and_cache(
     progress_base: int = 0,
     progress_span: int = 100,
 ) -> tuple[list[OhlcBar], Path]:
+    if interval == "1m":
+        return download_and_cache_1m_segmented(
+            data_dir,
+            start,
+            end,
+            on_progress=on_progress,
+            progress_base=progress_base,
+            progress_span=progress_span,
+        )
     cached = load_cached_bars(data_dir, interval)
     fetched = fetch_klines_range(
         interval,
@@ -316,7 +498,11 @@ def sync_interval_incremental(
     """Append only missing bars. Full backfill when cache is empty."""
     if end is None:
         end = datetime.now(timezone.utc)
-    cached = load_cached_bars(data_dir, interval)
+    if interval == "1m":
+        last = _last_1m_bar(data_dir)
+        cached = [last] if last else []
+    else:
+        cached = load_cached_bars(data_dir, interval)
     if not cached:
         start = end - timedelta(days=backfill_days)
     else:
@@ -324,6 +510,8 @@ def sync_interval_incremental(
         if inc_start is None or inc_start >= end:
             if on_progress:
                 on_progress(progress_base + progress_span, "به‌روز")
+            if interval == "1m":
+                return [], False
             return cached, False
         start = inc_start
     merged, _ = download_and_cache(
@@ -349,18 +537,33 @@ def bars_cover_completed_utc_day(bars: list[OhlcBar], interval: str) -> bool:
     return last_bar >= day_end - timedelta(milliseconds=INTERVAL_MS[interval])
 
 
+def _needs_initial_depth_span(
+    from_dt: datetime,
+    to_dt: datetime,
+    count: int,
+    *,
+    target_days: int,
+) -> bool:
+    now = datetime.now(timezone.utc)
+    want_start = now - timedelta(days=target_days)
+    from_u = from_dt.astimezone(timezone.utc)
+    to_u = to_dt.astimezone(timezone.utc)
+    shallow = from_u > want_start + timedelta(days=14)
+    span_days = (to_u - from_u).total_seconds() / 86400.0
+    enough_bars = count >= max(50, target_days - 20)
+    deep_enough = span_days >= target_days - 25
+    return shallow or not (enough_bars and deep_enough)
+
+
 def _needs_initial_depth(bars: list[OhlcBar], *, target_days: int) -> bool:
     if not bars:
         return True
-    now = datetime.now(timezone.utc)
-    want_start = now - timedelta(days=target_days)
-    from_dt = bars[0].ts.astimezone(timezone.utc)
-    to_dt = bars[-1].ts.astimezone(timezone.utc)
-    shallow = from_dt > want_start + timedelta(days=14)
-    span_days = (to_dt - from_dt).total_seconds() / 86400.0
-    enough_bars = len(bars) >= max(50, target_days - 20)
-    deep_enough = span_days >= target_days - 25
-    return shallow or not (enough_bars and deep_enough)
+    return _needs_initial_depth_span(
+        bars[0].ts,
+        bars[-1].ts,
+        len(bars),
+        target_days=target_days,
+    )
 
 
 def interval_is_fresh(
@@ -370,6 +573,20 @@ def interval_is_fresh(
     target_days: int = DEFAULT_HISTORY_DAYS,
 ) -> bool:
     """داده تا پایان آخرین روز UTC کامل + عمق کافی برای بکتست."""
+    if interval == "1m":
+        summary = _1m_cache_summary(data_dir)
+        if summary["count"] <= 0 or not summary["to_iso"]:
+            return False
+        to_dt = datetime.fromisoformat(summary["to_iso"].replace("Z", "+00:00"))
+        from_dt = (
+            datetime.fromisoformat(summary["from_iso"].replace("Z", "+00:00"))
+            if summary["from_iso"]
+            else to_dt
+        )
+        if _needs_initial_depth_span(from_dt, to_dt, summary["count"], target_days=target_days):
+            return False
+        last = _last_1m_bar(data_dir)
+        return bool(last and bars_cover_completed_utc_day([last], interval))
     bars = load_cached_bars(data_dir, interval)
     if not bars or _needs_initial_depth(bars, target_days=target_days):
         return False
@@ -417,25 +634,49 @@ def cache_status(data_dir: Path, *, target_days: int = DEFAULT_HISTORY_DAYS) -> 
     hist = history_data_dir(data_dir)
     rows: list[dict[str, Any]] = []
     for iv in BACKTEST_INTERVALS:
-        path = _cache_file(hist, iv)
-        bars = load_cached_bars(hist, iv) if path.is_file() else []
-        if not bars:
-            rows.append(
-                {
-                    "interval": iv,
-                    "label_fa": INTERVAL_LABEL_FA.get(iv, iv),
-                    "count": 0,
-                    "from_iso": "",
-                    "to_iso": "",
-                    "file_exists": path.is_file(),
-                    "status": "missing",
-                    "status_fa": "ذخیره نشده",
-                    "needs_download": True,
-                }
-            )
-            continue
-        from_dt = bars[0].ts.astimezone(timezone.utc)
-        to_dt = bars[-1].ts.astimezone(timezone.utc)
+        if iv == "1m":
+            summary = _1m_cache_summary(hist)
+            if summary["count"] <= 0:
+                rows.append(
+                    {
+                        "interval": iv,
+                        "label_fa": INTERVAL_LABEL_FA.get(iv, iv),
+                        "count": 0,
+                        "from_iso": "",
+                        "to_iso": "",
+                        "file_exists": summary["file_exists"],
+                        "status": "missing",
+                        "status_fa": "ذخیره نشده",
+                        "needs_download": True,
+                    }
+                )
+                continue
+            from_iso = summary["from_iso"]
+            to_iso = summary["to_iso"]
+            count = summary["count"]
+            file_exists = True
+        else:
+            path = _cache_file(hist, iv)
+            bars = load_cached_bars(hist, iv) if path.is_file() else []
+            if not bars:
+                rows.append(
+                    {
+                        "interval": iv,
+                        "label_fa": INTERVAL_LABEL_FA.get(iv, iv),
+                        "count": 0,
+                        "from_iso": "",
+                        "to_iso": "",
+                        "file_exists": path.is_file(),
+                        "status": "missing",
+                        "status_fa": "ذخیره نشده",
+                        "needs_download": True,
+                    }
+                )
+                continue
+            from_iso = bars[0].ts.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+            to_iso = bars[-1].ts.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+            count = len(bars)
+            file_exists = True
         fresh = interval_is_fresh(hist, iv, target_days=target_days)
         if fresh:
             status, status_fa, needs = "ok", "بروز می باشد", False
@@ -445,10 +686,10 @@ def cache_status(data_dir: Path, *, target_days: int = DEFAULT_HISTORY_DAYS) -> 
             {
                 "interval": iv,
                 "label_fa": INTERVAL_LABEL_FA.get(iv, iv),
-                "count": len(bars),
-                "from_iso": from_dt.isoformat().replace("+00:00", "Z"),
-                "to_iso": to_dt.isoformat().replace("+00:00", "Z"),
-                "file_exists": True,
+                "count": count,
+                "from_iso": from_iso,
+                "to_iso": to_iso,
+                "file_exists": file_exists,
                 "status": status,
                 "status_fa": status_fa,
                 "needs_download": needs,

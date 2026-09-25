@@ -9,6 +9,7 @@ from optionflow.patterns.history import (
     BACKTEST_INTERVALS,
     DEFAULT_HISTORY_DAYS,
     ProgressCallback,
+    _1m_cache_summary,
     download_and_cache,
     expected_sync_utc_day_str,
     history_data_dir,
@@ -51,7 +52,10 @@ def seed_btc_history(
             progress_base=0,
             progress_span=100,
         )
-        counts[iv] = len(bars)
+        if iv == "1m":
+            counts[iv] = int(_1m_cache_summary(hist).get("count") or 0)
+        else:
+            counts[iv] = len(bars)
         if on_interval_progress:
             on_interval_progress(iv, int((n + 1) * 100 / total), "تمام")
     return counts
