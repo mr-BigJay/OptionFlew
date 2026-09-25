@@ -17,10 +17,6 @@ LOOKBACK_RIGHT = 10
 EARLY_RIGHT = 1
 RANGE_LOWER = 5
 RANGE_UPPER = 60
-# واگرایی باید روی چارت مشهود باشد — خطوط تقریباً صاف رد می‌شوند
-MIN_RSI_DIVERGENCE = 5.0
-MIN_PRICE_LEG_PCT = 0.0015  # ~۰.۱۵٪ فاصلهٔ قیمت بین دو pivot
-MIN_RSI_SLOPE_PER_BAR = 0.12  # حداقل شیب RSI بین pivotها
 
 
 def _in_range(p_a: int, p_b: int) -> bool:
@@ -82,38 +78,6 @@ def _bullish_ok(
     if lows[p_b] >= lows[p_a]:
         return None
     return float(ra), float(rb)
-
-
-def _is_meaningful_divergence(
-    *,
-    direction: str,
-    p_a: int,
-    p_b: int,
-    price_a: float,
-    price_b: float,
-    ra: float,
-    rb: float,
-) -> bool:
-    """رد واگرایی‌هایی که روی قیمت/RSI تقریباً خط صاف هستند."""
-    if direction not in ("down", "up"):
-        return False
-    span = max(int(p_b) - int(p_a), 1)
-    rsi_delta = abs(float(ra) - float(rb))
-    if rsi_delta < MIN_RSI_DIVERGENCE:
-        return False
-    if rsi_delta / span < MIN_RSI_SLOPE_PER_BAR:
-        return False
-    base = max(abs(float(price_a)), 1e-9)
-    price_leg_pct = abs(float(price_b) - float(price_a)) / base
-    if price_leg_pct < MIN_PRICE_LEG_PCT:
-        return False
-    if direction == "down":
-        if float(price_b) <= float(price_a) or float(rb) >= float(ra):
-            return False
-    else:
-        if float(price_b) >= float(price_a) or float(rb) <= float(ra):
-            return False
-    return True
 
 
 def _bar_close(bars: list[OhlcBar], idx: int) -> float | None:
@@ -287,16 +251,7 @@ def detect_rsi_divergence(
                 pair = _bearish_ok(rs, highs, p_a, p_b)
                 if pair:
                     ra, rb = pair
-                    if _is_meaningful_divergence(
-                        direction="down",
-                        p_a=p_a,
-                        p_b=p_b,
-                        price_a=highs[p_a],
-                        price_b=highs[p_b],
-                        ra=ra,
-                        rb=rb,
-                    ):
-                        return _hit_bearish(
+                    return _hit_bearish(
                         bars,
                         timeframe,
                         p_a,
@@ -316,16 +271,7 @@ def detect_rsi_divergence(
                 pair = _bullish_ok(rs, lows, p_a, p_b)
                 if pair:
                     ra, rb = pair
-                    if _is_meaningful_divergence(
-                        direction="up",
-                        p_a=p_a,
-                        p_b=p_b,
-                        price_a=lows[p_a],
-                        price_b=lows[p_b],
-                        ra=ra,
-                        rb=rb,
-                    ):
-                        return _hit_bullish(
+                    return _hit_bullish(
                         bars,
                         timeframe,
                         p_a,
@@ -348,16 +294,7 @@ def detect_rsi_divergence(
             pair = _bearish_ok(rs, highs, p_a, p_b)
             if pair:
                 ra, rb = pair
-                if _is_meaningful_divergence(
-                    direction="down",
-                    p_a=p_a,
-                    p_b=p_b,
-                    price_a=highs[p_a],
-                    price_b=highs[p_b],
-                    ra=ra,
-                    rb=rb,
-                ):
-                    return _hit_bearish(
+                return _hit_bearish(
                     bars,
                     timeframe,
                     p_a,
@@ -377,16 +314,7 @@ def detect_rsi_divergence(
             pair = _bullish_ok(rs, lows, p_a, p_b)
             if pair:
                 ra, rb = pair
-                if _is_meaningful_divergence(
-                    direction="up",
-                    p_a=p_a,
-                    p_b=p_b,
-                    price_a=lows[p_a],
-                    price_b=lows[p_b],
-                    ra=ra,
-                    rb=rb,
-                ):
-                    return _hit_bullish(
+                return _hit_bullish(
                     bars,
                     timeframe,
                     p_a,

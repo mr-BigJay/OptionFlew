@@ -11,7 +11,6 @@ from optionflow.patterns.divergence import (
     _bullish_ok,
     _entry_lines,
     _forming_pivot,
-    _is_meaningful_divergence,
     detect_rsi_divergence,
 )
 from optionflow.patterns.indicators import (
@@ -65,44 +64,6 @@ def test_bearish_regular_conditions() -> None:
     rs[50], rs[80] = 75.0, 70.0
     highs[50], highs[80] = 100.0, 105.0
     assert _bearish_ok(rs, highs, 50, 80) == (75.0, 70.0)
-
-
-def test_meaningful_divergence_rejects_flat_rsi_slope() -> None:
-    # اختلاف RSI بالای ۵ است، ولی روی ۸۰ کندل شیب خوابیده است.
-    assert not _is_meaningful_divergence(
-        direction="down",
-        p_a=10,
-        p_b=90,
-        price_a=86000.0,
-        price_b=87000.0,
-        ra=70.0,
-        rb=64.0,
-    )
-
-
-def test_meaningful_divergence_rejects_tiny_price_move() -> None:
-    # شیب RSI کافی است؛ حرکت قیمت از ۰.۱۵٪ کمتر است.
-    assert not _is_meaningful_divergence(
-        direction="down",
-        p_a=40,
-        p_b=60,
-        price_a=86000.0,
-        price_b=86080.0,
-        ra=70.0,
-        rb=60.0,
-    )
-
-
-def test_meaningful_divergence_accepts_clear_bearish() -> None:
-    assert _is_meaningful_divergence(
-        direction="down",
-        p_a=50,
-        p_b=80,
-        price_a=86000.0,
-        price_b=86200.0,
-        ra=68.0,
-        rb=58.0,
-    )
 
 
 def test_entry_lines_early_and_final() -> None:
