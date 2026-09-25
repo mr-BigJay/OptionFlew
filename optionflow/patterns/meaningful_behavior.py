@@ -10,7 +10,7 @@ from optionflow.patterns.ohlc import OhlcBar
 from optionflow.patterns.types import PatternHit
 
 # رفتار معنادار — فلو آپشن Deribit (مستقل از الگوهای کندلی)
-SURGE_RATIO = 2.2
+SURGE_RATIO = 4.0
 MIN_BURST_BTC = 28.0
 MIN_BASELINE_BTC = 8.0
 MIN_TARGET_MOVE_PCT = 0.004
@@ -81,7 +81,7 @@ def _surge_ok(burst: float, baseline: float, baseline_minutes: float, burst_minu
     burst_rate = burst / max(burst_minutes, 1.0)
     if base_rate <= 0:
         return burst >= MIN_BURST_BTC * 1.5
-    return burst_rate >= base_rate * SURGE_RATIO
+    return burst_rate > base_rate * SURGE_RATIO
 
 
 def _alert_key(tf: str, pattern_id: str, end_ms: int, burst: float) -> str:

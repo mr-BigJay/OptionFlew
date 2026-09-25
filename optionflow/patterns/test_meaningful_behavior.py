@@ -18,12 +18,13 @@ def test_surge_requires_min_burst() -> None:
 
 
 def test_surge_ratio() -> None:
-    baseline = 30.0
+    baseline = 200.0
     minutes = 50.0
     burst_min = 5.0
     base_rate = baseline / minutes
-    need = max(MIN_BURST_BTC * 1.5, base_rate * burst_min * SURGE_RATIO + 1)
-    assert _surge_ok(need, baseline, minutes, burst_min)
+    exactly = base_rate * burst_min * SURGE_RATIO
+    assert not _surge_ok(exactly, baseline, minutes, burst_min)
+    assert _surge_ok(exactly + 1, baseline, minutes, burst_min)
 
 
 def test_behavior_path_reaches_strike_target() -> None:
