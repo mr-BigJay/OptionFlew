@@ -125,8 +125,9 @@ def _compute_pine(
         else:
             panes.append(pane)
 
+    # فقط EMAهایی که خود اسکریپت plot کرده؛ فراخوانی داخلی ta.ema خط اضافه روی قیمت نمی‌سازد.
     ema_m = re.findall(
-        r"ta\.ema\s*\([^,]+,\s*([A-Za-z_][A-Za-z0-9_]*|\d+)", code
+        r"plot\s*\(\s*ta\.ema\s*\([^,]+,\s*([A-Za-z_][A-Za-z0-9_]*|\d+)", code
     )
     for ref in ema_m[:3]:
         length = 21

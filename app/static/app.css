@@ -1599,21 +1599,67 @@ a.scalp-scenario-card--nabz:hover {
 }
 
 .indicator-detail__toolbar {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
+  width: 100%;
   margin-bottom: 12px;
 }
 
-.indicator-tf-tabs {
-  margin-bottom: 10px;
+.indicator-detail__toolbar .btn {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 4px;
+  font-size: 0.78rem;
+  text-align: center;
+  white-space: nowrap;
 }
 
-.indicator-tf-tabs .indicator-tf-btn {
+.indicator-tf-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+  margin-bottom: 12px;
+}
+
+.indicator-tf-btn {
   font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
   cursor: pointer;
+  text-align: center;
+  padding: 10px 4px;
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--muted);
+  border: 1px solid #2a3441;
+}
+
+.indicator-tf-btn.on {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.app-header__menu-btn {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 10px 12px;
   border: none;
+  border-radius: 10px;
   background: transparent;
+  color: #fecaca;
+  font: inherit;
+  font-size: 0.88rem;
+  text-align: right;
+  cursor: pointer;
+}
+
+.app-header__menu-btn:hover {
+  background: rgba(248, 113, 113, 0.12);
 }
 
 .indicator-live-wrap {

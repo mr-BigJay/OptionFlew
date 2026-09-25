@@ -61,11 +61,13 @@
     var mainH = Math.max(240, Math.min(360, window.innerHeight * 0.38));
     var chart = LightweightCharts.createChart(mount, baseChartOptions(w, mainH));
     var candles = chart.addCandlestickSeries({
-      upColor: "#34d399",
-      downColor: "#f87171",
+      upColor: "#26a69a",
+      downColor: "#ef5350",
       borderVisible: false,
-      wickUpColor: "#34d399",
-      wickDownColor: "#f87171",
+      wickUpColor: "#26a69a",
+      wickDownColor: "#ef5350",
+      priceLineVisible: false,
+      lastValueVisible: true,
     });
     candles.setData(payload.candles);
     applyOverlays(chart, candles, payload.overlays);
@@ -75,10 +77,6 @@
       if (!panesMount) return;
       var wrap = document.createElement("div");
       wrap.className = "indicator-pane-wrap";
-      var label = document.createElement("div");
-      label.className = "indicator-pane-label";
-      label.textContent = pane.label || "Pane " + (idx + 1);
-      panesMount.appendChild(label);
       panesMount.appendChild(wrap);
       var ph = Math.max(100, Math.min(160, window.innerHeight * 0.18));
       var pc = LightweightCharts.createChart(wrap, baseChartOptions(w, ph));
@@ -87,7 +85,9 @@
         var ls = pc.addLineSeries({
           color: ser.color || "#7E57C2",
           lineWidth: 2,
+          title: ser.name || pane.label || "",
           priceLineVisible: false,
+          lastValueVisible: true,
         });
         ls.setData(ser.points || []);
       });

@@ -4,6 +4,18 @@
 {% block header_back %}
 <a href="/menu/indicators" class="app-header__icon-btn" aria-label="بازگشت">→</a>
 {% endblock %}
+{% block header_menu %}
+{% if can_edit %}
+<details class="app-header__menu">
+  <summary class="app-header__icon-btn" aria-label="گزینه‌ها">⋮</summary>
+  <div class="app-header__dropdown" role="menu">
+    <form method="post" action="/menu/indicators/{{ indicator.id }}/delete" onsubmit="return confirm('حذف این اندیکاتور؟');">
+      <button type="submit" class="app-header__menu-btn" role="menuitem">حذف اندیکاتور</button>
+    </form>
+  </div>
+</details>
+{% endif %}
+{% endblock %}
 {% block subheader %}
 <p class="muted patterns-sub">
   {% if indicator.language == 'pine' %}Pine Script{% elif indicator.language == 'python' %}Python{% else %}سایر{% endif %}
@@ -24,9 +36,9 @@
     <button type="button" class="btn secondary btn-compact" data-modal-open="panel">تنظیمات پنل</button>
   </div>
 
-  <nav class="tabs tabs-patterns indicator-tf-tabs" aria-label="تایم‌فریم چارت">
-    {% for tf, label in [('5m', '۵m'), ('15m', '۱۵m'), ('1h', '۱h'), ('4h', '۴h')] %}
-    <button type="button" class="indicator-tf-btn{% if chart_tf == tf %} on{% endif %}" data-tf="{{ tf }}">{{ label }}</button>
+  <nav class="indicator-tf-tabs" aria-label="تایم‌فریم چارت" dir="ltr">
+    {% for tf in ['5m', '15m', '1h', '4h'] %}
+    <button type="button" class="indicator-tf-btn{% if chart_tf == tf %} on{% endif %}" data-tf="{{ tf }}">{{ tf }}</button>
     {% endfor %}
   </nav>
 
@@ -36,11 +48,6 @@
     <div class="indicator-live-panes" id="indicator-live-panes"></div>
   </div>
 
-  {% if can_edit %}
-  <form method="post" action="/menu/indicators/{{ indicator.id }}/delete" class="indicator-actions inline-form" onsubmit="return confirm('حذف این اندیکاتور؟');">
-    <button type="submit" class="btn secondary">حذف اندیکاتور</button>
-  </form>
-  {% endif %}
 </section>
 
 <div class="app-modal-root" id="indicator-modals" hidden>
@@ -113,6 +120,6 @@
 
 {% block scripts %}
 <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js" crossorigin="anonymous"></script>
-<script src="/static/indicator-chart.js?v=1"></script>
+<script src="/static/indicator-chart.js?v=2"></script>
 <script src="/static/indicator-detail.js?v=1"></script>
 {% endblock %}
