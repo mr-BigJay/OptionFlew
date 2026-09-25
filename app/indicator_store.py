@@ -5,6 +5,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
+from app.indicator_validate import validate_indicator_source
 from app.storage import connect
 
 logger = logging.getLogger("optionflow.indicators")
@@ -104,6 +105,9 @@ def save_indicator(
     lang = (language or "pine").strip().lower()
     if lang not in _LANGS:
         lang = "pine"
+    ok, v_err = validate_indicator_source(lang, code)
+    if not ok:
+        return None, v_err
     slug_norm = normalize_slug(slug) or normalize_slug(title)
     if not validate_slug(slug_norm):
         return None, "شناسه (slug) نامعتبر است — فقط a-z، 0-9، - و _"

@@ -2,7 +2,15 @@
 {% block title %}اندیکاتورها — OptionFlow{% endblock %}
 {% block header %}<span class="header-title">اندیکاتورها</span>{% endblock %}
 {% block header_back %}
-<a href="/menu" class="app-header__back" aria-label="بازگشت به منو">→</a>
+<a href="/menu" class="app-header__icon-btn" aria-label="بازگشت به منو">→</a>
+{% endblock %}
+{% block header_menu %}
+<details class="app-header__menu">
+  <summary class="app-header__icon-btn" aria-label="گزینه‌ها">⋮</summary>
+  <div class="app-header__dropdown" role="menu">
+    <a href="/menu/indicators/new" role="menuitem">اندیکاتور جدید</a>
+  </div>
+</details>
 {% endblock %}
 {% block subheader %}
 <p class="muted patterns-sub">کتابخانه سورس · Pine / Python</p>
@@ -17,10 +25,7 @@
 {% endif %}
 
 <section class="indicators-page">
-  <div class="indicators-toolbar">
-    <p class="muted bt-hint">سورس اندیکاتورهای خود را ذخیره کنید و از TradingView یا اسکریپت‌های Python کپی کنید.</p>
-    <a href="/menu/indicators/new" class="btn secondary">+ اندیکاتور جدید</a>
-  </div>
+  <p class="muted bt-hint indicators-intro">سورس اندیکاتورهای خود را ذخیره کنید و از TradingView یا اسکریپت‌های Python کپی کنید.</p>
 
   {% if items %}
   <div class="menu-grid indicators-grid">
@@ -37,7 +42,7 @@
   </div>
   {% else %}
   <div class="empty card">
-    <p>هنوز اندیکاتوری ثبت نشده. «اندیکاتور جدید» را بزنید و سورس را بچسبانید.</p>
+    <p>هنوز اندیکاتوری ثبت نشده. از منوی ⋮ بالا «اندیکاتور جدید» را بزنید و سورس را بچسبانید.</p>
   </div>
   {% endif %}
 </section>

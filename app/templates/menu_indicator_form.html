@@ -2,7 +2,7 @@
 {% block title %}{% if indicator %}ویرایش{% else %}جدید{% endif %} — اندیکاتور{% endblock %}
 {% block header %}<span class="header-title">{% if indicator %}ویرایش اندیکاتور{% else %}اندیکاتور جدید{% endif %}</span>{% endblock %}
 {% block header_back %}
-<a href="{% if indicator %}/menu/indicators/{{ indicator.id }}{% else %}/menu/indicators{% endif %}" class="app-header__back" aria-label="بازگشت">→</a>
+<a href="{% if indicator %}/menu/indicators/{{ indicator.id }}{% else %}/menu/indicators{% endif %}" class="app-header__icon-btn" aria-label="بازگشت">→</a>
 {% endblock %}
 
 {% block content %}

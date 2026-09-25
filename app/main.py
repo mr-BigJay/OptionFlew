@@ -1363,7 +1363,7 @@ async def menu_indicator_save(
             ),
             status_code=400,
         )
-    return RedirectResponse(f"/menu/indicators/{new_id}", status_code=303)
+    return RedirectResponse("/menu/indicators?msg=ذخیره+شد", status_code=303)
 
 
 @app.post("/menu/indicators/{indicator_id}/delete")
