@@ -148,16 +148,12 @@ html, body {
   position: relative;
 }
 
-.app-header__slot--menu .app-header__dropdown {
-  left: auto;
-  right: 0;
-}
-
 .app-header__dropdown {
-  position: absolute;
-  top: calc(100% + 6px);
+  position: fixed;
+  top: 0;
   left: 0;
   min-width: 168px;
+  max-width: min(200px, calc(100vw - 16px));
   padding: 6px;
   border: 1px solid #2a3441;
   border-radius: 14px;
