@@ -125,7 +125,6 @@ def render_btcusdt_scenario_chart(
 
     spot = float(plan.spot)
     b = float(plan.b)
-    c = float(plan.c)
     draw_path = plan.first_confident and b > 0
 
     fig_w = 8.0
@@ -157,38 +156,15 @@ def render_btcusdt_scenario_chart(
     last_x = xs[-1]
     bar_days = xs[-1] - xs[-2] if len(xs) > 1 else 15 / (24 * 60)
 
-    zone_lo = float(plan.zone_low) if plan.zone_low else None
-    zone_hi = float(plan.zone_high) if plan.zone_high else None
-    has_zone = zone_lo is not None and zone_hi is not None and zone_hi >= zone_lo
-    if has_zone and zone_hi == zone_lo:
-        pad_z = max(spot * 0.0015, 50.0)
-        zone_lo, zone_hi = zone_lo - pad_z, zone_hi + pad_z
-    # مقصد تصویر وسط زون است. اگر سهم افقی را از فاصلهٔ قیمت بگیریم،
-    # حرکت کوتاه تا زون ناپدید می‌شود و فلش نقطه‌چین به سطح مقابل کل مسیر را می‌گیرد.
-    dest = b if draw_path else spot
-    # زون خودش مقصد است. فلش به سطح مقابل، مسیر را عوض‌شده نشان می‌دهد.
-    draw_second = bool(
-        draw_path and plan.two_legs and not has_zone and abs(c - dest) > spot * 0.01
-    )
     forward = bar_days * forward_bars
-    t_b = last_x + forward * (0.72 if draw_second else 1.0)
-    t_c = last_x + forward
+    t_b = last_x + forward
 
     ax.axhline(spot, color="#42a5f5", linewidth=1.0, linestyle="-", alpha=0.55, zorder=4)
-    if plan.band_low:
-        ax.axhline(plan.band_low, color="#ef5350", linewidth=1.4, linestyle="--", alpha=0.95, zorder=4)
-    if plan.band_high:
-        ax.axhline(plan.band_high, color="#66bb6a", linewidth=1.4, linestyle="--", alpha=0.9, zorder=4)
-    if has_zone:
-        ax.axhspan(zone_lo, zone_hi, color="#fdd835", alpha=0.45, zorder=1)
-        ax.axhline(zone_lo, color="#fdd835", linewidth=1.3, zorder=4)
-        ax.axhline(zone_hi, color="#fdd835", linewidth=1.3, zorder=4)
-    if draw_path and not has_zone:
+    if draw_path and abs(b - spot) > spot * 0.0015:
         ax.axhline(b, color="#ffb74d", linewidth=1.2, linestyle="--", alpha=0.85, zorder=4)
-    if draw_path and abs(dest - spot) > spot * 0.0015:
         ax.plot(
             [last_x, t_b],
-            [spot, dest],
+            [spot, b],
             color="#ff9800",
             linewidth=2.4,
             linestyle="-",
@@ -199,30 +175,6 @@ def render_btcusdt_scenario_chart(
             markeredgewidth=0.8,
             zorder=5,
         )
-    if draw_second:
-        ax.axhline(c, color="#ce93d8", linewidth=1.2, linestyle="--", alpha=0.85, zorder=4)
-        ax.plot(
-            [t_b, t_c],
-            [dest, c],
-            color="#ff9800",
-            linewidth=2.4,
-            linestyle=(0, (1.2, 2.4)),
-            alpha=0.38,
-            solid_capstyle="round",
-            zorder=4,
-        )
-        ax.plot(
-            [t_c],
-            [c],
-            linestyle="none",
-            marker="o",
-            markersize=7,
-            markerfacecolor="#ff9800",
-            markeredgecolor="#ffffff",
-            markeredgewidth=0.8,
-            alpha=0.55,
-            zorder=5,
-        )
 
     ax.scatter([last_x], [spot], s=80, c="#42a5f5", edgecolors="white", linewidths=1, zorder=6)
 
@@ -231,29 +183,16 @@ def render_btcusdt_scenario_chart(
     pad = max(spot * 0.002, 80.0)
     extras = [spot]
     if draw_path:
-        extras.append(dest)
-        if draw_second:
-            extras.append(c)
-    for level in (plan.band_low, plan.band_high, plan.zone_low, plan.zone_high):
-        if level:
-            extras.append(float(level))
+        extras.append(b)
     ax.set_ylim(min(y_min, *extras) - pad, max(y_max, *extras) + pad)
 
-    x_end = (t_c if draw_path else last_x + bar_days * 4) + bar_days * 2
+    x_end = (t_b if draw_path else last_x + bar_days * 4) + bar_days * 2
     ax.set_xlim(xs[0] - bar_days * 2, x_end)
 
     label_x = xs[-1] + (x_end - xs[-1]) * 0.04
-    labels: list[tuple[float, str, str]] = [(spot, f"Spot {spot:,.0f}", "#90caf9")]
-    if plan.band_low:
-        labels.append((float(plan.band_low), f"Band {plan.band_low:,.0f}", "#ef9a9a"))
-    if plan.band_high:
-        labels.append((float(plan.band_high), f"Band {plan.band_high:,.0f}", "#a5d6a7"))
-    if has_zone:
-        labels.append(
-            ((zone_lo + zone_hi) / 2.0, f"Zone {zone_lo:,.0f}-{zone_hi:,.0f}", "#ffe082")
-        )
-    if draw_second:
-        labels.append((c, f"C {c:,.0f}", "#e1bee7"))
+    labels: list[tuple[float, str, str]] = [(spot, f"A {spot:,.0f}", "#90caf9")]
+    if draw_path and abs(b - spot) > spot * 0.0015:
+        labels.append((b, f"B {b:,.0f}", "#ffcc80"))
     y_span = max(y_max, *extras) - min(y_min, *extras)
     placed = spread_label_ys([y for y, _t, _c in labels], max(y_span * 0.045, spot * 0.004))
     for (y_val, label, color), text_y in zip(labels, placed):
@@ -283,7 +222,7 @@ def render_btcusdt_scenario_chart(
     ax.grid(True, color="#263238", linewidth=0.6, alpha=0.7)
     ax.set_title(
         (
-            f"BTCUSDT {interval} — مسیر سناریو (Spot → B → C)"
+            f"BTCUSDT {interval} — مسیر A → B"
             if draw_path
             else f"BTCUSDT {interval} — مقصد اول نامشخص"
         ),
