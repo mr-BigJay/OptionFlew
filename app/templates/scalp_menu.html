@@ -5,19 +5,22 @@
 <p class="home-schedule muted">سناریوهای کوتاه‌مدت · ورود / استاپ / TP · مستقل از الگوها</p>
 {% endblock %}
 
+{% block header_menu %}
+{% if is_admin %}
+<details class="app-header__menu">
+  <summary class="app-header__icon-btn" aria-label="گزینه‌ها">⋮</summary>
+  <div class="app-header__dropdown" role="menu">
+    <a href="/scalp/backtest" role="menuitem">بکتست استراتژی</a>
+    <a href="/scalp/backtest/reports" role="menuitem">آرشیو بکتست</a>
+  </div>
+</details>
+{% endif %}
+{% endblock %}
+
 {% block content %}
 <div class="scalp-page">
 <section class="scalp-panel" aria-labelledby="scalp-scenarios-head">
-  <div class="scalp-panel__head">
-    <h2 id="scalp-scenarios-head" class="section-title scalp-panel__title">سناریوها</h2>
-    {% if is_admin %}
-    <nav class="scalp-panel__links" aria-label="بکتست">
-      <a href="/scalp/backtest">بکتست</a>
-      <span class="scalp-panel__sep" aria-hidden="true">·</span>
-      <a href="/scalp/backtest/reports">آرشیو</a>
-    </nav>
-    {% endif %}
-  </div>
+  <h2 id="scalp-scenarios-head" class="section-title scalp-panel__title">سناریوها</h2>
 
   <div class="scalp-scenario-grid">
     {% for sc in scenarios %}
