@@ -47,6 +47,7 @@ SCALP_SCENARIOS = (
     ("scalp_breakout", "شکست رنج 5m"),
     ("scalp_4h_rr", "۴HRR (رنج نیویork)"),
     ("scalp_trend_pullback", "پول‌بک ترند"),
+    ("nabzbours", "نبض‌بورس"),
 )
 
 REPORT_KINDS = (

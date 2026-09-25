@@ -132,6 +132,65 @@ def run_scalp_backtest(
         return result
 
     detector = scenario.get("detector_type") or scenario_id
+    if detector == "nabzbours":
+        from optionflow.scalp.nabzbours import (
+            merge_config,
+            pairs_for_engine,
+            resample_minutes,
+            scan_backtest,
+            summarize_trades,
+        )
+
+        cfg = merge_config(scenario.get("params") or {})
+        higher = load_cached_bars(hist_dir, str(cfg["higher_timeframe"]))
+        exit_raw = load_cached_bars(hist_dir, str(cfg["exit_timeframe"]))
+        if not exit_raw and str(cfg["exit_timeframe"]) == "3m":
+            one = load_cached_bars(hist_dir, "1m")
+            exit_raw = resample_minutes(one, 3) if one else []
+        if timeframe != str(cfg["entry_timeframe"]):
+            result.error = f"نبض‌بورس روی تایم‌فریم ورود ({cfg['entry_timeframe']}) بکتست می‌شود."
+            return result
+        raw = scan_backtest(
+            full,
+            higher_bars=higher,
+            exit_bars=exit_raw,
+            cfg=cfg,
+            scan_start=scan_start,
+            scan_end=scan_end,
+        )
+        stats = summarize_trades([t for _, _, t in raw])
+        pairs = pairs_for_engine(full, raw, scenario, timeframe)
+        result.bars_scanned = max(0, scan_end - scan_start + 1)
+        if on_progress:
+            on_progress(1, 1)
+        note_head = stats.get("text") or ""
+        charts_left = max_charts
+        for sig_ix, hit in pairs:
+            _check_cancel(should_cancel)
+            ok = bool(hit.meta.get("nabz_win"))
+            note = f"{note_head} · {hit.forecast_fa}" if note_head else hit.forecast_fa
+            note_head = ""
+            ts = full[sig_ix].ts
+            finding = BacktestFinding.from_hit(
+                hit, sig_ix, ts, success=ok, outcome_fa=note
+            )
+            if charts_left > 0:
+                fwd = chart_forward_bars(full, hit, sig_ix)
+                png = render_pattern_chart(
+                    full, hit, signal_index=sig_ix, forward_bars=fwd, outcome_success=ok
+                )
+                if png:
+                    fname = f"{chart_prefix}scalp_{scenario_id}_{timeframe}_{sig_ix}.png"
+                    (chart_dir / fname).write_bytes(png)
+                    finding.chart_file = fname
+                    charts_left -= 1
+            if ok:
+                result.success_count += 1
+            else:
+                result.fail_count += 1
+            result.findings.append(finding)
+        return result
+
     if detector == "four_h_rr":
         bars_4h = load_cached_bars(hist_dir, "4h")
         if not bars_4h:

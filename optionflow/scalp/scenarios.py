@@ -121,6 +121,47 @@ BUILTIN: list[dict[str, Any]] = [
             "max_hold_bars": 48,
         },
     },
+    {
+        "scenario_id": "nabzbours",
+        "title_fa": "نبض‌بورس",
+        "description_fa": (
+            "RSI + MACD + VWAP + EMA · جهت روی ۱۵m · ورود ۵m · "
+            "خروج با هشدار RSI و تأیید MACD (۳m اگر کش باشد). مستقل از بقیه."
+        ),
+        "detector_type": "nabzbours",
+        "timeframes": ["5m"],
+        "params": {
+            "higher_timeframe": "15m",
+            "entry_timeframe": "5m",
+            "exit_timeframe": "3m",
+            "require_higher_tf": True,
+            "ema_length": 50,
+            "rsi_period": 14,
+            "rsi_slope_bars": 2,
+            "macd_fast": 12,
+            "macd_slow": 26,
+            "macd_signal": 9,
+            "use_vwap": True,
+            "use_ema": True,
+            "use_rsi": True,
+            "use_macd": True,
+            "use_divergence": True,
+            "score_vwap": 1,
+            "score_ema": 1,
+            "score_rsi": 1,
+            "score_macd": 1,
+            "score_divergence": 1,
+            "min_score": 4,
+            "pivot_left": 5,
+            "pivot_right": 5,
+            "atr_len": 14,
+            "stop_atr_mult": 1.0,
+            "tp_rr": 1.5,
+            "max_hold_bars": 48,
+            "long_trades": True,
+            "short_trades": True,
+        },
+    },
 ]
 
 SCALP_TIMEFRAMES = ("5m", "15m", "1h")

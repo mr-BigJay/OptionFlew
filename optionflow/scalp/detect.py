@@ -322,6 +322,17 @@ def _detect_bjorgum(
     return detect_bjorgum(bars, timeframe, scenario, params)
 
 
+def _detect_nabzbours(
+    bars: list[OhlcBar],
+    timeframe: str,
+    scenario: dict[str, Any],
+    params: dict[str, Any],
+) -> PatternHit | None:
+    from optionflow.scalp.nabzbours import detect_nabzbours
+
+    return detect_nabzbours(bars, timeframe, scenario, params)
+
+
 def _detect_spline(
     bars: list[OhlcBar],
     timeframe: str,
@@ -340,6 +351,7 @@ _DETECTORS = {
     "four_h_rr": _detect_four_h_rr,
     "bjorgum": _detect_bjorgum,
     "spline": _detect_spline,
+    "nabzbours": _detect_nabzbours,
 }
 
 

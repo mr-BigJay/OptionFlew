@@ -284,7 +284,66 @@ def process_signals_for_user(
         pid = try_open_from_report(user_id, rep)
         if pid:
             stats["opened"] += 1
+
+    if "nabzbours" in (cfg.get("scalp_scenarios") or []):
+        opened = _open_nabzbours(user_id, charts)
+        stats["opened"] += opened
     return stats
+
+
+def _open_nabzbours(user_id: int, chart_dir: Path) -> int:
+    """ورود مستقل نبض‌بورس — فقط اگر در تنظیم پوزیشن تیک خورده باشد."""
+    from app.scalp_store import list_scenarios
+    from optionflow.scalp.service import get_cached_scalp_scan
+
+    cfg = get_config(user_id)
+    if not cfg.get("enabled"):
+        return 0
+    scenarios = [
+        s for s in list_scenarios(enabled_only=True) if s.get("scenario_id") == "nabzbours"
+    ]
+    if not scenarios:
+        return 0
+    opened = 0
+    for hit in get_cached_scalp_scan(chart_dir, scenarios):
+        if (hit.meta or {}).get("scenario_id") != "nabzbours":
+            continue
+        if _try_open_nabz(user_id, hit):
+            opened += 1
+    return opened
+
+
+def _try_open_nabz(user_id: int, hit: PatternHit) -> int | None:
+    cfg = get_config(user_id)
+    meta = hit.meta or {}
+    key = f"nabzbours:{hit.timeframe}:{meta.get('setup_key')}"
+    if signal_consumed(user_id, key):
+        return None
+    direction = _direction_from_pattern(meta)
+    price = float(meta.get("entry_px") or 0) or latest_btc_price()
+    if not direction or not price:
+        return None
+    stop = float(meta.get("stop_px") or 0)
+    tp = float(meta.get("tp_px") or 0)
+    if stop <= 0 or tp <= 0:
+        return None
+    sl_pct = abs(price - stop) / price * 100.0
+    tp_pct = abs(tp - price) / price * 100.0
+    risk = _source_risk(cfg, "scalp", "nabzbours")
+    return insert_open_position(
+        user_id,
+        source_type="scalp",
+        source_key=key,
+        timeframe=str(hit.timeframe or "5m"),
+        direction=direction,
+        entry_price=price,
+        margin_usdt=risk["margin_usdt"],
+        leverage=risk["leverage"],
+        fee_rate=float(cfg["fee_rate"]),
+        sl_pct=sl_pct,
+        tp_pct=tp_pct,
+        signal_title=f"نبض‌بورس · امتیاز {meta.get('score', '')}",
+    )
 
 
 def unrealized_pnl(pos: dict[str, Any], mark: float) -> float:
