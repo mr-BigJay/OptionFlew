@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}بکتست گزارش — OptionFlow{% endblock %}
+{% block header %}بکتست{% endblock %}
+{% block subheader %}<p class="muted">جهت جریان آپشن در یک لحظهٔ گذشته، کنار حرکت واقعی قیمت</p>{% endblock %}
+{% block content %}
+<p class="muted">آرشیو موقعیت‌باز ماه‌های قبل رایگان نیست. این ابزار معامله‌های همان ساعت را از دریبیت می‌خواند و با کندل بعدش مقایسه می‌کند.</p>
+
+<form class="filter-card" method="post" action="/reports/backtest">
+  <label>لحظهٔ تحلیل (تهران)</label>
+  <input type="datetime-local" name="as_of" value="{{ as_of }}" required>
+  <label>ساعت جریان قبل از آن</label>
+  <input type="number" name="lookback" min="1" max="6" step="1" value="{{ lookback }}" required>
+  <label>ساعت بررسی بعد از آن</label>
+  <input type="number" name="forward" min="1" max="24" step="1" value="{{ forward }}" required>
+  <button type="submit" class="btn primary full">تحلیل و مقایسه</button>
+</form>
+
+{% if err %}
+<p class="flash err">{{ err }}</p>
+{% endif %}
+
+{% if result %}
+<section class="backtest-layout">
+  <div>
+    <p>
+      {% if result.direction == 'up' %}پیش‌بینی: بالا
+      {% elif result.direction == 'down' %}پیش‌بینی: پایین
+      {% else %}پیش‌بینی: بدون جهت{% endif %}
+      · {{ result.trade_count }} معامله
+    </p>
+    <p>
+      قیمت در آن لحظه {{ "{:,.0f}".format(result.spot) }}
+      و {{ result.forward_hours|int }} ساعت بعد {{ "{:,.0f}".format(result.end_price) }}.
+      {% if result.matched is sameas true %}همخوان بود.
+      {% elif result.matched is sameas false %}همخوان نبود.
+      {% else %}جهت قطعی اعلام نشد.{% endif %}
+    </p>
+    <div class="backtest-grid">
+      <div class="backtest-box">
+        <strong>خریدار کال</strong>
+        <span>{{ "{:,.1f}".format(result.buyer_call) }} قرارداد</span><br>
+        <span>ارزش {{ "{:,.0f}".format(result.eff_buyer_call) }}</span>
+      </div>
+      <div class="backtest-box">
+        <strong>خریدار پوت</strong>
+        <span>{{ "{:,.1f}".format(result.buyer_put) }} قرارداد</span><br>
+        <span>ارزش {{ "{:,.0f}".format(result.eff_buyer_put) }}</span>
+      </div>
+      <div class="backtest-box">
+        <strong>فروشنده کال</strong>
+        <span>{{ "{:,.1f}".format(result.seller_call) }} قرارداد</span><br>
+        <span>ارزش {{ "{:,.0f}".format(result.eff_seller_call) }}</span>
+      </div>
+      <div class="backtest-box">
+        <strong>فروشنده پوت</strong>
+        <span>{{ "{:,.1f}".format(result.seller_put) }} قرارداد</span><br>
+        <span>ارزش {{ "{:,.0f}".format(result.eff_seller_put) }}</span>
+      </div>
+    </div>
+  </div>
+  {% if chart_b64 %}
+  <img class="backtest-chart" alt="کندل قبل و بعد از لحظه تحلیل" src="data:image/png;base64,{{ chart_b64 }}">
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}

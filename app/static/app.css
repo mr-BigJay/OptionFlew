@@ -1701,7 +1701,36 @@ a.scalp-scenario-card--nabz:hover {
   font: inherit;
   font-size: 0.88rem;
   text-align: right;
+  text-decoration: none;
   cursor: pointer;
+  box-sizing: border-box;
+}
+
+.backtest-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 12px 0;
+}
+.backtest-box {
+  border: 1px solid #243044;
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: #121826;
+}
+.backtest-box strong { display: block; font-size: 0.95rem; }
+.backtest-box span { color: #9aa6b2; font-size: 0.78rem; }
+.backtest-layout {
+  display: grid;
+  gap: 14px;
+}
+@media (min-width: 860px) {
+  .backtest-layout { grid-template-columns: 280px 1fr; align-items: start; }
+}
+.backtest-chart {
+  width: 100%;
+  border-radius: 12px;
+  background: #0d1117;
 }
 
 .app-header__menu-btn:hover {

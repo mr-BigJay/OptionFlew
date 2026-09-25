@@ -944,6 +944,66 @@ async def reports_page(
     )
 
 
+@app.get("/reports/backtest", response_class=HTMLResponse)
+@app.post("/reports/backtest", response_class=HTMLResponse)
+async def reports_backtest(request: Request):
+    user = current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    if not user.get("is_admin"):
+        return RedirectResponse("/reports?err=فقط+ادمین", status_code=303)
+
+    from zoneinfo import ZoneInfo
+
+    from optionflow.flow_backtest import run_flow_backtest
+    from optionflow.tehran_time import TEHRAN
+
+    default_as_of = (datetime.now(TEHRAN) - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M")
+    as_of = default_as_of
+    lookback = "2"
+    forward = "4"
+    err = ""
+    result = None
+    chart_b64 = ""
+    if request.method == "POST":
+        form = await request.form()
+        as_of = str(form.get("as_of") or default_as_of)
+        lookback = str(form.get("lookback") or "2")
+        forward = str(form.get("forward") or "4")
+        try:
+            moment = datetime.fromisoformat(as_of)
+            if moment.tzinfo is None:
+                moment = moment.replace(tzinfo=ZoneInfo("Asia/Tehran"))
+            result = run_flow_backtest(
+                moment,
+                lookback_hours=float(lookback),
+                forward_hours=float(forward),
+            )
+            if result.chart_png:
+                import base64
+
+                chart_b64 = base64.b64encode(result.chart_png).decode("ascii")
+        except ValueError as exc:
+            err = str(exc)
+        except Exception:
+            logger.exception("flow backtest failed")
+            err = "خواندن دادهٔ گذشته ناموفق بود."
+    return templates.TemplateResponse(
+        request,
+        "reports_backtest.html",
+        _page_ctx(
+            request,
+            active="reports",
+            as_of=as_of,
+            lookback=lookback,
+            forward=forward,
+            err=err,
+            result=result,
+            chart_b64=chart_b64,
+        ),
+    )
+
+
 @app.post("/reports/generate")
 async def reports_generate(request: Request):
     user = current_user(request)
