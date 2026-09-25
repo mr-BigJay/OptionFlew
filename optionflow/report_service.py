@@ -125,6 +125,6 @@ def produce_report(
         pdl=levels.pdl,
         pwh=levels.pwh,
         pwl=levels.pwl,
-        scenario_b=plan.b if plan else None,
-        scenario_c=plan.c if plan else None,
+        scenario_b=plan.b if plan and plan.first_confident else None,
+        scenario_c=plan.c if plan and plan.first_confident else None,
     )

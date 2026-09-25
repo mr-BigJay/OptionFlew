@@ -13,6 +13,8 @@ logger = logging.getLogger("optionflow.report_chart")
 
 def parse_scenario_from_paragraph(paragraph: str) -> tuple[float, int, int] | None:
     """B/C/Spot از متن prose-v3 (برای بازسازی چارت روی گزارش‌های قدیمی)."""
+    if "مقصد اول نامشخص" in paragraph:
+        return None
     if "حرکت اول" not in paragraph or "حرکت دوم" not in paragraph:
         return None
     m_spot = re.search(r"قیمت فعلی:\s*([\d,]+)", paragraph)
@@ -59,7 +61,10 @@ def scenario_plan_from_snapshot(snapshot: ReportSnapshot) -> ScenarioPlan | None
 
 
 def scenario_plan_from_row(report: dict[str, Any]) -> ScenarioPlan | None:
-    parsed = parse_scenario_from_paragraph(report.get("paragraph") or "")
+    paragraph = report.get("paragraph") or ""
+    if "مقصد اول نامشخص" in paragraph:
+        return None
+    parsed = parse_scenario_from_paragraph(paragraph)
     if parsed:
         spot, b, c = parsed
         return ScenarioPlan(

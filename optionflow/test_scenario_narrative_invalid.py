@@ -8,8 +8,9 @@ def test_up_then_down_invalidation_does_not_cancel_path_to_c() -> None:
         spot=84075,
         trade_count=10,
         window_label="day",
-        contracts=FlowBucket(buyer_call=2, seller_put=1, buyer_put=1, seller_call=1),
+        contracts=FlowBucket(buyer_call=10, seller_put=1, buyer_put=1, seller_call=1),
         effective_usd=EffectiveBucket(),
+        call_buy_by_strike={86841: 10},
     )
     path = MovementPath(
         id="primary",
