@@ -1533,6 +1533,19 @@ async def menu_indicator_delete(request: Request, indicator_id: int):
     return RedirectResponse("/menu/indicators?msg=حذف+شد", status_code=303)
 
 
+def _parse_backtest_pct(raw: str) -> float | None:
+    s = (raw or "").strip().replace(",", ".")
+    if not s:
+        return None
+    try:
+        v = float(s)
+    except ValueError:
+        return None
+    if 0.1 <= v <= 2.0:
+        return v
+    return None
+
+
 @app.post("/backtest/start")
 async def backtest_start(
     tab: str = Form("triangle"),
@@ -1540,6 +1553,8 @@ async def backtest_start(
     date_to: str = Form(...),
     timeframe: str = Form("1h"),
     target_profit_pct: str = Form(""),
+    stop_loss_pct: str = Form(""),
+    entry_on_early: str = Form(""),
 ):
     if tab not in BACKTEST_TABS:
         tab = "triangle"
@@ -1547,21 +1562,17 @@ async def backtest_start(
         timeframe = "1h"
     elif timeframe not in ("1m", "5m", "15m", "1h", "4h", "1d"):
         timeframe = "1h"
-    tp: float | None = None
-    raw = (target_profit_pct or "").strip().replace(",", ".")
-    if raw:
-        try:
-            v = float(raw)
-            if 0.1 <= v <= 2.0:
-                tp = v
-        except ValueError:
-            tp = None
+    tp = _parse_backtest_pct(target_profit_pct)
+    sl = _parse_backtest_pct(stop_loss_pct)
+    early_entry = (entry_on_early or "").strip().lower() in ("1", "on", "true", "yes")
     run_id = start_backtest_job(
         category=tab,
         timeframe=timeframe,
         date_from=date_from,
         date_to=date_to,
         target_profit_pct=tp,
+        stop_loss_pct=sl,
+        entry_on_early=early_entry,
     )
     return RedirectResponse(f"/backtest?tab={tab}&run_id={run_id}", status_code=303)
 

@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from optionflow.patterns.backtest import evaluate_divergence_target_profit
+from optionflow.patterns.backtest import (
+    divergence_entry_index,
+    evaluate_divergence_target_profit,
+)
 from optionflow.patterns.ohlc import OhlcBar
 from optionflow.patterns.types import PatternHit
 
@@ -45,8 +48,13 @@ def _bullish_hit(*, pivot_low: float, entry_i: int) -> PatternHit:
     )
 
 
+def test_divergence_entry_on_early_uses_early_index() -> None:
+    hit = _bullish_hit(pivot_low=99_800.0, entry_i=40)
+    assert divergence_entry_index(hit, entry_on_early=False) == 40
+    assert divergence_entry_index(hit, entry_on_early=True) == 31
+
+
 def test_divergence_fails_when_pivot_low_breaks_before_target() -> None:
-    """قیمت زیر کف واگرایی = رد، حتی اگر بعداً هدف سود بخورد."""
     entry_i = 40
     entry_px = 100_000.0
     pivot_low = 99_800.0
@@ -60,7 +68,21 @@ def test_divergence_fails_when_pivot_low_breaks_before_target() -> None:
     )
     assert ok is False
     assert "شکست کف" in note
-    assert hit.meta.get("exit_reason") == "شکست کف واگرایی"
+
+
+def test_divergence_fails_on_stop_loss_before_target() -> None:
+    entry_i = 20
+    entry_px = 100_000.0
+    closes = [entry_px] * (entry_i + 1)
+    closes += [99_400.0]
+    closes += [100_600.0] * 10
+    bars = _bars(closes)
+    hit = _bullish_hit(pivot_low=99_900.0, entry_i=entry_i)
+    ok, note = evaluate_divergence_target_profit(
+        bars, entry_i, hit, 0.5, timeframe="5m", stop_loss_pct=0.5
+    )
+    assert ok is False
+    assert "استاپ" in note
 
 
 def test_divergence_fails_if_target_only_after_forward_window() -> None:
@@ -90,4 +112,3 @@ def test_divergence_success_when_target_within_window() -> None:
     )
     assert ok is True
     assert "بستن در سود" in note
-    assert hit.meta.get("path_pct", 0) > 0

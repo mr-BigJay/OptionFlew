@@ -41,30 +41,45 @@ def create_backtest_run(
     from_iso: str,
     to_iso: str,
     target_profit_pct: float | None = None,
+    stop_loss_pct: float | None = None,
+    entry_on_early: bool = False,
 ) -> int:
     ensure_backtest_schema()
-    _ensure_backtest_target_column()
+    _ensure_backtest_option_columns()
     now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     with connect() as conn:
         cur = conn.execute(
             """
             INSERT INTO backtest_runs
-            (created_at, category, timeframe, from_iso, to_iso, status, progress_pct, target_profit_pct)
-            VALUES (?, ?, ?, ?, ?, 'running', 0, ?)
+            (created_at, category, timeframe, from_iso, to_iso, status, progress_pct,
+             target_profit_pct, stop_loss_pct, entry_on_early)
+            VALUES (?, ?, ?, ?, ?, 'running', 0, ?, ?, ?)
             """,
-            (now, category, timeframe, from_iso, to_iso, target_profit_pct),
+            (
+                now,
+                category,
+                timeframe,
+                from_iso,
+                to_iso,
+                target_profit_pct,
+                stop_loss_pct,
+                1 if entry_on_early else 0,
+            ),
         )
         return int(cur.lastrowid)
 
 
-def _ensure_backtest_target_column() -> None:
+def _ensure_backtest_option_columns() -> None:
     with connect() as conn:
-        try:
-            conn.execute(
-                "ALTER TABLE backtest_runs ADD COLUMN target_profit_pct REAL"
-            )
-        except sqlite3.OperationalError:
-            pass
+        for ddl in (
+            "ALTER TABLE backtest_runs ADD COLUMN target_profit_pct REAL",
+            "ALTER TABLE backtest_runs ADD COLUMN stop_loss_pct REAL",
+            "ALTER TABLE backtest_runs ADD COLUMN entry_on_early INTEGER NOT NULL DEFAULT 0",
+        ):
+            try:
+                conn.execute(ddl)
+            except sqlite3.OperationalError:
+                pass
 
 
 def update_backtest_progress(run_id: int, pct: int, bars_scanned: int = 0) -> None:
@@ -164,4 +179,5 @@ def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
         d["findings"] = json.loads(d.get("findings_json") or "[]")
     except json.JSONDecodeError:
         d["findings"] = []
+    d["entry_on_early"] = bool(d.get("entry_on_early"))
     return d

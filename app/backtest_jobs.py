@@ -34,6 +34,8 @@ def start_backtest_job(
     date_from: str,
     date_to: str,
     target_profit_pct: float | None = None,
+    stop_loss_pct: float | None = None,
+    entry_on_early: bool = False,
 ) -> int:
     start = parse_user_datetime(date_from)
     end = parse_user_datetime(date_to, end_of_day=True)
@@ -43,6 +45,8 @@ def start_backtest_job(
         from_iso=start.isoformat().replace("+00:00", "Z"),
         to_iso=end.isoformat().replace("+00:00", "Z"),
         target_profit_pct=target_profit_pct,
+        stop_loss_pct=stop_loss_pct,
+        entry_on_early=entry_on_early,
     )
 
     def _work() -> None:
@@ -74,6 +78,8 @@ def start_backtest_job(
                 chart_prefix=prefix,
                 on_progress=on_progress,
                 target_profit_pct=target_profit_pct,
+                stop_loss_pct=stop_loss_pct,
+                entry_on_early=entry_on_early,
                 should_cancel=should_cancel,
             )
             with _lock:

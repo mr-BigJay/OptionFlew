@@ -180,7 +180,9 @@ def evaluate_trendline_path(
     hit: PatternHit,
     *,
     take_profit_pct: float | None = None,
+    stop_loss_pct: float | None = None,
     timeframe: str = "15m",
+    entry_on_early: bool = False,
 ) -> tuple[bool | None, str]:
     """ورود = سیگنال اولیه؛ خروج = سود هدف یا شکست معتبر (هرکدام زودتر)."""
     meta = hit.meta
@@ -198,7 +200,9 @@ def evaluate_trendline_path(
     early = meta.get("early_index")
     confirm = meta.get("confirm_index")
     stage = meta.get("stage")
-    if stage == "confirmed" and isinstance(confirm, int):
+    if entry_on_early and isinstance(early, int):
+        entry_i = early
+    elif stage == "confirmed" and isinstance(confirm, int):
         entry_i = confirm
     elif isinstance(early, int):
         entry_i = early
@@ -224,10 +228,17 @@ def evaluate_trendline_path(
 
     tp_pct = TAKE_PROFIT_PCT if take_profit_pct is None else take_profit_pct
     tp_px = _take_profit_px(entry_px, side=side, pct=tp_pct)
+    sl_px: float | None = None
+    if stop_loss_pct is not None and stop_loss_pct > 0:
+        if side == "low":
+            sl_px = entry_px * (1 - stop_loss_pct)
+        else:
+            sl_px = entry_px * (1 + stop_loss_pct)
     exit_i: int | None = None
     exit_px: float | None = None
     reason = ""
     break_run = 0
+    sl_label = f"{stop_loss_pct * 100:g}٪" if stop_loss_pct else ""
     if take_profit_pct is None or tp_pct == TAKE_PROFIT_PCT:
         tp_label = "۰.۵٪"
     else:
@@ -236,6 +247,13 @@ def evaluate_trendline_path(
     scan_end = min(len(bars), max(entry_i + 1 + max_fwd, idx + max_fwd))
     for i in range(start, scan_end):
         b = bars[i]
+        if sl_px is not None:
+            if side == "low" and b.low <= sl_px:
+                exit_i, exit_px, reason = i, sl_px, f"استاپ {sl_label}"
+                break
+            if side == "high" and b.high >= sl_px:
+                exit_i, exit_px, reason = i, sl_px, f"استاپ {sl_label}"
+                break
         if _take_profit_hit(b, side=side, entry_px=entry_px, pct=tp_pct):
             exit_i, exit_px, reason = i, tp_px, f"بستن در سود {tp_label}"
             break
@@ -262,7 +280,14 @@ def evaluate_trendline_path(
     meta["path_pct"] = pct
     meta["exit_reason"] = reason
     meta["tp_px"] = tp_px
-    ok = pct > 0
+    if sl_px is not None:
+        meta["sl_px"] = sl_px
+    if reason.startswith("استاپ"):
+        ok = False
+    elif reason.startswith("بستن در سود"):
+        ok = True
+    else:
+        ok = pct > 0
     note = (
         f"بازده مسیر سیگنال اولیه تا {reason}: {pct*100:+.2f}٪ "
         f"({entry_px:,.0f} → {exit_px:,.0f})"

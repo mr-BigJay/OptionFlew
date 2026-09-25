@@ -2223,6 +2223,20 @@ bdi[dir="ltr"] {
   margin: 0 0 12px;
 }
 
+.bt-check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 0.82rem;
+  margin: 8px 0 4px;
+  cursor: pointer;
+}
+
+.bt-check-row input {
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+
 .bt-cache-table {
   width: 100%;
   border-collapse: collapse;
