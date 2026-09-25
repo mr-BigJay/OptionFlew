@@ -30,6 +30,12 @@
   data-language="{{ indicator.language }}"
   data-chart-tf="{{ chart_tf }}">
 
+  <div class="indicator-detail__toolbar" role="toolbar" aria-label="اندیکاتور">
+    <button type="button" class="btn secondary btn-compact" data-modal-open="tv">تنظیمات TV</button>
+    <button type="button" class="btn secondary btn-compact" data-modal-open="source">سورس کد</button>
+    <button type="button" class="btn secondary btn-compact" data-modal-open="panel">تنظیمات پنل</button>
+  </div>
+
   <nav class="indicator-tf-tabs" aria-label="تایم‌فریم چارت" dir="ltr">
     {% for tf in ['1m', '5m', '15m', '1h', '4h'] %}
     <button type="button" class="indicator-tf-btn{% if chart_tf == tf %} on{% endif %}" data-tf="{{ tf }}">{{ tf }}</button>
@@ -40,16 +46,37 @@
     <p class="muted bt-hint indicator-live-hint" id="indicator-live-hint">در حال بارگذاری چارت…</p>
     <figure class="scenario-chart pattern-chart indicator-live-figure" aria-label="چارت زنده">
       <div class="live-ov-chart-wrap">
-        <div class="live-ov-chart-toolbar" role="toolbar" aria-label="ابزار چارت">
+        <div class="live-ov-chart-toolbar live-ov-chart-toolbar--draw" role="toolbar" aria-label="ابزار چارت">
           <button
             type="button"
             class="live-ov-measure-btn"
             data-measure-for="indicator-live-payload"
+            data-draw-mode="measure"
             aria-pressed="false"
-            title="کشیدن باکس لانگ/شورت روی چارت"
+            title="خطکش — فاصله قیمت و زمان"
           >
             <span class="live-ov-measure-icon" aria-hidden="true">📏</span>
-            خطکش · لانگ/شورت
+            خطکش
+          </button>
+          <button
+            type="button"
+            class="live-ov-measure-btn live-ov-measure-btn--long"
+            data-measure-for="indicator-live-payload"
+            data-draw-mode="long"
+            aria-pressed="false"
+            title="باکس لانگ — ورود، TP، SL"
+          >
+            لانگ
+          </button>
+          <button
+            type="button"
+            class="live-ov-measure-btn live-ov-measure-btn--short"
+            data-measure-for="indicator-live-payload"
+            data-draw-mode="short"
+            aria-pressed="false"
+            title="باکس شورت — ورود، TP، SL"
+          >
+            شورت
           </button>
           <output class="live-ov-measure-readout" for="indicator-live-payload" aria-live="polite"></output>
         </div>
@@ -69,12 +96,6 @@
     </figure>
     <div class="indicator-live-panes" id="indicator-live-panes"></div>
     <script type="application/json" id="indicator-live-payload">{}</script>
-  </div>
-
-  <div class="indicator-detail__toolbar" role="toolbar" aria-label="اندیکاتور">
-    <button type="button" class="btn secondary btn-compact" data-modal-open="tv">تنظیمات TV</button>
-    <button type="button" class="btn secondary btn-compact" data-modal-open="source">سورس کد</button>
-    <button type="button" class="btn secondary btn-compact" data-modal-open="panel">تنظیمات پنل</button>
   </div>
 
 </section>
@@ -149,6 +170,6 @@
 
 {% block scripts %}
 <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js" crossorigin="anonymous"></script>
-<script src="/static/live-overlay-chart.js?v=28"></script>
+<script src="/static/live-overlay-chart.js?v=29"></script>
 <script src="/static/indicator-detail.js?v=2"></script>
 {% endblock %}

@@ -479,6 +479,34 @@ a.app-header__back:hover {
   background: rgba(124, 58, 237, 0.15);
 }
 
+.live-ov-chart-toolbar--draw {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.live-ov-chart-toolbar--draw .live-ov-measure-readout {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+.live-ov-measure-btn--long.on {
+  color: #6ee7b7;
+  border-color: #059669;
+  background: rgba(5, 150, 105, 0.18);
+}
+
+.live-ov-measure-btn--short.on {
+  color: #fca5a5;
+  border-color: #dc2626;
+  background: rgba(220, 38, 38, 0.18);
+}
+
+.indicator-detail__toolbar {
+  margin-bottom: 10px;
+}
+
 .live-ov-measure-readout {
   flex: 1;
   min-width: 0;

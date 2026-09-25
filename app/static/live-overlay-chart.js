@@ -124,12 +124,14 @@
     }
     if (!inner) return;
     var payloadId = mount.getAttribute("data-payload-id");
-    var btn = wrap.querySelector('[data-measure-for="' + payloadId + '"]');
+    var toolBtns = wrap.querySelectorAll('[data-measure-for="' + payloadId + '"]');
     var readout = wrap.querySelector(".live-ov-measure-readout");
-    if (!btn) return;
+    if (!toolBtns.length) return;
 
     var candles = payload.candles || [];
     var active = false;
+    var activeBtn = null;
+    var drawMode = "measure";
     var dragging = false;
     var savedA = null;
     var savedB = null;
@@ -170,12 +172,127 @@
       if (readout) readout.textContent = text || "";
     }
 
+    function clearTradeDraws() {
+      layer.querySelectorAll(".live-ov-trade-draw").forEach(function (el) {
+        el.remove();
+      });
+    }
+
     function hideMeasure() {
       shade.style.display = "none";
       tag.textContent = "";
       tag.className = "live-ov-measure-tag";
+      clearTradeDraws();
       savedA = null;
       savedB = null;
+    }
+
+    function paintTradeSetupBox(pxA, pxB, dataA, dataB, mode) {
+      if (!dataA || !dataB) return;
+      clearTradeDraws();
+      shade.style.display = "none";
+      tag.textContent = "";
+
+      var entry = dataA.price;
+      var endP = dataB.price;
+      var tp = mode === "long" ? Math.max(entry, endP) : Math.min(entry, endP);
+      var sl = mode === "long" ? Math.min(entry, endP) : Math.max(entry, endP);
+      if (Math.abs(tp - sl) < entry * 1e-8) return;
+
+      var yE = series.priceToCoordinate(entry);
+      var yTp = series.priceToCoordinate(tp);
+      var ySl = series.priceToCoordinate(sl);
+      if (yE == null || yTp == null || ySl == null) return;
+
+      var left = Math.min(pxA.x, pxB.x);
+      var right = Math.max(pxA.x, pxB.x);
+      var width = Math.max(24, right - left);
+
+      function zoneEl(top, height, color, border) {
+        var el = document.createElement("div");
+        el.className = "live-ov-trade-draw";
+        el.style.cssText =
+          "position:absolute;left:" +
+          left +
+          "px;width:" +
+          width +
+          "px;top:" +
+          top +
+          "px;height:" +
+          height +
+          "px;background:" +
+          color +
+          ";border:1px solid " +
+          border +
+          ";box-sizing:border-box;pointer-events:none;";
+        layer.appendChild(el);
+        return el;
+      }
+
+      function tagEl(text, bg, x, y) {
+        var el = document.createElement("div");
+        el.className = "live-ov-trade-draw";
+        el.textContent = text;
+        el.style.cssText =
+          "position:absolute;transform:translate(-50%,-50%);padding:2px 6px;border-radius:3px;font:11px/1.3 ui-sans-serif,system-ui,sans-serif;color:#fff;white-space:nowrap;background:" +
+          bg +
+          ";pointer-events:none;left:" +
+          x +
+          "px;top:" +
+          y +
+          "px;";
+        layer.appendChild(el);
+      }
+
+      var profitTop = Math.min(yE, yTp);
+      var profitH = Math.max(2, Math.abs(yTp - yE));
+      var stopTop = Math.min(yE, ySl);
+      var stopH = Math.max(2, Math.abs(ySl - yE));
+      zoneEl(profitTop, profitH, "rgba(8,153,129,0.12)", "rgba(8,153,129,0.55)");
+      zoneEl(stopTop, stopH, "rgba(242,54,69,0.12)", "rgba(242,54,69,0.55)");
+
+      var entryLine = document.createElement("div");
+      entryLine.className = "live-ov-trade-draw";
+      entryLine.style.cssText =
+        "position:absolute;height:0;border-top:1px solid rgba(226,232,240,0.85);left:" +
+        left +
+        "px;width:" +
+        width +
+        "px;top:" +
+        yE +
+        "px;pointer-events:none;";
+      layer.appendChild(entryLine);
+
+      var distTp = Math.abs(tp - entry);
+      var distSl = Math.abs(sl - entry);
+      var pctTp = (distTp / entry) * 100;
+      var pctSl = (distSl / entry) * 100;
+      var rr = distSl > 0 ? distTp / distSl : 0;
+      var midX = left + width / 2;
+      tagEl(
+        fmtNum(distTp, 2) + " (" + fmtNum(pctTp, 3) + "%)",
+        "#089981",
+        midX,
+        yTp
+      );
+      tagEl(
+        fmtNum(distSl, 2) + " (" + fmtNum(pctSl, 3) + "%)",
+        "#f23645",
+        midX,
+        ySl
+      );
+      tagEl("Entry " + fmtNum(entry, 0), "rgba(41,98,255,0.92)", midX, yE);
+      tagEl("R " + fmtNum(rr, 2), "rgba(8,153,129,0.92)", midX, yE + 14);
+
+      setReadout(
+        (mode === "long" ? "لانگ" : "شورت") +
+          " · Entry " +
+          fmtNum(entry, 0) +
+          " · TP " +
+          fmtNum(tp, 0) +
+          " · SL " +
+          fmtNum(sl, 0)
+      );
     }
 
     function plotWidth() {
@@ -262,6 +379,11 @@
     }
 
     function paintMeasureBox(pxA, pxB, dataA, dataB) {
+      if (drawMode === "long" || drawMode === "short") {
+        paintTradeSetupBox(pxA, pxB, dataA, dataB, drawMode);
+        return;
+      }
+      clearTradeDraws();
       var left = Math.min(pxA.x, pxB.x);
       var right = Math.max(pxA.x, pxB.x);
       var top = Math.min(pxA.y, pxB.y);
@@ -482,8 +604,12 @@
 
     function leaveMeasureToolAfterUse() {
       active = false;
-      btn.classList.remove("on");
-      btn.setAttribute("aria-pressed", "false");
+      activeBtn = null;
+      drawMode = "measure";
+      toolBtns.forEach(function (b) {
+        b.classList.remove("on");
+        b.setAttribute("aria-pressed", "false");
+      });
       wrap.classList.remove("measure-on");
       layer.setAttribute("aria-hidden", "true");
       setPanZoom(true);
@@ -492,10 +618,14 @@
 
     function deactivate() {
       active = false;
+      activeBtn = null;
+      drawMode = "measure";
       finishDrag(null);
       unbindDragListeners();
-      btn.classList.remove("on");
-      btn.setAttribute("aria-pressed", "false");
+      toolBtns.forEach(function (b) {
+        b.classList.remove("on");
+        b.setAttribute("aria-pressed", "false");
+      });
       wrap.classList.remove("measure-on");
       layer.setAttribute("aria-hidden", "true");
       setPanZoom(true);
@@ -503,20 +633,36 @@
       setReadout("");
     }
 
-    btn.addEventListener("click", function (e) {
-      e.preventDefault();
-      if (active) {
-        deactivate();
-        return;
+    function toolHint() {
+      if (drawMode === "long") {
+        return "لانگ: نقطه ورود را بزنید و بکشید (TP/SL مثل پوزیشن)";
       }
-      active = true;
-      btn.classList.add("on");
-      btn.setAttribute("aria-pressed", "true");
-      wrap.classList.add("measure-on");
-      layer.setAttribute("aria-hidden", "false");
-      hideMeasure();
-      setPanZoom(false);
-      setReadout("کلیک کنید، بکشید، رها کنید (مثل TradingView)");
+      if (drawMode === "short") {
+        return "شورت: نقطه ورود را بزنید و بکشید (TP/SL مثل پوزیشن)";
+      }
+      return "خطکش: کلیک کنید، بکشید، رها کنید";
+    }
+
+    toolBtns.forEach(function (btn) {
+      btn.addEventListener("click", function (e) {
+        e.preventDefault();
+        if (active && activeBtn === btn) {
+          deactivate();
+          return;
+        }
+        if (active) hideMeasure();
+        active = true;
+        activeBtn = btn;
+        drawMode = btn.getAttribute("data-draw-mode") || "measure";
+        toolBtns.forEach(function (b) {
+          b.classList.toggle("on", b === btn);
+          b.setAttribute("aria-pressed", b === btn ? "true" : "false");
+        });
+        wrap.classList.add("measure-on");
+        layer.setAttribute("aria-hidden", "false");
+        setPanZoom(false);
+        setReadout(toolHint());
+      });
     });
 
     function onPointerDown(e) {
