@@ -156,6 +156,31 @@ def _bands(
     return bands[:3]
 
 
+def list_expiry_bands(
+    books: list[dict[str, Any]],
+    spot: float,
+    *,
+    now: datetime | None = None,
+) -> list[ExpiryBand]:
+    """سه سررسید نزدیک، هر کدام با باند حرکت خودش."""
+    if spot <= 0 or not books:
+        return []
+    moment = now or datetime.now(timezone.utc)
+    by_expiry: dict[str, list[tuple[float, str, float, float]]] = {}
+    for row in books:
+        parsed = _parse_instrument(str(row.get("instrument_name") or ""))
+        if parsed is None:
+            continue
+        expiry, strike, opt = parsed
+        oi = float(row.get("open_interest") or 0)
+        try:
+            iv = float(row.get("mark_iv") or 0)
+        except (TypeError, ValueError):
+            iv = 0.0
+        by_expiry.setdefault(expiry, []).append((strike, opt, iv, oi))
+    return _bands(by_expiry, spot, moment)
+
+
 def build_compass(
     books: list[dict[str, Any]],
     spot: float,

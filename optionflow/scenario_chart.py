@@ -106,9 +106,11 @@ def render_btcusdt_scenario_chart(
     if len(candles) < 3:
         return None
 
+    candles = candles[-48:]
+
     spot = float(plan.spot)
     b = float(plan.b)
-    c = float(plan.c)
+    draw_path = spot > 0 and abs(b - spot) / spot >= 0.0015
 
     fig_w = 8.0
     fig_h = 4.6
@@ -138,70 +140,42 @@ def render_btcusdt_scenario_chart(
 
     last_x = xs[-1]
     bar_days = xs[-1] - xs[-2] if len(xs) > 1 else 15 / (24 * 60)
-
-    d1 = abs(spot - b)
-    d2 = abs(b - c)
-    total = d1 + d2
-    frac1 = (d1 / total) if total > 0 else 0.5
-    t_b = last_x + bar_days * forward_bars * frac1
-    t_c = last_x + bar_days * forward_bars
+    t_b = last_x + bar_days * forward_bars
 
     ax.axhline(spot, color="#42a5f5", linewidth=1.0, linestyle="-", alpha=0.55)
-    ax.axhline(b, color="#ffb74d", linewidth=1.2, linestyle="--", alpha=0.85)
-    ax.axhline(c, color="#ce93d8", linewidth=1.2, linestyle="--", alpha=0.85)
-
-    ax.plot(
-        [last_x, t_b],
-        [spot, b],
-        color="#ff9800",
-        linewidth=2.4,
-        linestyle="-",
-        marker="o",
-        markersize=7,
-        markerfacecolor="#ff9800",
-        markeredgecolor="#ffffff",
-        markeredgewidth=0.8,
-        zorder=5,
-    )
-    ax.plot(
-        [t_b, t_c],
-        [b, c],
-        color="#ff9800",
-        linewidth=2.4,
-        linestyle=(0, (1.2, 2.4)),
-        alpha=0.38,
-        solid_capstyle="round",
-        zorder=4,
-    )
-    ax.plot(
-        [t_c],
-        [c],
-        linestyle="none",
-        marker="o",
-        markersize=7,
-        markerfacecolor="#ff9800",
-        markeredgecolor="#ffffff",
-        markeredgewidth=0.8,
-        alpha=0.55,
-        zorder=5,
-    )
+    if draw_path:
+        ax.axhline(b, color="#ffb74d", linewidth=1.2, linestyle="--", alpha=0.85)
+        ax.plot(
+            [last_x, t_b],
+            [spot, b],
+            color="#ff9800",
+            linewidth=2.4,
+            linestyle="-",
+            marker="o",
+            markersize=7,
+            markerfacecolor="#ff9800",
+            markeredgecolor="#ffffff",
+            markeredgewidth=0.8,
+            zorder=5,
+        )
 
     ax.scatter([last_x], [spot], s=80, c="#42a5f5", edgecolors="white", linewidths=1, zorder=6)
 
     y_min = min(candle.low for candle in candles)
     y_max = max(candle.high for candle in candles)
     pad = max(spot * 0.002, 80.0)
-    ax.set_ylim(min(y_min, spot, b, c) - pad, max(y_max, spot, b, c) + pad)
+    y_lo = min(y_min, spot, b if draw_path else spot)
+    y_hi = max(y_max, spot, b if draw_path else spot)
+    ax.set_ylim(y_lo - pad, y_hi + pad)
 
-    x_end = t_c + bar_days * 2
+    x_end = t_b + bar_days * 2
     ax.set_xlim(xs[0] - bar_days * 2, x_end)
 
     label_x = xs[-1] + (x_end - xs[-1]) * 0.02
-    for y_val, label, color in (
-        (spot, f"Spot {spot:,.2f}", "#90caf9"),
-        (b, f"B {b:,.0f}", "#ffcc80"),
-        (c, f"C {c:,.0f}", "#e1bee7"),
-    ):
+    labels = [(spot, f"A {spot:,.0f}", "#90caf9")]
+    if draw_path:
+        labels.append((b, f"B {b:,.0f}", "#ffcc80"))
+    for y_val, label, color in labels:
         ax.annotate(
             label,
             xy=(label_x, y_val),
@@ -222,7 +196,11 @@ def render_btcusdt_scenario_chart(
         spine.set_color("#37474f")
     ax.grid(True, color="#263238", linewidth=0.6, alpha=0.7)
     ax.set_title(
-        f"BTCUSDT {interval} — مسیر سناریو (Spot → B → C)",
+        (
+            f"BTCUSDT {interval} — مسیر A → B"
+            if draw_path
+            else f"BTCUSDT {interval} — مقصد مشخص نیست"
+        ),
         color="#eceff1",
         fontsize=11,
         pad=10,

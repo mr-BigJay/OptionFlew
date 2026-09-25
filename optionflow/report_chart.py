@@ -35,14 +35,15 @@ def parse_scenario_from_paragraph(paragraph: str) -> tuple[float, int, int] | No
 
 
 def scenario_plan_from_snapshot(snapshot: ReportSnapshot) -> ScenarioPlan | None:
-    if snapshot.scenario_b is not None and snapshot.scenario_c is not None:
+    if snapshot.scenario_b is not None:
+        c = snapshot.scenario_c if snapshot.scenario_c is not None else int(snapshot.scenario_b)
         return ScenarioPlan(
             spot=float(snapshot.spot),
             b=int(snapshot.scenario_b),
-            c=int(snapshot.scenario_c),
-            first_dir="up",
+            c=c,
+            first_dir="up" if snapshot.scenario_b >= snapshot.spot else "down",
             second_dir="down",
-            two_legs=True,
+            two_legs=False,
         )
     parsed = parse_scenario_from_paragraph(snapshot.paragraph)
     if not parsed:
@@ -59,6 +60,18 @@ def scenario_plan_from_snapshot(snapshot: ReportSnapshot) -> ScenarioPlan | None
 
 
 def scenario_plan_from_row(report: dict[str, Any]) -> ScenarioPlan | None:
+    spot = float(report.get("spot") or 0)
+    zone = report.get("zone_mid")
+    if zone and spot > 0 and abs(int(zone) - spot) / spot >= 0.0015:
+        b = int(zone)
+        return ScenarioPlan(
+            spot=spot,
+            b=b,
+            c=b,
+            first_dir="up" if b >= spot else "down",
+            second_dir="down",
+            two_legs=False,
+        )
     parsed = parse_scenario_from_paragraph(report.get("paragraph") or "")
     if parsed:
         spot, b, c = parsed
