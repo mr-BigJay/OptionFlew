@@ -119,8 +119,8 @@ def render_btcusdt_scenario_chart(
 
     if len(candles) < 3:
         return None
-    # هفتاد درصد کندل‌های قدیمی حذف می‌شود تا انتهای نمودار جا برای باند و مسیر داشته باشد.
-    keep = max(3, int(len(candles) * 0.30))
+    # نیمی از کندل‌های همین پنجرهٔ اخیر حذف می‌شود تا A و B جا داشته باشند.
+    keep = max(3, int(len(candles) * 0.15))
     candles = candles[-keep:]
 
     spot = float(plan.spot)
