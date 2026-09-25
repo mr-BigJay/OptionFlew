@@ -1205,6 +1205,7 @@ async def backtest_page(
                 {"1h": "۱ ساعت"}
                 if tab == "three_rp"
                 else {
+                    "1m": "۱ دقیقه",
                     "5m": "۵ دقیقه",
                     "15m": "۱۵ دقیقه",
                     "1h": "۱ ساعت",
@@ -1234,7 +1235,12 @@ async def backtest_reports_page(request: Request):
         _page_ctx(
             request,
             active="menu", runs=runs, category_labels=labels, bt_tf_labels={
-                "5m": "۵ دقیقه", "15m": "۱۵ دقیقه", "1h": "۱ ساعت", "4h": "۴ ساعت", "1d": "روزانه",
+                "1m": "۱ دقیقه",
+                "5m": "۵ دقیقه",
+                "15m": "۱۵ دقیقه",
+                "1h": "۱ ساعت",
+                "4h": "۴ ساعت",
+                "1d": "روزانه",
             }),
     )
 
@@ -1539,7 +1545,7 @@ async def backtest_start(
         tab = "triangle"
     if tab == "three_rp":
         timeframe = "1h"
-    elif timeframe not in ("5m", "15m", "1h", "4h", "1d"):
+    elif timeframe not in ("1m", "5m", "15m", "1h", "4h", "1d"):
         timeframe = "1h"
     tp: float | None = None
     raw = (target_profit_pct or "").strip().replace(",", ".")

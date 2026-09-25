@@ -16,6 +16,7 @@ from optionflow.patterns.types import PatternHit
 logger = logging.getLogger("optionflow.patterns.chart")
 
 FORWARD_BARS_DEFAULT = {
+    "1m": 60,
     "5m": 36,
     "15m": 24,
     "1h": 18,
@@ -1067,6 +1068,7 @@ def _render_divergence(
         return None
 
     from optionflow.patterns.divergence import RSI_PERIOD
+    from optionflow.patterns.indicators import rsi
 
     closes = [b.close for b in bars]
     rs = rsi(closes, RSI_PERIOD)

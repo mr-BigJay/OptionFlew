@@ -37,7 +37,7 @@
   <button type="submit" class="btn primary full">شروع بکتست</button>
 </form>
 
-<div id="bt-run-progress" class="bt-progress-wrap" {% if not run_id or (active_run and active_run.status != 'running') %}hidden{% endif %} data-run-id="{{ run_id }}">
+<div id="bt-run-progress" class="bt-progress-wrap" {% if not run_id or (active_run and active_run.status != 'running') %}hidden{% endif %} data-run-id="{{ run_id }}" data-run-status="{% if active_run %}{{ active_run.status }}{% endif %}">
   <p class="bt-run-title">در حال بررسی…</p>
   <div class="bt-progress-track">
     <div class="bt-progress-bar" id="bt-run-bar" style="width: 0%"></div>
@@ -57,5 +57,5 @@
   {% endif %}
 </div>
 
-<script src="/static/backtest.js?v=2" defer></script>
+<script src="/static/backtest.js?v=3" defer></script>
 {% endblock %}

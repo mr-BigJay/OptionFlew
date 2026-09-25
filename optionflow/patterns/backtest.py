@@ -46,14 +46,14 @@ CATEGORIES = (
     "ema50",
     "three_rp",
 )
-STRIDE_BY_TF = {"5m": 6, "15m": 2, "1h": 1, "4h": 1, "1d": 1}
-STRIDE_HEAVY = {"5m": 12, "15m": 4, "1h": 2, "4h": 1, "1d": 1}
+STRIDE_BY_TF = {"1m": 30, "5m": 6, "15m": 2, "1h": 1, "4h": 1, "1d": 1}
+STRIDE_HEAVY = {"1m": 60, "5m": 12, "15m": 4, "1h": 2, "4h": 1, "1d": 1}
 HEAVY_STRIDE_CATEGORIES = frozenset({"divergence", "trendline", "channel", "ema50"})
-DEDUPE_BARS = {"5m": 48, "15m": 20, "1h": 24, "4h": 8, "1d": 4}
-DEDUPE_BARS_HEAVY = {"5m": 96, "15m": 48, "1h": 36, "4h": 16, "1d": 8}
-FORWARD_BARS = {"5m": 36, "15m": 24, "1h": 18, "4h": 12, "1d": 8}
-MIN_MOVE_PCT = {"5m": 0.008, "15m": 0.012, "1h": 0.015, "4h": 0.02, "1d": 0.025}
-BACKTEST_TIMEFRAMES = ("5m", "15m", "1h", "4h", "1d")
+DEDUPE_BARS = {"1m": 120, "5m": 48, "15m": 20, "1h": 24, "4h": 8, "1d": 4}
+DEDUPE_BARS_HEAVY = {"1m": 240, "5m": 96, "15m": 48, "1h": 36, "4h": 16, "1d": 8}
+FORWARD_BARS = {"1m": 60, "5m": 36, "15m": 24, "1h": 18, "4h": 12, "1d": 8}
+MIN_MOVE_PCT = {"1m": 0.006, "5m": 0.008, "15m": 0.012, "1h": 0.015, "4h": 0.02, "1d": 0.025}
+BACKTEST_TIMEFRAMES = ("1m", "5m", "15m", "1h", "4h", "1d")
 
 ProgressFn = Callable[[int, int], None]
 CancelFn = Callable[[], bool]
