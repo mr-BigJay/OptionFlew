@@ -4,10 +4,12 @@
 {% block subheader %}
 <p class="muted patterns-sub pos-sub">{{ pos.signal_title }}</p>
 {% endblock %}
+{% block header_back %}
+<a href="/position?tab=open" class="app-header__icon-btn" aria-label="بازگشت به پوزیشن‌های باز">→</a>
+{% endblock %}
 
 {% block content %}
 <div class="pos-page">
-  <p class="pos-back"><a href="/position?tab=open">← بازگشت به پوزیشن‌های باز</a></p>
 
   <section class="pos-panel pos-chart-panel">
     <div class="pos-trade-top">

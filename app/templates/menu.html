@@ -6,6 +6,9 @@
 {% endblock %}
 
 {% block content %}
+{% if auth_user %}
+<p class="menu-user muted">{{ auth_user.username }}{% if is_admin %} · ادمین{% endif %}</p>
+{% endif %}
 <section class="pattern-section" aria-labelledby="app-menu-head">
   <h2 id="app-menu-head" class="section-title">گزینه‌ها</h2>
   <div class="pattern-nav-grid">

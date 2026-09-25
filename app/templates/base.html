@@ -5,19 +5,31 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0a1018">
   <title>{% block title %}OptionFlow{% endblock %}</title>
-    <link rel="stylesheet" href="/static/app.css?v=40">
+    <link rel="stylesheet" href="/static/app.css?v=41">
 </head>
 <body>
-  <header class="top-bar">
-    <h1>{% block header %}OptionFlow{% endblock %}</h1>
-    {% block subheader %}{% endblock %}
-    {% if auth_user %}
-    <p class="top-user-bar">
-      {{ auth_user.username }}
-      {% if is_admin %}<a href="/bigjay_controller">ادمین</a>{% endif %}
-      <a href="/logout">خروج</a>
-    </p>
-    {% endif %}
+  <header class="app-header">
+    <div class="app-header__slot app-header__slot--back">
+      {% block header_back %}{% endblock %}
+    </div>
+    <div class="app-header__center">
+      <h1 class="app-header__title">{% block header %}OptionFlow{% endblock %}</h1>
+      <div class="app-header__sub">{% block subheader %}{% endblock %}</div>
+    </div>
+    <div class="app-header__slot app-header__slot--menu">
+      <details class="app-header__menu">
+        <summary class="app-header__icon-btn" aria-label="منو">⋮</summary>
+        <div class="app-header__dropdown" role="menu">
+          {% block header_menu %}
+          <a href="/menu" role="menuitem">منو</a>
+          {% if auth_user %}
+          {% if is_admin %}<a href="/bigjay_controller" role="menuitem">پنل ادمین</a>{% endif %}
+          <a href="/logout" role="menuitem">خروج</a>
+          {% endif %}
+          {% endblock %}
+        </div>
+      </details>
+    </div>
   </header>
 
   <main class="page{% block page_class %}{% endblock %}">
@@ -58,6 +70,7 @@
   </div>
 
   <script src="/static/chart-lightbox.js?v=3" defer></script>
+  <script src="/static/app-header.js?v=1" defer></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

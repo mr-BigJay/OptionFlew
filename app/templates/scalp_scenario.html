@@ -5,8 +5,11 @@
 <p class="home-schedule muted">{{ scenario.description_fa }}</p>
 {% endblock %}
 
+{% block header_back %}
+<a href="/scalp" class="app-header__icon-btn" aria-label="بازگشت">→</a>
+{% endblock %}
+
 {% block content %}
-<p class="patterns-back"><a href="/scalp">← استراتژی</a></p>
 
 {% if is_admin %}
 <form class="filter-card" method="post" action="/scalp/scenario/{{ scenario.scenario_id }}/settings">

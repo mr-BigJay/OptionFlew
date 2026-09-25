@@ -5,8 +5,11 @@
 <p class="home-schedule muted">{{ event.timeframe }} · {{ fmt_dt(event.created_at) }}</p>
 {% endblock %}
 
+{% block header_back %}
+<a href="/scalp/scenario/{{ event.scenario_id }}" class="app-header__icon-btn" aria-label="بازگشت">→</a>
+{% endblock %}
+
 {% block content %}
-<p class="patterns-back"><a href="/scalp/scenario/{{ event.scenario_id }}">← سناریو</a></p>
 
 {% set meta = event.meta or {} %}
 <article class="home-report-card kind-pattern">

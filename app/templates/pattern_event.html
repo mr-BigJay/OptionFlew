@@ -4,9 +4,11 @@
 {% block subheader %}
 <p class="home-schedule muted">{{ category_label }} · {{ event.timeframe }} · {{ fmt_dt(event.created_at) }}</p>
 {% endblock %}
+{% block header_back %}
+<a href="/patterns/{{ event.category }}" class="app-header__icon-btn" aria-label="بازگشت">→</a>
+{% endblock %}
 
 {% block content %}
-<p class="patterns-back"><a href="/patterns/{{ event.category }}">← {{ category_label }}</a></p>
 
 {% set meta = event.meta or {} %}
 <article class="home-report-card kind-pattern">

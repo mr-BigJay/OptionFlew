@@ -4,9 +4,11 @@
 {% block subheader %}
 <p class="home-schedule muted">{{ subheader }} · {{ count }} مورد در بازه{% if tf_filter or min_profit %} (فیلتر فعال){% endif %}</p>
 {% endblock %}
+{% block header_back %}
+<a href="/patterns" class="app-header__icon-btn" aria-label="بازگشت به الگوها">→</a>
+{% endblock %}
 
 {% block content %}
-<p class="patterns-back"><a href="/patterns">← همهٔ الگوها</a></p>
 
 <nav class="tabs tabs-report" aria-label="بازه">
   <a href="/patterns/{{ category }}?period=day{{ filter_qs }}" class="{% if period == 'day' %}on{% endif %}">امروز</a>
