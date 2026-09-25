@@ -411,6 +411,10 @@ class ScenarioPlan:
     two_legs: bool
     # False: no concentrated strike, so A→B must not be drawn or stated as a level.
     first_confident: bool = True
+    zone_low: int | None = None
+    zone_high: int | None = None
+    band_low: int | None = None
+    band_high: int | None = None
 
 
 def resolve_scenario_plan(

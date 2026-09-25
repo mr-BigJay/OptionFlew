@@ -108,6 +108,18 @@ def init_db() -> None:
             )
         if "expires_at" not in cols:
             conn.execute("ALTER TABLE reports ADD COLUMN expires_at TEXT")
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(reports)")}
+        for col in (
+            "band_low",
+            "band_high",
+            "zone_low",
+            "zone_high",
+            "zone_mid",
+            "down_zone_mid",
+            "up_zone_mid",
+        ):
+            if col not in cols:
+                conn.execute(f"ALTER TABLE reports ADD COLUMN {col} INTEGER")
         conn.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_reports_code "
             "ON reports(report_code) WHERE report_code IS NOT NULL AND report_code != ''"
@@ -152,6 +164,13 @@ def _upsert_scheduled(conn: sqlite3.Connection, row: dict[str, Any]) -> int:
                 pdl = :pdl,
                 pwh = :pwh,
                 pwl = :pwl,
+                band_low = :band_low,
+                band_high = :band_high,
+                zone_low = :zone_low,
+                zone_high = :zone_high,
+                zone_mid = :zone_mid,
+                down_zone_mid = :down_zone_mid,
+                up_zone_mid = :up_zone_mid,
                 is_manual = 0,
                 expires_at = NULL
             WHERE report_code = :report_code
@@ -164,7 +183,10 @@ def _upsert_scheduled(conn: sqlite3.Connection, row: dict[str, Any]) -> int:
         INSERT INTO reports ({cols}) VALUES (
             :created_at, :window_hours, :report_kind, :paragraph, :headline, :bias, :score,
             :confidence_pct, :support_zone, :target_zone, :spot, :trade_count,
-            :window_label, :pdh, :pdl, :pwh, :pwl, :report_code, :is_manual, :expires_at
+            :window_label, :pdh, :pdl, :pwh, :pwl,
+            :band_low, :band_high, :zone_low, :zone_high, :zone_mid,
+            :down_zone_mid, :up_zone_mid,
+            :report_code, :is_manual, :expires_at
         )
         """,
         row,
@@ -176,7 +198,10 @@ def _report_columns() -> str:
     return """
                 created_at, window_hours, report_kind, paragraph, headline, bias, score,
                 confidence_pct, support_zone, target_zone, spot, trade_count,
-                window_label, pdh, pdl, pwh, pwl, report_code, is_manual, expires_at
+                window_label, pdh, pdl, pwh, pwl,
+                band_low, band_high, zone_low, zone_high, zone_mid,
+                down_zone_mid, up_zone_mid,
+                report_code, is_manual, expires_at
             """
 
 
@@ -214,6 +239,31 @@ def _next_manual_index(conn: sqlite3.Connection, date_key: str) -> int:
         if suffix.isdigit():
             max_n = max(max_n, int(suffix))
     return max_n + 1
+
+
+def latest_compass_prior(kind: str) -> dict[str, int | None] | None:
+    """آخرین باند و زون ذخیره‌شده برای مقایسهٔ جابه‌جایی."""
+    with connect() as conn:
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(reports)")}
+        if "band_low" not in cols:
+            return None
+        row = conn.execute(
+            """
+            SELECT band_low, down_zone_mid, up_zone_mid
+            FROM reports
+            WHERE report_kind = ? AND band_low IS NOT NULL
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (kind,),
+        ).fetchone()
+    if row is None:
+        return None
+    return {
+        "band_low": row["band_low"],
+        "down_zone_mid": row["down_zone_mid"],
+        "up_zone_mid": row["up_zone_mid"],
+    }
 
 
 def save_scheduled_report(snapshot: ReportSnapshot) -> int:
@@ -258,7 +308,10 @@ def save_manual_report(snapshot: ReportSnapshot) -> int:
             INSERT INTO reports ({cols}) VALUES (
                 :created_at, :window_hours, :report_kind, :paragraph, :headline, :bias, :score,
                 :confidence_pct, :support_zone, :target_zone, :spot, :trade_count,
-                :window_label, :pdh, :pdl, :pwh, :pwl, :report_code, :is_manual, :expires_at
+                :window_label, :pdh, :pdl, :pwh, :pwl,
+                :band_low, :band_high, :zone_low, :zone_high, :zone_mid,
+                :down_zone_mid, :up_zone_mid,
+                :report_code, :is_manual, :expires_at
             )
             """,
             row,

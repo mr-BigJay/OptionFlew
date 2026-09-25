@@ -141,17 +141,25 @@ def render_btcusdt_scenario_chart(
     bar_days = xs[-1] - xs[-2] if len(xs) > 1 else 15 / (24 * 60)
 
     d1 = abs(spot - b) if draw_path else 0.0
-    d2 = abs(b - c) if draw_path else 0.0
+    d2 = abs(b - c) if draw_path and plan.two_legs else 0.0
     total = d1 + d2
     frac1 = (d1 / total) if total > 0 else 0.5
     t_b = last_x + bar_days * forward_bars * frac1
     t_c = last_x + bar_days * forward_bars
 
     ax.axhline(spot, color="#42a5f5", linewidth=1.0, linestyle="-", alpha=0.55)
+    if plan.band_low:
+        ax.axhline(plan.band_low, color="#ef5350", linewidth=1.15, linestyle="--", alpha=0.9)
+    if plan.band_high:
+        ax.axhline(plan.band_high, color="#66bb6a", linewidth=1.15, linestyle="--", alpha=0.75)
+    if plan.zone_low and plan.zone_high and plan.zone_high >= plan.zone_low:
+        z0, z1 = float(plan.zone_low), float(plan.zone_high)
+        if z1 == z0:
+            pad_z = max(spot * 0.0015, 50.0)
+            z0, z1 = z0 - pad_z, z1 + pad_z
+        ax.axhspan(z0, z1, color="#fbc02d", alpha=0.18, zorder=0)
     if draw_path:
         ax.axhline(b, color="#ffb74d", linewidth=1.2, linestyle="--", alpha=0.85)
-        ax.axhline(c, color="#ce93d8", linewidth=1.2, linestyle="--", alpha=0.85)
-
         ax.plot(
             [last_x, t_b],
             [spot, b],
@@ -165,51 +173,59 @@ def render_btcusdt_scenario_chart(
             markeredgewidth=0.8,
             zorder=5,
         )
-        ax.plot(
-            [t_b, t_c],
-            [b, c],
-            color="#ff9800",
-            linewidth=2.4,
-            linestyle=(0, (1.2, 2.4)),
-            alpha=0.38,
-            solid_capstyle="round",
-            zorder=4,
-        )
-        ax.plot(
-            [t_c],
-            [c],
-            linestyle="none",
-            marker="o",
-            markersize=7,
-            markerfacecolor="#ff9800",
-            markeredgecolor="#ffffff",
-            markeredgewidth=0.8,
-            alpha=0.55,
-            zorder=5,
-        )
+        if plan.two_legs:
+            ax.axhline(c, color="#ce93d8", linewidth=1.2, linestyle="--", alpha=0.85)
+            ax.plot(
+                [t_b, t_c],
+                [b, c],
+                color="#ff9800",
+                linewidth=2.4,
+                linestyle=(0, (1.2, 2.4)),
+                alpha=0.38,
+                solid_capstyle="round",
+                zorder=4,
+            )
+            ax.plot(
+                [t_c],
+                [c],
+                linestyle="none",
+                marker="o",
+                markersize=7,
+                markerfacecolor="#ff9800",
+                markeredgecolor="#ffffff",
+                markeredgewidth=0.8,
+                alpha=0.55,
+                zorder=5,
+            )
 
     ax.scatter([last_x], [spot], s=80, c="#42a5f5", edgecolors="white", linewidths=1, zorder=6)
 
     y_min = min(candle.low for candle in candles)
     y_max = max(candle.high for candle in candles)
     pad = max(spot * 0.002, 80.0)
+    extras = [spot]
     if draw_path:
-        ax.set_ylim(min(y_min, spot, b, c) - pad, max(y_max, spot, b, c) + pad)
-    else:
-        ax.set_ylim(min(y_min, spot) - pad, max(y_max, spot) + pad)
+        extras.append(b)
+        if plan.two_legs:
+            extras.append(c)
+    for level in (plan.band_low, plan.band_high, plan.zone_low, plan.zone_high):
+        if level:
+            extras.append(float(level))
+    ax.set_ylim(min(y_min, *extras) - pad, max(y_max, *extras) + pad)
 
     x_end = (t_c if draw_path else last_x + bar_days * 4) + bar_days * 2
     ax.set_xlim(xs[0] - bar_days * 2, x_end)
 
     label_x = xs[-1] + (x_end - xs[-1]) * 0.02
     labels = [(spot, f"Spot {spot:,.2f}", "#90caf9")]
+    if plan.band_low:
+        labels.append((float(plan.band_low), f"Band {plan.band_low:,.0f}", "#ef9a9a"))
+    if plan.zone_low and plan.zone_high:
+        labels.append((float(plan.zone_low), f"Zone {plan.zone_low:,.0f}-{plan.zone_high:,.0f}", "#ffe082"))
     if draw_path:
-        labels.extend(
-            (
-                (b, f"B {b:,.0f}", "#ffcc80"),
-                (c, f"C {c:,.0f}", "#e1bee7"),
-            )
-        )
+        labels.append((b, f"B {b:,.0f}", "#ffcc80"))
+        if plan.two_legs:
+            labels.append((c, f"C {c:,.0f}", "#e1bee7"))
     for y_val, label, color in labels:
         ax.annotate(
             label,

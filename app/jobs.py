@@ -3,7 +3,14 @@ from __future__ import annotations
 import logging
 import os
 
-from app.storage import get_report, save_manual_report, save_report_chart, save_scheduled_report
+from app.storage import (
+    get_report,
+    latest_compass_prior,
+    save_manual_report,
+    save_report_chart,
+    save_scheduled_report,
+)
+from optionflow.expiry_compass import PriorCompass
 from app.telegram_notify import maybe_send_report
 from optionflow.report_chart import chart_png_for_snapshot
 from optionflow.report_codes import scheduled_report_code
@@ -20,12 +27,24 @@ def _notify_report(snapshot, prefix: str) -> None:
     maybe_send_report(f"{prefix}\n{snapshot.paragraph}", chart_png=chart_png)
 
 
+def _prior_for(kind: ReportKind) -> PriorCompass | None:
+    raw = latest_compass_prior(kind)
+    if not raw:
+        return None
+    return PriorCompass(
+        band_low=raw.get("band_low"),
+        down_zone_mid=raw.get("down_zone_mid"),
+        up_zone_mid=raw.get("up_zone_mid"),
+    )
+
+
 def _generate_scheduled(kind: ReportKind) -> None:
     enriched = os.environ.get("OPTIONFLOW_ENRICHED", "0") == "1"
     snapshot = produce_report(
         report_kind=kind,
         use_candle_window=True,
         enriched=enriched,
+        prior=_prior_for(kind),
     )
     snapshot.report_code = scheduled_report_code(kind)
     save_scheduled_report(snapshot)
@@ -40,6 +59,7 @@ def _generate_manual(kind: ReportKind) -> None:
         report_kind=kind,
         use_candle_window=True,
         enriched=enriched,
+        prior=_prior_for(kind),
     )
     rid = save_manual_report(snapshot)
     saved = get_report(rid)
