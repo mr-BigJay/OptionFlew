@@ -6,24 +6,23 @@
 {% endblock %}
 
 {% block content %}
-{% if auth_user %}
-<p class="menu-user muted">{{ auth_user.username }}{% if is_admin %} · ادمین{% endif %}</p>
-{% endif %}
-<section class="pattern-section" aria-labelledby="app-menu-head">
-  <h2 id="app-menu-head" class="section-title">گزینه‌ها</h2>
-  <div class="pattern-nav-grid">
-    <a href="/chart" class="pattern-nav-card pattern-nav-card-compact">
-      <span class="pattern-nav-title">📈 چارت BTC</span>
-      <span class="muted" style="font-size:0.75rem;margin-top:4px;">Bitunix · TradingView زنده</span>
+<section class="menu-page" aria-label="منوی برنامه">
+  <div class="menu-grid">
+    <a href="/chart" class="menu-card">
+      <span class="menu-card__icon" aria-hidden="true">📈</span>
+      <span class="menu-card__title">چارت BTC</span>
+      <span class="menu-card__desc">Bitunix · TradingView زنده</span>
     </a>
-    <a href="/telegram" class="pattern-nav-card pattern-nav-card-compact">
-      <span class="pattern-nav-title">✈ تلگرام</span>
-      <span class="muted" style="font-size:0.75rem;margin-top:4px;">ربات و اعلان‌ها</span>
+    <a href="/telegram" class="menu-card">
+      <span class="menu-card__icon" aria-hidden="true">✈</span>
+      <span class="menu-card__title">تلگرام</span>
+      <span class="menu-card__desc">ربات و اعلان‌ها</span>
     </a>
     {% if is_admin %}
-    <a href="/backtest" class="pattern-nav-card pattern-nav-card-compact">
-      <span class="pattern-nav-title">⏪ بکتست</span>
-      <span class="muted" style="font-size:0.75rem;margin-top:4px;">الگوها · تاریخچه</span>
+    <a href="/backtest" class="menu-card">
+      <span class="menu-card__icon" aria-hidden="true">⏪</span>
+      <span class="menu-card__title">بکتست</span>
+      <span class="menu-card__desc">الگوها · تاریخچه</span>
     </a>
     {% endif %}
   </div>
