@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0a1018">
   <title>{% block title %}OptionFlow{% endblock %}</title>
-    <link rel="stylesheet" href="/static/app.css?v=46">
+    <link rel="stylesheet" href="/static/app.css?v=47">
 </head>
 <body>
   <header class="app-header">
@@ -17,18 +17,7 @@
       <div class="app-header__sub">{% block subheader %}{% endblock %}</div>
     </div>
     <div class="app-header__slot app-header__slot--menu">
-      <details class="app-header__menu">
-        <summary class="app-header__icon-btn" aria-label="منو">⋮</summary>
-        <div class="app-header__dropdown" role="menu">
-          {% block header_menu %}
-          <a href="/menu" role="menuitem">منو</a>
-          {% if auth_user %}
-          {% if is_admin %}<a href="/bigjay_controller" role="menuitem">پنل ادمین</a>{% endif %}
-          <a href="/logout" role="menuitem">خروج</a>
-          {% endif %}
-          {% endblock %}
-        </div>
-      </details>
+      {% block header_menu %}{% endblock %}
     </div>
   </header>
 

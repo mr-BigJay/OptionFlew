@@ -29,6 +29,18 @@
       <span class="menu-card__title">بکتست</span>
       <span class="menu-card__desc">الگوها · تاریخچه</span>
     </a>
+    <a href="/bigjay_controller" class="menu-card">
+      <span class="menu-card__icon" aria-hidden="true">⚙</span>
+      <span class="menu-card__title">پنل ادمین</span>
+      <span class="menu-card__desc">کاربران · گزارش دستی</span>
+    </a>
+    {% endif %}
+    {% if auth_user %}
+    <a href="/logout" class="menu-card menu-card--danger menu-card--full">
+      <span class="menu-card__icon" aria-hidden="true">🚪</span>
+      <span class="menu-card__title">خروج</span>
+      <span class="menu-card__desc">پایان نشست کاربری</span>
+    </a>
     {% endif %}
   </div>
 </section>
