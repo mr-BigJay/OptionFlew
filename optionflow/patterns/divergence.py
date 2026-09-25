@@ -219,6 +219,7 @@ def detect_rsi_divergence(
     timeframe: str,
     *,
     allow_early: bool = True,
+    early_only: bool = False,
     rs: list[float | None] | None = None,
 ) -> PatternHit | None:
     min_len = LOOKBACK_LEFT + LOOKBACK_RIGHT + RANGE_UPPER + RSI_PERIOD + 20
@@ -243,7 +244,7 @@ def detect_rsi_divergence(
         rs, left=LOOKBACK_LEFT, right=LOOKBACK_RIGHT
     )
 
-    if len(ph) >= 2:
+    if not early_only and len(ph) >= 2:
         conf_b, p_b = ph[-1]
         if _recent_confirm(conf_b, n, LOOKBACK_RIGHT):
             _, p_a = ph[-2]
@@ -263,7 +264,7 @@ def detect_rsi_divergence(
                         early=False,
                     )
 
-    if len(pl) >= 2:
+    if not early_only and len(pl) >= 2:
         conf_b, p_b = pl[-1]
         if _recent_confirm(conf_b, n, LOOKBACK_RIGHT):
             _, p_a = pl[-2]

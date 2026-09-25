@@ -468,6 +468,7 @@ def detect_trendline(
     timeframe: str,
     *,
     allow_early: bool = True,
+    early_only: bool = False,
 ) -> PatternHit | None:
     prep = _prep(bars, timeframe, classic_trend=True)
     if prep is None:
@@ -481,6 +482,8 @@ def detect_trendline(
         else resist
     )
     if primary["stage"] == "early" and not allow_early:
+        return None
+    if early_only and primary["stage"] != "early":
         return None
     last = window[-1]
     n_pri = len(primary["touches"])
@@ -560,6 +563,7 @@ def detect_channel(
     timeframe: str,
     *,
     allow_early: bool = True,
+    early_only: bool = False,
 ) -> PatternHit | None:
     prep = _prep(bars, timeframe)
     if prep is None:
@@ -626,6 +630,8 @@ def detect_channel(
     if forming and n_hi < 3 and n_lo < 3:
         stage = "early"
     if stage == "early" and not allow_early:
+        return None
+    if early_only and stage != "early":
         return None
     last = window[-1]
     slope = (su + sl) / 2.0

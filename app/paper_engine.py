@@ -43,8 +43,47 @@ def latest_btc_price() -> float | None:
     return None
 
 
+def _detect_for_entry_stage(category: str, bars, timeframe: str, *, want_early: bool):
+    from optionflow.patterns.divergence import detect_rsi_divergence
+    from optionflow.patterns.ema50 import detect_ema50
+    from optionflow.patterns.trendline import detect_channel, detect_trendline
+
+    kwargs = {"allow_early": want_early, "early_only": want_early}
+    if category == "divergence":
+        return detect_rsi_divergence(bars, timeframe, **kwargs)
+    if category == "trendline":
+        return detect_trendline(bars, timeframe, **kwargs)
+    if category == "channel":
+        return detect_channel(bars, timeframe, **kwargs)
+    if category == "ema50":
+        return detect_ema50(bars, timeframe, **kwargs)
+    return None
+
+
+def entry_hit_for_config(hit: PatternHit, cfg: dict[str, Any] | None) -> PatternHit | None:
+    """سیگنال اولیه فقط با تیک؛ بدون تیک فقط تأیید نهایی."""
+    from app.position_store import PATTERN_EARLY_CATEGORIES
+
+    cat = str(hit.category or "")
+    if cat not in PATTERN_EARLY_CATEGORIES:
+        return hit
+    want_early = cat in ((cfg or {}).get("pattern_early") or [])
+    stage = str((hit.meta or {}).get("stage") or "")
+    matches = stage == "early" if want_early else bool(stage) and stage != "early"
+    if matches:
+        return hit
+    tf = str(hit.timeframe or "")
+    try:
+        bars = load_btcusdt(tf, limit=400)
+    except Exception:
+        return None
+    if not bars:
+        return None
+    return _detect_for_entry_stage(cat, bars, tf, want_early=want_early)
+
+
 def pattern_hit_allows_entry(hit: PatternHit, cfg: dict[str, Any] | None = None) -> bool:
-    """ترندلاین فقط با لمس خط. الگوهای دارای تأیید اولیه طبق تیک تنظیمات."""
+    """ترندلاین فقط با لمس خط. الگوهای دارای سیگنال اولیه طبق تیک تنظیمات."""
     cat = str(hit.category or "")
     meta = hit.meta or {}
     if cat == "trendline" and not meta.get("testing"):
@@ -173,6 +212,7 @@ def try_open_from_pattern_hit(user_id: int, hit: PatternHit) -> int | None:
     cat = str(hit.category or "")
     if cat not in (cfg.get("pattern_categories") or []):
         return None
+    hit = entry_hit_for_config(hit, cfg) or hit
     if not pattern_hit_allows_entry(hit, cfg):
         return None
     tf = str(hit.timeframe or "")

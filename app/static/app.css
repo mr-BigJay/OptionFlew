@@ -1649,7 +1649,7 @@ a.scalp-scenario-card--nabz:hover {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
   width: 100%;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 .indicator-detail__toolbar .btn {

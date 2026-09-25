@@ -35,7 +35,7 @@ PATTERN_TIMEFRAMES: dict[str, tuple[str, ...]] = {
     "three_rp": ("1h",),
 }
 
-# الگوهایی که سیگنال «تأیید اولیه» جدا از تأیید نهایی دارند.
+# الگوهایی که «سیگنال اولیه» جدا از تأیید نهایی دارند.
 PATTERN_EARLY_CATEGORIES = (
     "divergence",
     "trendline",

@@ -341,6 +341,7 @@ def detect_ema50(
     timeframe: str,
     *,
     allow_early: bool = True,
+    early_only: bool = False,
 ) -> PatternHit | None:
     if len(bars) < EMA_LEN + 8:
         return None
@@ -367,6 +368,8 @@ def detect_ema50(
     if setup is None:
         return None
     if setup["stage"] == "early" and not allow_early:
+        return None
+    if early_only and setup["stage"] != "early":
         return None
     if not _visible(setup["entry_index"], n, int(setup["pullback_index"])):
         return None
