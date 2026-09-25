@@ -120,6 +120,9 @@ def init_db() -> None:
 
     init_position_db()
     init_scalp_db()
+    from app.indicator_store import init_indicator_db
+
+    init_indicator_db()
 
 
 def _upsert_scheduled(conn: sqlite3.Connection, row: dict[str, Any]) -> int:

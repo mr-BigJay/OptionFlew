@@ -52,6 +52,13 @@ from app.scalp_store import (
     update_scenario_settings,
 )
 from app.history_jobs import history_download_state, start_history_download
+from app.indicator_store import (
+    delete_indicator,
+    get_indicator,
+    list_indicators,
+    save_indicator,
+    user_can_edit,
+)
 from app.nav_badges import compute_nav_badges, mark_nav_seen
 from app.jobs import (
     run_scheduled_4h_report,
@@ -1232,6 +1239,143 @@ async def menu_candles_download(interval: str = Form("all")):
     started = start_history_download(interval=iv)
     q = "dl=busy" if not started else "dl=started"
     return RedirectResponse(f"/menu/candles?{q}", status_code=303)
+
+
+@app.get("/menu/indicators", response_class=HTMLResponse)
+async def menu_indicators_page(request: Request, msg: str = "", err: str = ""):
+    user = current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    uid = int(user["id"])
+    items = list_indicators(
+        user_id=uid, is_admin=bool(user.get("is_admin"))
+    )
+    return templates.TemplateResponse(
+        request,
+        "menu_indicators.html",
+        _page_ctx(request, active="menu", items=items, msg=msg, err=err),
+    )
+
+
+@app.get("/menu/indicators/new", response_class=HTMLResponse)
+async def menu_indicator_new(request: Request):
+    user = current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    return templates.TemplateResponse(
+        request,
+        "menu_indicator_form.html",
+        _page_ctx(request, active="menu", indicator=None, err=""),
+    )
+
+
+@app.get("/menu/indicators/{indicator_id}", response_class=HTMLResponse)
+async def menu_indicator_detail(request: Request, indicator_id: int):
+    user = current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    row = get_indicator(indicator_id)
+    if not row:
+        return RedirectResponse("/menu/indicators", status_code=302)
+    if not user.get("is_admin") and int(row["user_id"]) != int(user["id"]):
+        return RedirectResponse("/menu/indicators", status_code=302)
+    return templates.TemplateResponse(
+        request,
+        "menu_indicator_detail.html",
+        _page_ctx(
+            request,
+            active="menu",
+            indicator=row,
+            can_edit=user_can_edit(user, row),
+        ),
+    )
+
+
+@app.get("/menu/indicators/{indicator_id}/edit", response_class=HTMLResponse)
+async def menu_indicator_edit(request: Request, indicator_id: int):
+    user = current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    row = get_indicator(indicator_id)
+    if not row or not user_can_edit(user, row):
+        return RedirectResponse("/menu/indicators", status_code=302)
+    return templates.TemplateResponse(
+        request,
+        "menu_indicator_form.html",
+        _page_ctx(request, active="menu", indicator=row, err=""),
+    )
+
+
+@app.post("/menu/indicators/save")
+async def menu_indicator_save(
+    request: Request,
+    title_fa: str = Form(...),
+    source_code: str = Form(...),
+    slug: str = Form(""),
+    description_fa: str = Form(""),
+    language: str = Form("pine"),
+    indicator_id: str = Form(""),
+):
+    user = current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    uid = int(user["id"])
+    iid: int | None = None
+    raw_id = (indicator_id or "").strip()
+    if raw_id.isdigit():
+        iid = int(raw_id)
+        row = get_indicator(iid)
+        if not row or not user_can_edit(user, row):
+            return RedirectResponse("/menu/indicators", status_code=303)
+    new_id, err = save_indicator(
+        user_id=uid,
+        title_fa=title_fa,
+        source_code=source_code,
+        slug=slug,
+        description_fa=description_fa,
+        language=language,
+        indicator_id=iid,
+    )
+    if err or new_id is None:
+        return templates.TemplateResponse(
+            request,
+            "menu_indicator_form.html",
+            _page_ctx(
+                request,
+                active="menu",
+                indicator={
+                    "id": iid,
+                    "title_fa": title_fa,
+                    "description_fa": description_fa,
+                    "language": language,
+                    "source_code": source_code,
+                    "slug": slug,
+                }
+                if iid
+                else {
+                    "title_fa": title_fa,
+                    "description_fa": description_fa,
+                    "language": language,
+                    "source_code": source_code,
+                    "slug": slug,
+                },
+                err=err or "خطا",
+            ),
+            status_code=400,
+        )
+    return RedirectResponse(f"/menu/indicators/{new_id}", status_code=303)
+
+
+@app.post("/menu/indicators/{indicator_id}/delete")
+async def menu_indicator_delete(request: Request, indicator_id: int):
+    user = current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    row = get_indicator(indicator_id)
+    if not row or not user_can_edit(user, row):
+        return RedirectResponse("/menu/indicators", status_code=303)
+    delete_indicator(indicator_id)
+    return RedirectResponse("/menu/indicators?msg=حذف+شد", status_code=303)
 
 
 @app.post("/backtest/start")

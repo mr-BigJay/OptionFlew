@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}{{ indicator.title_fa }} — اندیکاتور{% endblock %}
+{% block header %}<span class="header-title">{{ indicator.title_fa }}</span>{% endblock %}
+{% block header_back %}
+<a href="/menu/indicators" class="app-header__back" aria-label="بازگشت">→</a>
+{% endblock %}
+{% block subheader %}
+<p class="muted patterns-sub">
+  {% if indicator.language == 'pine' %}Pine Script{% elif indicator.language == 'python' %}Python{% else %}سایر{% endif %}
+  · <code dir="ltr">{{ indicator.slug }}</code>
+</p>
+{% endblock %}
+
+{% block content %}
+{% if indicator.description_fa %}
+<p class="muted bt-hint">{{ indicator.description_fa }}</p>
+{% endif %}
+
+<div class="indicator-code-wrap card">
+  <div class="indicator-code-bar">
+    <button type="button" class="btn secondary btn-compact" id="copy-indicator-src">کپی سورس</button>
+  </div>
+  <pre class="indicator-code" id="indicator-src" dir="ltr"><code>{{ indicator.source_code }}</code></pre>
+</div>
+
+{% if can_edit %}
+<div class="indicator-actions">
+  <a href="/menu/indicators/{{ indicator.id }}/edit" class="btn secondary">ویرایش</a>
+  <form method="post" action="/menu/indicators/{{ indicator.id }}/delete" class="inline-form" onsubmit="return confirm('حذف این اندیکاتور؟');">
+    <button type="submit" class="btn secondary">حذف</button>
+  </form>
+</div>
+{% endif %}
+
+<script>
+(function () {
+  var btn = document.getElementById("copy-indicator-src");
+  var pre = document.getElementById("indicator-src");
+  if (!btn || !pre) return;
+  btn.addEventListener("click", function () {
+    var text = pre.textContent || "";
+    navigator.clipboard.writeText(text).then(function () {
+      btn.textContent = "کپی شد ✓";
+      setTimeout(function () { btn.textContent = "کپی سورس"; }, 2000);
+    });
+  });
+})();
+</script>
+{% endblock %}

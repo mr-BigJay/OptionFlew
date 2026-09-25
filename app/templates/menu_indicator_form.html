@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}{% if indicator %}ویرایش{% else %}جدید{% endif %} — اندیکاتور{% endblock %}
+{% block header %}<span class="header-title">{% if indicator %}ویرایش اندیکاتور{% else %}اندیکاتور جدید{% endif %}</span>{% endblock %}
+{% block header_back %}
+<a href="{% if indicator %}/menu/indicators/{{ indicator.id }}{% else %}/menu/indicators{% endif %}" class="app-header__back" aria-label="بازگشت">→</a>
+{% endblock %}
+
+{% block content %}
+{% if err %}
+<p class="flash err">{{ err }}</p>
+{% endif %}
+
+<form class="filter-card indicator-form" method="post" action="/menu/indicators/save">
+  {% if indicator and indicator.id %}
+  <input type="hidden" name="indicator_id" value="{{ indicator.id }}">
+  {% endif %}
+  <label>عنوان</label>
+  <input type="text" name="title_fa" required maxlength="120" value="{{ indicator.title_fa if indicator else '' }}">
+
+  {% if not indicator or not indicator.id %}
+  <label>شناسه (اختیاری — انگلیسی)</label>
+  <input type="text" name="slug" dir="ltr" placeholder="my-rsi-strategy" value="{{ indicator.slug if indicator else '' }}">
+  {% else %}
+  <p class="muted bt-hint">شناسه: <code dir="ltr">{{ indicator.slug }}</code></p>
+  {% endif %}
+
+  <label>نوع سورس</label>
+  <select name="language">
+    <option value="pine" {% if indicator and indicator.language == 'pine' %}selected{% elif not indicator %}selected{% endif %}>Pine Script (TradingView)</option>
+    <option value="python" {% if indicator and indicator.language == 'python' %}selected{% endif %}>Python</option>
+    <option value="other" {% if indicator and indicator.language == 'other' %}selected{% endif %}>سایر</option>
+  </select>
+
+  <label>توضیح کوتاه</label>
+  <input type="text" name="description_fa" maxlength="300" value="{{ indicator.description_fa if indicator else '' }}">
+
+  <label>سورس کد</label>
+  <textarea name="source_code" class="indicator-code-input" rows="18" required dir="ltr" spellcheck="false">{{ indicator.source_code if indicator else '' }}</textarea>
+
+  <button type="submit" class="btn primary full">ذخیره</button>
+</form>
+{% endblock %}

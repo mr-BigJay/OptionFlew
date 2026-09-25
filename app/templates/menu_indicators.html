@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}اندیکاتورها — OptionFlow{% endblock %}
+{% block header %}<span class="header-title">اندیکاتورها</span>{% endblock %}
+{% block header_back %}
+<a href="/menu" class="app-header__back" aria-label="بازگشت به منو">→</a>
+{% endblock %}
+{% block subheader %}
+<p class="muted patterns-sub">کتابخانه سورس · Pine / Python</p>
+{% endblock %}
+
+{% block content %}
+{% if msg %}
+<p class="flash ok">{{ msg }}</p>
+{% endif %}
+{% if err %}
+<p class="flash err">{{ err }}</p>
+{% endif %}
+
+<section class="indicators-page">
+  <div class="indicators-toolbar">
+    <p class="muted bt-hint">سورس اندیکاتورهای خود را ذخیره کنید و از TradingView یا اسکریپت‌های Python کپی کنید.</p>
+    <a href="/menu/indicators/new" class="btn secondary">+ اندیکاتور جدید</a>
+  </div>
+
+  {% if items %}
+  <div class="menu-grid indicators-grid">
+    {% for row in items %}
+    <a href="/menu/indicators/{{ row.id }}" class="menu-card indicator-card">
+      <span class="menu-card__icon" aria-hidden="true">📐</span>
+      <span class="menu-card__title">{{ row.title_fa }}</span>
+      <span class="menu-card__desc">
+        {% if row.language == 'pine' %}Pine Script{% elif row.language == 'python' %}Python{% else %}سایر{% endif %}
+        · {{ row.slug }}
+      </span>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty card">
+    <p>هنوز اندیکاتوری ثبت نشده. «اندیکاتور جدید» را بزنید و سورس را بچسبانید.</p>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}
