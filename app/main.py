@@ -52,6 +52,8 @@ from app.scalp_store import (
     update_scenario_settings,
 )
 from app.history_jobs import history_download_state, start_history_download
+from app.indicator_pine_inputs import parse_pine_inputs
+from app.indicator_runtime import build_indicator_live_payload, tv_fields_json
 from app.indicator_store import (
     delete_indicator,
     get_indicator,
@@ -1288,8 +1290,54 @@ async def menu_indicator_detail(request: Request, indicator_id: int):
             active="menu",
             indicator=row,
             can_edit=user_can_edit(user, row),
+            tv_fields_json=tv_fields_json(row),
+            chart_tf="15m",
         ),
     )
+
+
+@app.get("/api/indicators/{indicator_id}/tv-inputs")
+async def api_indicator_tv_inputs(request: Request, indicator_id: int):
+    user = current_user(request)
+    if not user:
+        return JSONResponse({"error": "auth"}, status_code=401)
+    row = get_indicator(indicator_id)
+    if not row:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    if not user.get("is_admin") and int(row["user_id"]) != int(user["id"]):
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+    lang = str(row.get("language") or "pine")
+    fields = parse_pine_inputs(str(row.get("source_code") or "")) if lang == "pine" else []
+    return JSONResponse({"language": lang, "fields": fields})
+
+
+@app.post("/api/indicators/{indicator_id}/live-chart")
+async def api_indicator_live_chart(request: Request, indicator_id: int):
+    user = current_user(request)
+    if not user:
+        return JSONResponse({"error": "auth"}, status_code=401)
+    row = get_indicator(indicator_id)
+    if not row:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    if not user.get("is_admin") and int(row["user_id"]) != int(user["id"]):
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    tf = str(body.get("timeframe") or body.get("tf") or "15m")
+    settings = body.get("settings") if isinstance(body.get("settings"), dict) else {}
+    payload = build_indicator_live_payload(
+        language=str(row.get("language") or "pine"),
+        source_code=str(row.get("source_code") or ""),
+        settings=settings,
+        timeframe=tf,
+    )
+    if not payload:
+        return JSONResponse({"error": "no_data"}, status_code=503)
+    return JSONResponse(payload)
 
 
 @app.get("/menu/indicators/{indicator_id}/edit", response_class=HTMLResponse)

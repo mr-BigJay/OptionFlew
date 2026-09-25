@@ -12,38 +12,107 @@
 {% endblock %}
 
 {% block content %}
-{% if indicator.description_fa %}
-<p class="muted bt-hint">{{ indicator.description_fa }}</p>
-{% endif %}
+<script type="application/json" id="indicator-tv-fields">{{ tv_fields_json|safe }}</script>
+<section class="indicator-detail" id="indicator-detail"
+  data-indicator-id="{{ indicator.id }}"
+  data-language="{{ indicator.language }}"
+  data-chart-tf="{{ chart_tf }}">
 
-<div class="indicator-code-wrap card">
-  <div class="indicator-code-bar">
-    <button type="button" class="btn secondary btn-compact" id="copy-indicator-src">کپی سورس</button>
+  <div class="indicator-detail__toolbar" role="toolbar" aria-label="اندیکاتور">
+    <button type="button" class="btn secondary btn-compact" data-modal-open="tv">تنظیمات TV</button>
+    <button type="button" class="btn secondary btn-compact" data-modal-open="source">سورس کد</button>
+    <button type="button" class="btn secondary btn-compact" data-modal-open="panel">تنظیمات پنل</button>
   </div>
-  <pre class="indicator-code" id="indicator-src" dir="ltr"><code>{{ indicator.source_code }}</code></pre>
-</div>
 
-{% if can_edit %}
-<div class="indicator-actions">
-  <a href="/menu/indicators/{{ indicator.id }}/edit" class="btn secondary">ویرایش</a>
-  <form method="post" action="/menu/indicators/{{ indicator.id }}/delete" class="inline-form" onsubmit="return confirm('حذف این اندیکاتور؟');">
-    <button type="submit" class="btn secondary">حذف</button>
+  <nav class="tabs tabs-patterns indicator-tf-tabs" aria-label="تایم‌فریم چارت">
+    {% for tf, label in [('5m', '۵m'), ('15m', '۱۵m'), ('1h', '۱h'), ('4h', '۴h')] %}
+    <button type="button" class="indicator-tf-btn{% if chart_tf == tf %} on{% endif %}" data-tf="{{ tf }}">{{ label }}</button>
+    {% endfor %}
+  </nav>
+
+  <div class="indicator-live-wrap card">
+    <p class="muted bt-hint indicator-live-hint" id="indicator-live-hint">در حال بارگذاری چارت…</p>
+    <div class="indicator-live-mount" id="indicator-live-mount" aria-label="چارت زنده"></div>
+    <div class="indicator-live-panes" id="indicator-live-panes"></div>
+  </div>
+
+  {% if can_edit %}
+  <form method="post" action="/menu/indicators/{{ indicator.id }}/delete" class="indicator-actions inline-form" onsubmit="return confirm('حذف این اندیکاتور؟');">
+    <button type="submit" class="btn secondary">حذف اندیکاتور</button>
   </form>
-</div>
-{% endif %}
+  {% endif %}
+</section>
 
-<script>
-(function () {
-  var btn = document.getElementById("copy-indicator-src");
-  var pre = document.getElementById("indicator-src");
-  if (!btn || !pre) return;
-  btn.addEventListener("click", function () {
-    var text = pre.textContent || "";
-    navigator.clipboard.writeText(text).then(function () {
-      btn.textContent = "کپی شد ✓";
-      setTimeout(function () { btn.textContent = "کپی سورس"; }, 2000);
-    });
-  });
-})();
-</script>
+<div class="app-modal-root" id="indicator-modals" hidden>
+  <div class="app-modal-backdrop" data-modal-close></div>
+
+  <div class="app-modal" id="modal-tv" role="dialog" aria-modal="true" aria-labelledby="modal-tv-title" hidden>
+    <header class="app-modal__head">
+      <h2 id="modal-tv-title" class="app-modal__title">تنظیمات TradingView</h2>
+      <button type="button" class="app-modal__close" data-modal-close aria-label="بستن">×</button>
+    </header>
+    <div class="app-modal__body">
+      <p class="muted bt-hint" id="tv-modal-empty">برای Pine Script، ورودی‌های <code dir="ltr">input.*</code> از سورس استخراج می‌شوند.</p>
+      <form id="tv-settings-form" class="indicator-tv-form"></form>
+    </div>
+    <footer class="app-modal__foot">
+      <button type="button" class="btn primary" id="tv-settings-apply">اعمال روی چارت</button>
+    </footer>
+  </div>
+
+  <div class="app-modal" id="modal-source" role="dialog" aria-modal="true" aria-labelledby="modal-src-title" hidden>
+    <header class="app-modal__head">
+      <h2 id="modal-src-title" class="app-modal__title">سورس کد</h2>
+      <button type="button" class="app-modal__close" data-modal-close aria-label="بستن">×</button>
+    </header>
+    <div class="app-modal__body">
+      <div class="indicator-code-bar">
+        <button type="button" class="btn secondary btn-compact" id="copy-indicator-src">کپی کل سورس</button>
+      </div>
+      <pre class="indicator-code indicator-code--modal" id="indicator-src" dir="ltr"><code>{{ indicator.source_code }}</code></pre>
+    </div>
+  </div>
+
+  <div class="app-modal" id="modal-panel" role="dialog" aria-modal="true" aria-labelledby="modal-panel-title" hidden>
+    <header class="app-modal__head">
+      <h2 id="modal-panel-title" class="app-modal__title">تنظیمات پنل</h2>
+      <button type="button" class="app-modal__close" data-modal-close aria-label="بستن">×</button>
+    </header>
+    <div class="app-modal__body">
+      {% if can_edit %}
+      <form class="indicator-panel-form filter-card" method="post" action="/menu/indicators/save">
+        <input type="hidden" name="indicator_id" value="{{ indicator.id }}">
+        <textarea name="source_code" hidden>{{ indicator.source_code }}</textarea>
+        <label>عنوان</label>
+        <input type="text" name="title_fa" required maxlength="120" value="{{ indicator.title_fa }}">
+        <label>نوع سورس</label>
+        <select name="language">
+          <option value="pine" {% if indicator.language == 'pine' %}selected{% endif %}>Pine Script</option>
+          <option value="python" {% if indicator.language == 'python' %}selected{% endif %}>Python</option>
+          <option value="other" {% if indicator.language == 'other' %}selected{% endif %}>سایر</option>
+        </select>
+        <label>توضیح</label>
+        <input type="text" name="description_fa" maxlength="300" value="{{ indicator.description_fa }}">
+        <p class="muted bt-hint">شناسه: <code dir="ltr">{{ indicator.slug }}</code></p>
+        <button type="submit" class="btn primary full">ذخیره</button>
+      </form>
+      {% else %}
+      <dl class="indicator-panel-readonly">
+        <dt>عنوان</dt><dd>{{ indicator.title_fa }}</dd>
+        <dt>نوع</dt><dd>{% if indicator.language == 'pine' %}Pine Script{% elif indicator.language == 'python' %}Python{% else %}سایر{% endif %}</dd>
+        <dt>توضیح</dt><dd>{{ indicator.description_fa or '—' }}</dd>
+        <dt>شناسه</dt><dd><code dir="ltr">{{ indicator.slug }}</code></dd>
+      </dl>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<textarea id="indicator-src-hidden" hidden>{{ indicator.source_code }}</textarea>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js" crossorigin="anonymous"></script>
+<script src="/static/indicator-chart.js?v=1"></script>
+<script src="/static/indicator-detail.js?v=1"></script>
 {% endblock %}
