@@ -667,6 +667,29 @@ def pattern_overlays(
         if isinstance(spot, (int, float)):
             hlines.append(_hline(float(spot), color="#60a5fa", label="Spot"))
 
+    elif cat == "scalp":
+        ep = meta.get("entry_px")
+        sl = meta.get("stop_px")
+        tp = meta.get("tp_px")
+        if isinstance(ep, (int, float)):
+            hlines.append(_hline(float(ep), color="#fbbf24", label="ورود", style="solid"))
+        if isinstance(sl, (int, float)):
+            hlines.append(_hline(float(sl), color="#f87171", label="SL"))
+        if isinstance(tp, (int, float)):
+            hlines.append(_hline(float(tp), color="#42a5f5", label="TP"))
+        for band_key, label, color in (
+            ("upper_band", "باند بالا", "#ffb74d"),
+            ("mid_band", "میانه", "#90caf9"),
+            ("lower_band", "باند پایین", "#81c784"),
+        ):
+            v = meta.get(band_key)
+            if isinstance(v, (int, float)):
+                hlines.append(_hline(float(v), color=color, label=label))
+        ei = meta.get("entry_index") or meta.get("confirm_index")
+        if isinstance(ei, int):
+            pos = "belowBar" if meta.get("direction") == "up" else "aboveBar"
+            markers.append(_marker(bars, ei, text="ورود", color="#fbbf24", position=pos))
+
     else:
         ep = meta.get("entry_px")
         if isinstance(ep, (int, float)):
@@ -770,6 +793,8 @@ def build_live_chart_payload(
     if box:
         payload["position_box"] = box
     vp = live_pattern_viewport(cat, m, bars) if m else None
+    if vp is None and m and cat == "scalp":
+        vp = signal_focus_viewport(m, bars, created_at=created_at or "")
     if vp is None and position:
         opened = str(position.get("opened_at") or "") or (created_at or "")
         vp = signal_focus_viewport(m, bars, created_at=opened)

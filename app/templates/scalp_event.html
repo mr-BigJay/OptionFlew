@@ -21,18 +21,7 @@
   </header>
 
   <div class="home-report-body report-prose">
-    {% if event.chart_file %}
-    <figure class="scenario-chart">
-      <div class="scenario-chart-frame">
-        <img
-          class="chart-preview"
-          src="/pattern-charts/{{ event.chart_file }}?v={{ cache_ts }}"
-          alt="چارت استراتژی"
-          loading="lazy"
-        />
-      </div>
-    </figure>
-    {% endif %}
+    {% include "partials/live_overlay_chart.html" %}
     <p class="home-paragraph paragraph-justify">{{ event.summary_fa }}</p>
     <p class="home-paragraph paragraph-justify"><strong>پیش‌بینی:</strong> {{ event.forecast_fa }}</p>
   </div>
@@ -76,4 +65,11 @@
     {% endif %}
   </footer>
 </article>
+{% endblock %}
+
+{% block scripts %}
+{% if chart_payload and chart_payload.candles %}
+<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js" crossorigin="anonymous"></script>
+<script src="/static/live-overlay-chart.js?v=27"></script>
+{% endif %}
 {% endblock %}

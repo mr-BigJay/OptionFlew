@@ -71,6 +71,7 @@ from app.pattern_store import get_pattern_event, list_all_pattern_events, list_p
 from app.exchange_fee_profiles import fee_profile_summary_fa, list_fee_profiles
 from app.paper_chart import render_paper_position_chart
 from app.chart_live import (
+    payload_from_scalp_event,
     json_for_template,
     payload_from_pattern_event,
     payload_from_pattern_hit,
@@ -1496,6 +1497,18 @@ async def scalp_event_detail(request: Request, event_id: int):
     event = get_scalp_event(event_id)
     if not event:
         return RedirectResponse("/scalp", status_code=302)
+    cache_ts = scalp_cache_timestamp()
+    chart_payload = payload_from_scalp_event(event)
+    png = ""
+    if event.get("chart_file") and not chart_payload:
+        png = f"/pattern-charts/{event['chart_file']}?v={cache_ts}"
+    live_ctx = _live_chart_ctx(
+        chart_payload,
+        dom_id=f"live-ov-scalp-{event_id}",
+        poll_url=f"/api/chart/live/scalp/event/{event_id}",
+    )
+    live_ctx["chart_png_src"] = png
+    live_ctx["chart_png_alt"] = f"چارت {event.get('title_fa', '')}"
     return templates.TemplateResponse(
         request,
         "scalp_event.html",
@@ -1503,7 +1516,8 @@ async def scalp_event_detail(request: Request, event_id: int):
             request,
             active="scalp",
             event=event,
-            cache_ts=scalp_cache_timestamp(),
+            cache_ts=cache_ts,
+            **live_ctx,
         ),
     )
 
@@ -1859,6 +1873,26 @@ async def api_live_chart_history(request: Request, tf: str = "5m", before: int =
         logger.exception("chart history fetch failed")
         return JSONResponse({"candles": []}, status_code=503)
     return JSONResponse({"candles": candles_payload(bars)})
+
+
+@app.get("/api/chart/live/scalp/event/{event_id}")
+async def api_live_chart_scalp_event(request: Request, event_id: int):
+    user = current_user(request)
+    if not user:
+        return JSONResponse({"error": "auth"}, status_code=401)
+    event = get_scalp_event(event_id)
+    if not event:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    payload = payload_from_scalp_event(event)
+    if not payload:
+        return JSONResponse({"error": "no_data"}, status_code=503)
+    return JSONResponse(
+        {
+            "candles": payload["candles"],
+            "overlays": payload["overlays"],
+            "viewport": payload.get("viewport"),
+        }
+    )
 
 
 @app.get("/api/chart/live/pattern/event/{event_id}")

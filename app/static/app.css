@@ -1549,15 +1549,8 @@ a.scalp-scenario-card--nabz:hover {
   gap: 14px;
 }
 
-.indicators-toolbar {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  align-items: stretch;
-}
-
-.indicators-toolbar .btn {
-  align-self: flex-start;
+.indicators-intro {
+  margin: 0;
 }
 
 .indicators-grid {

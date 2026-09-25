@@ -282,3 +282,25 @@ def test_trendline_extends_half_the_span_each_side() -> None:
     assert pts[0]["time"] == bar_unix(bars[10])
     assert pts[-1]["time"] > bar_unix(bars[-1])
     assert pts[0]["value"] == 80_000.0 + 2.0 * 10
+
+
+def test_scalp_live_payload_has_trade_levels_and_viewport() -> None:
+    bars = [_bar(i, 90_000.0 + i * 2) for i in range(80)]
+    created = bars[50].ts.isoformat().replace("+00:00", "Z")
+    payload = build_live_chart_payload(
+        timeframe="15m",
+        bars=bars,
+        category="scalp",
+        meta={
+            "entry_px": 90100,
+            "stop_px": 89800,
+            "tp_px": 90600,
+            "entry_index": 50,
+            "direction": "up",
+        },
+        created_at=created,
+        title="Range break",
+    )
+    labels = {h.get("label") for h in payload["overlays"]["hlines"]}
+    assert "ورود" in labels and "SL" in labels and "TP" in labels
+    assert payload.get("viewport") is not None
