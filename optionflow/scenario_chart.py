@@ -18,6 +18,20 @@ BINANCE_KLINES_PRIMARY = "https://api.binance.com/api/v3/klines"
 BINANCE_KLINES_MIRROR = "https://data-api.binance.vision/api/v3/klines"
 
 
+def spread_label_ys(ys: list[float], min_gap: float) -> list[float]:
+    """برچسب‌های نزدیک را در محور قیمت از هم دور می‌کند تا روی هم ننشینند."""
+    order = sorted(range(len(ys)), key=lambda i: ys[i])
+    out = list(ys)
+    prev: float | None = None
+    for i in order:
+        y = ys[i]
+        if prev is not None and y < prev + min_gap:
+            y = prev + min_gap
+        out[i] = y
+        prev = y
+    return out
+
+
 def chart_settings_for_report(report_kind: ReportChartKind) -> tuple[str, int, int]:
     """بازه و تعداد کندل: 4h گزارش → چارت 1h؛ daily → چارت 4h.
 
@@ -143,29 +157,38 @@ def render_btcusdt_scenario_chart(
     last_x = xs[-1]
     bar_days = xs[-1] - xs[-2] if len(xs) > 1 else 15 / (24 * 60)
 
-    d1 = abs(spot - b) if draw_path else 0.0
-    d2 = abs(b - c) if draw_path and plan.two_legs else 0.0
-    total = d1 + d2
-    frac1 = (d1 / total) if total > 0 else 0.5
-    t_b = last_x + bar_days * forward_bars * frac1
-    t_c = last_x + bar_days * forward_bars
+    zone_lo = float(plan.zone_low) if plan.zone_low else None
+    zone_hi = float(plan.zone_high) if plan.zone_high else None
+    has_zone = zone_lo is not None and zone_hi is not None and zone_hi >= zone_lo
+    if has_zone and zone_hi == zone_lo:
+        pad_z = max(spot * 0.0015, 50.0)
+        zone_lo, zone_hi = zone_lo - pad_z, zone_hi + pad_z
+    # مقصد تصویر وسط زون است. اگر سهم افقی را از فاصلهٔ قیمت بگیریم،
+    # حرکت کوتاه تا زون ناپدید می‌شود و فلش نقطه‌چین به سطح مقابل کل مسیر را می‌گیرد.
+    dest = (zone_lo + zone_hi) / 2.0 if has_zone and draw_path else b
+    # زون خودش مقصد است. فلش به سطح مقابل، مسیر را عوض‌شده نشان می‌دهد.
+    draw_second = bool(
+        draw_path and plan.two_legs and not has_zone and abs(c - dest) > spot * 0.01
+    )
+    forward = bar_days * forward_bars
+    t_b = last_x + forward * (0.72 if draw_second else 1.0)
+    t_c = last_x + forward
 
-    ax.axhline(spot, color="#42a5f5", linewidth=1.0, linestyle="-", alpha=0.55)
+    ax.axhline(spot, color="#42a5f5", linewidth=1.0, linestyle="-", alpha=0.55, zorder=4)
     if plan.band_low:
-        ax.axhline(plan.band_low, color="#ef5350", linewidth=1.15, linestyle="--", alpha=0.9)
+        ax.axhline(plan.band_low, color="#ef5350", linewidth=1.4, linestyle="--", alpha=0.95, zorder=4)
     if plan.band_high:
-        ax.axhline(plan.band_high, color="#66bb6a", linewidth=1.15, linestyle="--", alpha=0.75)
-    if plan.zone_low and plan.zone_high and plan.zone_high >= plan.zone_low:
-        z0, z1 = float(plan.zone_low), float(plan.zone_high)
-        if z1 == z0:
-            pad_z = max(spot * 0.0015, 50.0)
-            z0, z1 = z0 - pad_z, z1 + pad_z
-        ax.axhspan(z0, z1, color="#fbc02d", alpha=0.18, zorder=0)
-    if draw_path:
-        ax.axhline(b, color="#ffb74d", linewidth=1.2, linestyle="--", alpha=0.85)
+        ax.axhline(plan.band_high, color="#66bb6a", linewidth=1.4, linestyle="--", alpha=0.9, zorder=4)
+    if has_zone:
+        ax.axhspan(zone_lo, zone_hi, color="#fdd835", alpha=0.45, zorder=1)
+        ax.axhline(zone_lo, color="#fdd835", linewidth=1.3, zorder=4)
+        ax.axhline(zone_hi, color="#fdd835", linewidth=1.3, zorder=4)
+    if draw_path and not has_zone:
+        ax.axhline(b, color="#ffb74d", linewidth=1.2, linestyle="--", alpha=0.85, zorder=4)
+    if draw_path and abs(dest - spot) > spot * 0.0015:
         ax.plot(
             [last_x, t_b],
-            [spot, b],
+            [spot, dest],
             color="#ff9800",
             linewidth=2.4,
             linestyle="-",
@@ -176,30 +199,30 @@ def render_btcusdt_scenario_chart(
             markeredgewidth=0.8,
             zorder=5,
         )
-        if plan.two_legs:
-            ax.axhline(c, color="#ce93d8", linewidth=1.2, linestyle="--", alpha=0.85)
-            ax.plot(
-                [t_b, t_c],
-                [b, c],
-                color="#ff9800",
-                linewidth=2.4,
-                linestyle=(0, (1.2, 2.4)),
-                alpha=0.38,
-                solid_capstyle="round",
-                zorder=4,
-            )
-            ax.plot(
-                [t_c],
-                [c],
-                linestyle="none",
-                marker="o",
-                markersize=7,
-                markerfacecolor="#ff9800",
-                markeredgecolor="#ffffff",
-                markeredgewidth=0.8,
-                alpha=0.55,
-                zorder=5,
-            )
+    if draw_second:
+        ax.axhline(c, color="#ce93d8", linewidth=1.2, linestyle="--", alpha=0.85, zorder=4)
+        ax.plot(
+            [t_b, t_c],
+            [dest, c],
+            color="#ff9800",
+            linewidth=2.4,
+            linestyle=(0, (1.2, 2.4)),
+            alpha=0.38,
+            solid_capstyle="round",
+            zorder=4,
+        )
+        ax.plot(
+            [t_c],
+            [c],
+            linestyle="none",
+            marker="o",
+            markersize=7,
+            markerfacecolor="#ff9800",
+            markeredgecolor="#ffffff",
+            markeredgewidth=0.8,
+            alpha=0.55,
+            zorder=5,
+        )
 
     ax.scatter([last_x], [spot], s=80, c="#42a5f5", edgecolors="white", linewidths=1, zorder=6)
 
@@ -208,8 +231,8 @@ def render_btcusdt_scenario_chart(
     pad = max(spot * 0.002, 80.0)
     extras = [spot]
     if draw_path:
-        extras.append(b)
-        if plan.two_legs:
+        extras.append(dest)
+        if draw_second:
             extras.append(c)
     for level in (plan.band_low, plan.band_high, plan.zone_low, plan.zone_high):
         if level:
@@ -219,28 +242,37 @@ def render_btcusdt_scenario_chart(
     x_end = (t_c if draw_path else last_x + bar_days * 4) + bar_days * 2
     ax.set_xlim(xs[0] - bar_days * 2, x_end)
 
-    label_x = xs[-1] + (x_end - xs[-1]) * 0.02
-    labels = [(spot, f"Spot {spot:,.2f}", "#90caf9")]
+    label_x = xs[-1] + (x_end - xs[-1]) * 0.04
+    labels: list[tuple[float, str, str]] = [(spot, f"Spot {spot:,.0f}", "#90caf9")]
     if plan.band_low:
         labels.append((float(plan.band_low), f"Band {plan.band_low:,.0f}", "#ef9a9a"))
-    if plan.zone_low and plan.zone_high:
-        labels.append((float(plan.zone_low), f"Zone {plan.zone_low:,.0f}-{plan.zone_high:,.0f}", "#ffe082"))
-    if draw_path:
-        labels.append((b, f"B {b:,.0f}", "#ffcc80"))
-        if plan.two_legs:
-            labels.append((c, f"C {c:,.0f}", "#e1bee7"))
-    for y_val, label, color in labels:
+    if plan.band_high:
+        labels.append((float(plan.band_high), f"Band {plan.band_high:,.0f}", "#a5d6a7"))
+    if has_zone:
+        labels.append(
+            ((zone_lo + zone_hi) / 2.0, f"Zone {zone_lo:,.0f}-{zone_hi:,.0f}", "#ffe082")
+        )
+    if draw_second:
+        labels.append((c, f"C {c:,.0f}", "#e1bee7"))
+    y_span = max(y_max, *extras) - min(y_min, *extras)
+    placed = spread_label_ys([y for y, _t, _c in labels], max(y_span * 0.045, spot * 0.004))
+    for (y_val, label, color), text_y in zip(labels, placed):
         ax.annotate(
             label,
             xy=(label_x, y_val),
-            xytext=(4, 0),
-            textcoords="offset points",
+            xytext=(label_x, text_y),
+            textcoords="data",
             va="center",
             ha="left",
             color=color,
             fontsize=8,
             fontfamily="monospace",
             annotation_clip=False,
+            arrowprops=(
+                {"arrowstyle": "-", "color": color, "lw": 0.6}
+                if abs(text_y - y_val) > spot * 0.001
+                else None
+            ),
         )
 
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%m-%d %H:%M"))

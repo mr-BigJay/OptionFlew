@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 
+from optionflow.scenario_chart import spread_label_ys
 from optionflow.report_chart import scenario_plan_from_snapshot
 from optionflow.report_service import ReportSnapshot
 from optionflow.expiry_compass import (
@@ -108,3 +109,10 @@ def test_chart_plan_keeps_band_and_zone() -> None:
     assert plan.zone_low == 77_500
     assert plan.zone_high == 78_500
     assert plan.two_legs is False
+
+
+def test_nearby_labels_are_separated() -> None:
+    placed = spread_label_ys([83223, 83000, 84017], min_gap=400)
+    assert placed[1] == 83000
+    assert placed[0] >= placed[1] + 400
+    assert placed[2] >= placed[0] + 400
