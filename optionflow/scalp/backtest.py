@@ -133,7 +133,7 @@ def run_scalp_backtest(
 
     detector = scenario.get("detector_type") or scenario_id
     if detector == "nabzbours":
-        from optionflow.scalp.nabzbours import (
+        from optionflow.nabzbours import (
             merge_config,
             pairs_for_engine,
             resample_minutes,

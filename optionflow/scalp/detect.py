@@ -328,7 +328,7 @@ def _detect_nabzbours(
     scenario: dict[str, Any],
     params: dict[str, Any],
 ) -> PatternHit | None:
-    from optionflow.scalp.nabzbours import detect_nabzbours
+    from optionflow.nabzbours import detect_nabzbours
 
     return detect_nabzbours(bars, timeframe, scenario, params)
 
