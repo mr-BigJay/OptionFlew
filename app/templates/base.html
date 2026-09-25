@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0a1018">
   <title>{% block title %}OptionFlow{% endblock %}</title>
-    <link rel="stylesheet" href="/static/app.css?v=44">
+    <link rel="stylesheet" href="/static/app.css?v=45">
 </head>
 <body>
   <header class="app-header">
@@ -37,25 +37,35 @@
   </main>
 
   <nav class="bottom-nav" aria-label="ناوبری">
-    <a href="/patterns" class="{% if active == 'patterns' %}active{% endif %}">
-      <span class="icon">◇</span>
-      <span>الگو‌ها</span>
+    <a href="/patterns" class="bottom-nav__item{% if active == 'patterns' %} active{% endif %}">
+      <span class="nav-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><circle cx="7" cy="7" r="2.25"/><rect x="14" y="4.75" width="4.5" height="4.5" rx="0.5"/><path d="M5 18.5 L9 13.5 L13 18.5"/><circle cx="17.5" cy="16.5" r="2.25"/></svg>
+      </span>
+      <span class="nav-label">الگوها</span>
     </a>
-    <a href="/scalp" class="{% if active == 'scalp' %}active{% endif %}">
-      <span class="icon">⚡</span>
-      <span>استراتژی‌ها</span>
+    <a href="/scalp" class="bottom-nav__item{% if active == 'scalp' %} active{% endif %}">
+      <span class="nav-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M13 2 L4.5 13.5 H11 L10 22 L19.5 10.5 H13 Z"/></svg>
+      </span>
+      <span class="nav-label">استراتژی‌ها</span>
     </a>
-    <a href="/reports" class="{% if active == 'reports' %}active{% endif %}">
-      <span class="icon">☰</span>
-      <span>گزارش‌ها</span>
+    <a href="/reports" class="bottom-nav__item{% if active == 'reports' %} active{% endif %}">
+      <span class="nav-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M3 20 V12 M8 20 V8 M13 20 V15"/><path d="M15.5 7.5 L19 4 L22.5 7.5"/><path d="M19 4 V12"/></svg>
+      </span>
+      <span class="nav-label">گزارش‌ها</span>
     </a>
-    <a href="/position" class="{% if active == 'position' %}active{% endif %}">
-      <span class="icon">◈</span>
-      <span>پوزیشن</span>
+    <a href="/position" class="bottom-nav__item{% if active == 'position' %} active{% endif %}">
+      <span class="nav-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M12 2.5 L20.5 7.5 L12 12.5 L3.5 7.5 Z"/><path d="M3.5 11 L12 16 L20.5 11"/><path d="M3.5 14.5 L12 19.5 L20.5 14.5"/></svg>
+      </span>
+      <span class="nav-label">پوزیشن‌ها</span>
     </a>
-    <a href="/menu" class="{% if active == 'menu' %}active{% endif %}">
-      <span class="icon">≡</span>
-      <span>منو</span>
+    <a href="/menu" class="bottom-nav__item{% if active == 'menu' %} active{% endif %}">
+      <span class="nav-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M4 7 H20 M4 12 H20 M4 17 H20"/></svg>
+      </span>
+      <span class="nav-label">منو</span>
     </a>
   </nav>
 
