@@ -6,29 +6,49 @@
 {% endblock %}
 
 {% block content %}
-<section class="pattern-section" aria-labelledby="scalp-scenarios-head">
-  <h2 id="scalp-scenarios-head" class="section-title">سناریوها</h2>
-  {% if is_admin %}
-  <p class="muted bt-hint"><a href="/scalp/backtest">بکتست استراتژی</a> · <a href="/scalp/backtest/reports">آرشیو بکتست</a></p>
-  {% endif %}
-  <div class="pattern-nav-grid">
+<div class="scalp-page">
+<section class="scalp-panel" aria-labelledby="scalp-scenarios-head">
+  <div class="scalp-panel__head">
+    <h2 id="scalp-scenarios-head" class="section-title scalp-panel__title">سناریوها</h2>
+    {% if is_admin %}
+    <nav class="scalp-panel__links" aria-label="بکتست">
+      <a href="/scalp/backtest">بکتست</a>
+      <span class="scalp-panel__sep" aria-hidden="true">·</span>
+      <a href="/scalp/backtest/reports">آرشیو</a>
+    </nav>
+    {% endif %}
+  </div>
+
+  <div class="scalp-scenario-grid">
     {% for sc in scenarios %}
-    <a href="/scalp/scenario/{{ sc.scenario_id }}" class="pattern-nav-card pattern-nav-card-compact">
-      <span class="pattern-nav-title">{{ sc.title_fa }}</span>
-      <span class="muted" style="font-size:0.75rem;display:block;margin-top:0.25rem">
-        {% if sc.enabled %}فعال{% else %}غیرفعال{% endif %}
-        · {{ sc.timeframes|join(' / ') }}
+    <a
+      href="/scalp/scenario/{{ sc.scenario_id }}"
+      class="scalp-scenario-card{% if sc.scenario_id == 'nabzbours' %} scalp-scenario-card--nabz{% endif %}"
+    >
+      <span class="scalp-scenario-card__title">{{ sc.title_fa }}</span>
+      {% if sc.description_fa %}
+      <span class="scalp-scenario-card__desc">{{ sc.description_fa[:72] }}{% if sc.description_fa|length > 72 %}…{% endif %}</span>
+      {% endif %}
+      <span class="scalp-scenario-card__foot">
+        <span class="scalp-status {% if sc.enabled %}scalp-status--on{% else %}scalp-status--off{% endif %}">
+          {% if sc.enabled %}فعال{% else %}غیرفعال{% endif %}
+        </span>
+        <span class="scalp-tf-chips">
+          {% for tf in sc.timeframes %}
+          <span class="scalp-tf-chip">{{ tf }}</span>
+          {% endfor %}
+        </span>
       </span>
     </a>
     {% endfor %}
   </div>
+
+  <form class="scalp-refresh" method="post" action="/scalp/refresh">
+    <button type="submit" class="btn secondary full">به‌روزرسانی اسکن استراتژی</button>
+  </form>
 </section>
 
-<form class="patterns-refresh" method="post" action="/scalp/refresh">
-  <button type="submit" class="btn secondary">به‌روزرسانی اسکن استراتژی</button>
-</form>
-
-<section class="pattern-section" aria-labelledby="scalp-feed-head">
+<section class="scalp-panel scalp-panel--feed" aria-labelledby="scalp-feed-head">
   <h2 id="scalp-feed-head" class="section-title">۲۴ ساعت گذشته · سیگنال‌ها</h2>
   {% if grouped_recent %}
   {% for day_key, items in grouped_recent %}
@@ -46,18 +66,18 @@
           <span class="timeline-dot" aria-hidden="true"></span>
         </div>
         <a href="/scalp/event/{{ r.id }}" class="timeline-card">
-          <span class="timeline-play" aria-hidden="true">▶</span>
+          <div class="timeline-badges">
+            <span class="pat-badge pat-cat-ema50">{{ r.title_fa }}</span>
+            <span class="pat-badge pat-tf pat-tf-{{ r.timeframe }}">{{ r.timeframe }}</span>
+            <span class="pat-badge-spacer" aria-hidden="true"></span>
+            {% if meta.get('direction') == 'up' %}
+            <span class="pat-badge pat-status-break_up">↑</span>
+            {% elif meta.get('direction') == 'down' %}
+            <span class="pat-badge pat-status-break_down">↓</span>
+            {% endif %}
+          </div>
           <div class="timeline-body">
-            <div class="timeline-top">
-              <span class="kind-pill">{{ r.title_fa }}</span>
-              <span class="kind-pill">{{ r.timeframe }}</span>
-              {% if meta.get('direction') == 'up' %}
-              <span class="bias-mini bias-bull">↑</span>
-              {% elif meta.get('direction') == 'down' %}
-              <span class="bias-mini bias-bear">↓</span>
-              {% endif %}
-            </div>
-            <p class="timeline-preview">{{ r.summary_fa[:160] }}{% if r.summary_fa|length > 160 %}…{% endif %}</p>
+            <p class="timeline-preview">{{ r.summary_fa[:200] }}{% if r.summary_fa|length > 200 %}…{% endif %}</p>
           </div>
         </a>
       </div>
@@ -70,4 +90,5 @@
   <div class="empty card"><p>هنوز سیگنال استراتژی ثبت نشده. سناریو را فعال کنید و «به‌روزرسانی اسکن» بزنید.</p></div>
   {% endif %}
 </section>
+</div>
 {% endblock %}

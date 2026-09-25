@@ -1361,6 +1361,189 @@ a.pattern-nav-card:active {
   margin-bottom: 16px;
 }
 
+/* ——— صفحه استراتژی (/scalp) ——— */
+.scalp-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.scalp-panel {
+  background: var(--surface);
+  border: 1px solid #2a3441;
+  border-radius: var(--radius);
+  padding: 14px 14px 16px;
+}
+
+.scalp-panel--feed {
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+.scalp-panel__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin-bottom: 12px;
+}
+
+.scalp-panel__title {
+  margin: 0;
+}
+
+.scalp-panel__links {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+}
+
+.scalp-panel__links a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.scalp-panel__links a:hover {
+  text-decoration: underline;
+}
+
+.scalp-panel__sep {
+  color: var(--muted);
+  opacity: 0.6;
+}
+
+.scalp-scenario-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  width: 100%;
+}
+
+a.scalp-scenario-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 6px;
+  min-height: 96px;
+  padding: 12px 12px 10px 16px;
+  border-radius: 14px;
+  background: linear-gradient(165deg, rgba(26, 36, 51, 0.98) 0%, rgba(18, 26, 38, 0.99) 100%);
+  border: 1px solid rgba(42, 52, 65, 0.95);
+  text-decoration: none;
+  color: var(--text);
+  position: relative;
+  overflow: hidden;
+  box-sizing: border-box;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+a.scalp-scenario-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: linear-gradient(180deg, #fbbf24, #f59e0b);
+  border-radius: 14px 0 0 14px;
+}
+
+a.scalp-scenario-card--nabz::before {
+  background: linear-gradient(180deg, #22d3ee, #0891b2);
+}
+
+a.scalp-scenario-card:hover {
+  border-color: rgba(251, 191, 36, 0.35);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+}
+
+a.scalp-scenario-card--nabz:hover {
+  border-color: rgba(34, 211, 238, 0.4);
+}
+
+.scalp-scenario-card__title {
+  font-weight: 700;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  text-align: right;
+  padding-left: 2px;
+}
+
+.scalp-scenario-card__desc {
+  font-size: 0.68rem;
+  line-height: 1.45;
+  color: var(--muted);
+  flex: 1 1 auto;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.scalp-scenario-card__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 4px;
+}
+
+.scalp-status {
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.scalp-status--on {
+  color: #6ee7b7;
+  background: rgba(52, 211, 153, 0.12);
+  border: 1px solid rgba(52, 211, 153, 0.35);
+}
+
+.scalp-status--off {
+  color: #94a3b8;
+  background: rgba(148, 163, 184, 0.1);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.scalp-tf-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+.scalp-tf-chip {
+  font-size: 0.62rem;
+  font-family: ui-monospace, monospace;
+  direction: ltr;
+  padding: 2px 6px;
+  border-radius: 6px;
+  color: #7dd3fc;
+  background: rgba(56, 189, 248, 0.1);
+  border: 1px solid rgba(56, 189, 248, 0.22);
+}
+
+.scalp-refresh {
+  margin-top: 14px;
+  margin-bottom: 0;
+}
+
+.scalp-refresh .btn.full {
+  width: 100%;
+}
+
+@media (min-width: 400px) {
+  .scalp-scenario-grid {
+    gap: 12px;
+  }
+}
+
 .pattern-tf-block {
   margin-bottom: 22px;
 }
