@@ -156,8 +156,12 @@ def produce_report(
         bias=guidance.bias,
         score=guidance.score,
         confidence_pct=guidance.confidence_pct,
-        support_zone=guidance.support_zone,
-        target_zone=guidance.target_zone,
+        support_zone=(
+            compass.zone_down.mid if compass and compass.zone_down else guidance.support_zone
+        ),
+        target_zone=(
+            compass.zone_up.mid if compass and compass.zone_up else guidance.target_zone
+        ),
         spot=round(analysis.spot, 2),
         trade_count=analysis.trade_count,
         window_label=window_label,

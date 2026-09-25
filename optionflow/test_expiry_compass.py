@@ -84,16 +84,26 @@ def test_shift_down_only_when_band_and_zone_both_drop() -> None:
     assert drop_flat_target(compass).path_level == compass.path_level
 
 
+def test_zone_stuck_to_spot_does_not_cancel_the_far_zone() -> None:
+    books = []
+    for strike, oi in ((83_000, 30), (84_000, 30), (85_000, 12)):
+        books.append(_row("26SEP26", strike, "put", oi))
+        books.append(_row("26SEP26", strike, "call", oi))
+    compass = build_compass(books, 83_885, now=NOW)
+    assert compass is not None
+    assert compass.path_level == 83_000
+    assert compass.path_side == "down"
+
+
 def test_target_on_spot_is_not_a_scenario() -> None:
     books = []
     for strike, oi in ((84_000, 40), (86_000, 8)):
         books.append(_row("26SEP26", strike, "put", oi))
         books.append(_row("26SEP26", strike, "call", oi))
     compass = build_compass(books, 84_010, now=NOW)
-    assert compass is not None and compass.path_level == 84_000
+    assert compass is not None and compass.path_level == 86_000
     flat = drop_flat_target(compass)
-    assert flat.path_level is None
-    assert flat.path_side == ""
+    assert flat.path_level == 86_000
 
 
 def test_chart_plan_keeps_band_and_zone() -> None:

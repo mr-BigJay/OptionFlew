@@ -213,7 +213,7 @@ def build_compass(
 
     zone_down = _cluster(down)
     zone_up = _cluster(up)
-    side, level = _path_side(zone_down, zone_up)
+    side, level = _path_side(zone_down, zone_up, spot)
     return Compass(
         spot=spot,
         expiries=tuple(bands),
@@ -224,16 +224,30 @@ def build_compass(
     )
 
 
+def _far_enough(zone: StrikeZone | None, spot: float) -> bool:
+    if zone is None or spot <= 0:
+        return False
+    return abs(zone.mid - spot) / spot >= 0.003
+
+
 def _path_side(
     zone_down: StrikeZone | None,
     zone_up: StrikeZone | None,
+    spot: float,
 ) -> tuple[str, int | None]:
-    down_w = zone_down.weight if zone_down else 0.0
-    up_w = zone_up.weight if zone_up else 0.0
-    if zone_down and down_w >= up_w * 1.25:
-        return "down", zone_down.mid
-    if zone_up and up_w >= down_w * 1.25:
-        return "up", zone_up.mid
+    """زونی که وسطش چسبیده به قیمت، مقصد نیست و از رقابت حذف می‌شود."""
+    down = zone_down if _far_enough(zone_down, spot) else None
+    up = zone_up if _far_enough(zone_up, spot) else None
+    down_w = down.weight if down else 0.0
+    up_w = up.weight if up else 0.0
+    if down and down_w >= up_w * 1.25:
+        return "down", down.mid
+    if up and up_w >= down_w * 1.25:
+        return "up", up.mid
+    if down and not up:
+        return "down", down.mid
+    if up and not down:
+        return "up", up.mid
     return "", None
 
 
@@ -414,10 +428,17 @@ def format_compass_paragraph(
             "مقصد تازه‌ای اعلام نمی‌شود."
         )
     else:
-        lines.append(
-            "**حرکت**\nمقصد اول نامشخص. "
-            "داخل باند، یک زون غالب برای بستن مسیر وجود ندارد."
-        )
+        both = compass.zone_down and compass.zone_up
+        if both:
+            lines.append(
+                "**حرکت**\nهر دو زون از قیمت فاصله دارند و وزنشان نزدیک است. "
+                "تا یکی سنگین‌تر شود مسیر یک‌طرفه اعلام نمی‌شود."
+            )
+        else:
+            lines.append(
+                "**حرکت**\nمقصد اول نامشخص. "
+                "داخل باند، یک زون غالب برای بستن مسیر وجود ندارد."
+            )
 
     lines.append(
         "**جمع‌بندی**\n"
