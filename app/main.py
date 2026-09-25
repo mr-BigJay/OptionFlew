@@ -903,6 +903,8 @@ async def reports_page(
     date: str = "",
     from_date: str = "",
     to_date: str = "",
+    msg: str = "",
+    err: str = "",
 ):
     if period not in ("day", "week", "month", "range"):
         period = "day"
@@ -936,8 +938,25 @@ async def reports_page(
             to_date=to_date,
             grouped=grouped,
             count=len(items),
+            msg=msg,
+            err=err,
         ),
     )
+
+
+@app.post("/reports/generate")
+async def reports_generate(request: Request):
+    user = current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    if not user.get("is_admin"):
+        return RedirectResponse("/reports?err=فقط+ادمین", status_code=303)
+    try:
+        run_scheduled_report()
+    except Exception:
+        logger.exception("manual report generate failed")
+        return RedirectResponse("/reports?err=تولید+گزارش+ناموفق+بود", status_code=303)
+    return RedirectResponse("/reports?msg=گزارش+دستی+ساخته+شد", status_code=303)
 
 
 @app.get("/reports/{report_id}", response_class=HTMLResponse)

@@ -1708,6 +1708,15 @@ a.scalp-scenario-card--nabz:hover {
   background: rgba(248, 113, 113, 0.12);
 }
 
+.app-header__menu-btn--neutral {
+  color: #eef2f6;
+}
+
+.app-header__menu-btn--neutral:hover {
+  background: rgba(34, 211, 238, 0.1);
+  color: var(--accent);
+}
+
 .indicator-live-wrap {
   padding: 10px 10px 14px;
   overflow: hidden;

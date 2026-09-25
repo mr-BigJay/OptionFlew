@@ -2,8 +2,26 @@
 {% block title %}گزارش‌ها — OptionFlow{% endblock %}
 {% block header %}گزارش‌ها{% endblock %}
 {% block subheader %}<p class="muted">{{ count }} گزارش در بازه</p>{% endblock %}
+{% block header_menu %}
+{% if is_admin %}
+<details class="app-header__menu">
+  <summary class="app-header__icon-btn" aria-label="گزینه‌ها">⋮</summary>
+  <div class="app-header__dropdown" role="menu">
+    <form method="post" action="/reports/generate">
+      <button type="submit" class="app-header__menu-btn app-header__menu-btn--neutral" role="menuitem">تولید گزارش</button>
+    </form>
+  </div>
+</details>
+{% endif %}
+{% endblock %}
 
 {% block content %}
+{% if msg %}
+<p class="flash ok">{{ msg }}</p>
+{% endif %}
+{% if err %}
+<p class="flash err">{{ err }}</p>
+{% endif %}
 <nav class="tabs tabs-report" aria-label="بازه">
   <a href="/reports?period=day{% if date %}&date={{ date }}{% endif %}" class="{% if period == 'day' %}on{% endif %}">امروز</a>
   <a href="/reports?period=week{% if date %}&date={{ date }}{% endif %}" class="{% if period == 'week' %}on{% endif %}">هفته</a>
