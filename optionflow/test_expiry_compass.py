@@ -4,6 +4,7 @@ from optionflow.scenario_chart import spread_label_ys
 from optionflow.report_chart import scenario_plan_from_snapshot
 from optionflow.report_service import ReportSnapshot
 from optionflow.expiry_compass import (
+    drop_flat_target,
     PriorCompass,
     apply_shift,
     build_compass,
@@ -80,6 +81,19 @@ def test_shift_down_only_when_band_and_zone_both_drop() -> None:
     )
     assert classify_shift(flat, compass) == "flat"
     assert classify_shift(None, compass) == "unknown"
+    assert drop_flat_target(compass).path_level == compass.path_level
+
+
+def test_target_on_spot_is_not_a_scenario() -> None:
+    books = []
+    for strike, oi in ((84_000, 40), (86_000, 8)):
+        books.append(_row("26SEP26", strike, "put", oi))
+        books.append(_row("26SEP26", strike, "call", oi))
+    compass = build_compass(books, 84_010, now=NOW)
+    assert compass is not None and compass.path_level == 84_000
+    flat = drop_flat_target(compass)
+    assert flat.path_level is None
+    assert flat.path_side == ""
 
 
 def test_chart_plan_keeps_band_and_zone() -> None:

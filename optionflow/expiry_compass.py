@@ -264,6 +264,23 @@ def classify_shift(
     return "flat"
 
 
+def drop_flat_target(compass: Compass) -> Compass:
+    """مقصدی که فقط چند دلار با قیمت فاصله دارد سناریو نیست."""
+    level = compass.path_level
+    if level is None or compass.spot <= 0:
+        return compass
+    if abs(level - compass.spot) / compass.spot >= 0.003:
+        return compass
+    return Compass(
+        spot=compass.spot,
+        expiries=compass.expiries,
+        zone_down=compass.zone_down,
+        zone_up=compass.zone_up,
+        path_side="",
+        path_level=None,
+    )
+
+
 def apply_shift(compass: Compass, shift: str) -> Compass:
     """اگر باند و زون با هم به یک سمت رفته باشند، مقصد همان زون است."""
     if shift == "down" and compass.zone_down:
@@ -285,6 +302,10 @@ def apply_shift(compass: Compass, shift: str) -> Compass:
             path_level=compass.zone_up.mid,
         )
     return compass
+
+
+def _spot_inside(zone: StrikeZone | None, spot: float) -> bool:
+    return bool(zone and zone.low <= spot <= zone.high)
 
 
 def _hours_fa(hours: float) -> str:
@@ -373,6 +394,8 @@ def format_compass_paragraph(
             "جابه‌جایی از گزارش بعد گفته می‌شود."
         )
 
+    inside_down = _spot_inside(compass.zone_down, spot)
+    inside_up = _spot_inside(compass.zone_up, spot)
     if compass.path_level and compass.path_side == "down":
         lines.append(
             f"**حرکت**\nاز {spot:,.0f} به حدود {compass.path_level:,}. "
@@ -382,6 +405,13 @@ def format_compass_paragraph(
         lines.append(
             f"**حرکت**\nاز {spot:,.0f} به حدود {compass.path_level:,}. "
             "مقصد وسط زون موقعیت‌باز بالای قیمت است، نه میانگین استرایک‌های معامله‌شده."
+        )
+    elif inside_down or inside_up:
+        held = compass.zone_down if inside_down else compass.zone_up
+        assert held is not None
+        lines.append(
+            f"**حرکت**\nقیمت داخل زون {held.low:,} تا {held.high:,} است. "
+            "مقصد تازه‌ای اعلام نمی‌شود."
         )
     else:
         lines.append(

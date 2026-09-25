@@ -53,13 +53,14 @@ def _generate_scheduled(kind: ReportKind) -> None:
     logger.info("Scheduled report [%s] saved at %s", kind, snapshot.created_at)
 
 
-def _generate_manual(kind: ReportKind) -> None:
+def _generate_manual(kind: ReportKind, compass=None, prior: PriorCompass | None = None) -> None:
     enriched = os.environ.get("OPTIONFLOW_ENRICHED", "0") == "1"
     snapshot = produce_report(
         report_kind=kind,
         use_candle_window=True,
         enriched=enriched,
-        prior=_prior_for(kind),
+        prior=prior if prior is not None else _prior_for(kind),
+        compass=compass,
     )
     rid = save_manual_report(snapshot)
     saved = get_report(rid)
@@ -81,9 +82,19 @@ def run_scheduled_daily_report() -> None:
 
 
 def run_manual_reports() -> None:
-    """Admin «تولید الان»: temporary j-codes, expire after 24h."""
-    _generate_manual("4h")
-    _generate_manual("daily")
+    """Admin «تولید الان»: هر دو نوع با یک قطب‌نما، تا دو سناریوی متفاوت ساخته نشود."""
+    from optionflow.deribit_client import DeribitClient
+    from optionflow.expiry_compass import live_compass
+
+    shared = None
+    try:
+        with DeribitClient() as client:
+            shared = live_compass(client.get_index_price())
+    except Exception:
+        logger.warning("Shared compass fetch failed; each report will fetch its own")
+    prior = _prior_for("daily") or _prior_for("4h")
+    _generate_manual("4h", shared, prior)
+    _generate_manual("daily", shared, prior)
 
 
 def run_scheduled_report() -> None:

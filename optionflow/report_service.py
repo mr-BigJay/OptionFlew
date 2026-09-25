@@ -11,9 +11,11 @@ from optionflow.guide import build_guidance, format_enriched_simple_paragraph, f
 from optionflow.market_context import collect_market_context
 from optionflow.price_levels import fetch_price_levels
 from optionflow.expiry_compass import (
+    Compass,
     PriorCompass,
     apply_shift,
     classify_shift,
+    drop_flat_target,
     format_compass_paragraph,
     live_compass,
 )
@@ -81,6 +83,7 @@ def produce_report(
     window_hours: float | None = None,
     enriched: bool = False,
     prior: PriorCompass | None = None,
+    compass: Compass | None = None,
 ) -> ReportSnapshot:
     if use_candle_window:
         start_ms, end_ms, window_label, wh = _window_for_kind(report_kind)
@@ -103,11 +106,11 @@ def produce_report(
         window_hours=wh,
     )
     guidance = build_guidance(analysis)
-    compass = live_compass(analysis.spot)
+    compass = compass if compass is not None else live_compass(analysis.spot)
     shift = "unknown"
     if compass is not None:
         shift = classify_shift(prior, compass)
-        compass = apply_shift(compass, shift)
+        compass = drop_flat_target(apply_shift(compass, shift))
     if compass is not None:
         contracts = analysis.contracts
         effective = analysis.effective_usd

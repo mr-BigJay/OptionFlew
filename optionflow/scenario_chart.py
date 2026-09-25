@@ -165,7 +165,7 @@ def render_btcusdt_scenario_chart(
         zone_lo, zone_hi = zone_lo - pad_z, zone_hi + pad_z
     # مقصد تصویر وسط زون است. اگر سهم افقی را از فاصلهٔ قیمت بگیریم،
     # حرکت کوتاه تا زون ناپدید می‌شود و فلش نقطه‌چین به سطح مقابل کل مسیر را می‌گیرد.
-    dest = (zone_lo + zone_hi) / 2.0 if has_zone and draw_path else b
+    dest = b if draw_path else spot
     # زون خودش مقصد است. فلش به سطح مقابل، مسیر را عوض‌شده نشان می‌دهد.
     draw_second = bool(
         draw_path and plan.two_legs and not has_zone and abs(c - dest) > spot * 0.01
