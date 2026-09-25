@@ -151,8 +151,8 @@ def render_btcusdt_scenario_chart(
     ax.axhline(c, color="#ce93d8", linewidth=1.2, linestyle="--", alpha=0.85)
 
     ax.plot(
-        [last_x, t_b, t_c],
-        [spot, b, c],
+        [last_x, t_b],
+        [spot, b],
         color="#ff9800",
         linewidth=2.4,
         linestyle="-",
@@ -161,6 +161,28 @@ def render_btcusdt_scenario_chart(
         markerfacecolor="#ff9800",
         markeredgecolor="#ffffff",
         markeredgewidth=0.8,
+        zorder=5,
+    )
+    ax.plot(
+        [t_b, t_c],
+        [b, c],
+        color="#ff9800",
+        linewidth=2.4,
+        linestyle=(0, (1.2, 2.4)),
+        alpha=0.38,
+        solid_capstyle="round",
+        zorder=4,
+    )
+    ax.plot(
+        [t_c],
+        [c],
+        linestyle="none",
+        marker="o",
+        markersize=7,
+        markerfacecolor="#ff9800",
+        markeredgecolor="#ffffff",
+        markeredgewidth=0.8,
+        alpha=0.55,
         zorder=5,
     )
 
