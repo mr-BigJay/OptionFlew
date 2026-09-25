@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block page_class %} page--tv-chart{% endblock %}
+{% block title %}v2 — چارت BTC — OptionFlow{% endblock %}
+{% block header %}<span class="header-title">چارت v2</span>{% endblock %}
+{% block subheader %}
+<p class="muted patterns-sub">BTCUSDT · مسیر تا سررسید نزدیک</p>
+{% endblock %}
+
+{% block content %}
+<nav class="tabs tabs-patterns tv-chart-tabs" aria-label="بازار">
+  <a href="/chart?market=perp&amp;interval=15">فیوچرز</a>
+  <a href="/chart?market=spot&amp;interval=15">اسپات</a>
+</nav>
+<nav class="tabs tabs-patterns tv-chart-tabs tv-chart-tabs--tf" aria-label="تایم‌فریم">
+  <a href="/chart?market=perp&amp;interval=15">۱۵m</a>
+  <a href="/chart?market=perp&amp;interval=60">۱h</a>
+  <a href="/chart?market=perp&amp;interval=240">۴h</a>
+  <a href="/v2" class="on">v2</a>
+</nav>
+<p class="v2-caption" id="v2-caption">{{ caption }}</p>
+<div class="tv-chart-shell">
+  <div id="v2-chart" class="v2-chart-mount"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js" crossorigin="anonymous"></script>
+<script type="application/json" id="v2-payload">{{ payload_json|safe }}</script>
+<script src="/static/v2-chart.js?v=2" defer></script>
+{% endblock %}

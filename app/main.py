@@ -2202,6 +2202,34 @@ TV_CHART_INTERVALS = (
 )
 
 
+@app.get("/v2", response_class=HTMLResponse)
+async def chart_v2_page(request: Request):
+    """چارت زندهٔ v2. گزارش ۴ساعته و روزانه را عوض نمی‌کند."""
+    from app.v2_view import v2_chart_payload, v2_payload_json
+
+    payload = v2_chart_payload()
+    return templates.TemplateResponse(
+        request,
+        "chart_v2.html",
+        _page_ctx(
+            request,
+            active="menu",
+            caption=payload["caption"],
+            payload_json=v2_payload_json(payload),
+        ),
+    )
+
+
+@app.get("/api/v2/chart")
+async def api_v2_chart(request: Request):
+    user = current_user(request)
+    if not user:
+        return JSONResponse({"error": "auth"}, status_code=401)
+    from app.v2_view import v2_chart_payload
+
+    return JSONResponse(v2_chart_payload())
+
+
 @app.get("/chart", response_class=HTMLResponse)
 async def live_bitunix_chart(
     request: Request,
