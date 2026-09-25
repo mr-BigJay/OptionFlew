@@ -8,34 +8,6 @@
     if (labelEl) labelEl.textContent = msg || pctFa(pct);
   }
 
-  function pollHistory() {
-    fetch("/backtest/api/history")
-      .then(function (r) {
-        return r.json();
-      })
-      .then(function (data) {
-        var dl = data.download || {};
-        var wrap = document.getElementById("history-dl-progress");
-        if (!wrap) return;
-        if (dl.running) {
-          wrap.hidden = false;
-          setBar(
-            document.getElementById("history-dl-bar"),
-            document.getElementById("history-dl-label"),
-            dl.progress_pct || 0,
-            dl.message || ""
-          );
-          setTimeout(pollHistory, 1500);
-        } else {
-          if (wrap.getAttribute("data-was-running") === "1") {
-            window.location.href = "/backtest";
-          }
-          wrap.hidden = true;
-        }
-      })
-      .catch(function () {});
-  }
-
   function pollRun(runId) {
     if (!runId) return;
     fetch("/backtest/api/run/" + runId)
@@ -70,19 +42,6 @@
   }
 
   document.addEventListener("DOMContentLoaded", function () {
-    var histWrap = document.getElementById("history-dl-progress");
-    if (histWrap && !histWrap.hidden) {
-      histWrap.setAttribute("data-was-running", "1");
-      pollHistory();
-    }
-    if (window.location.search.indexOf("dl=started") !== -1) {
-      if (histWrap) {
-        histWrap.hidden = false;
-        histWrap.setAttribute("data-was-running", "1");
-      }
-      pollHistory();
-    }
-
     var runWrap = document.getElementById("bt-run-progress");
     var runId = runWrap && runWrap.getAttribute("data-run-id");
     if (runId && runId !== "0") {

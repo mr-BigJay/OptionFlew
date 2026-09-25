@@ -54,6 +54,7 @@ from app.scalp_store import (
 from app.history_jobs import history_download_state, start_history_download
 from app.jobs import (
     run_scheduled_4h_report,
+    run_scheduled_candle_sync,
     run_scheduled_daily_report,
     run_scheduled_report,
     run_scheduled_behavior_scan,
@@ -102,7 +103,7 @@ from app.storage import (
 )
 from app.telegram_notify import send_telegram_message, send_telegram_photo
 from optionflow.patterns.backtest import evaluate_target_profit
-from optionflow.patterns.history import cache_status
+from optionflow.patterns.history import BACKTEST_INTERVALS, cache_status
 from optionflow.patterns.behavior_service import (
     behavior_cache_timestamp,
     get_cached_behavior_scan,
@@ -622,6 +623,13 @@ async def lifespan(app: FastAPI):
         replace_existing=True,
         misfire_grace_time=900,
     )
+    scheduler.add_job(
+        run_scheduled_candle_sync,
+        trigger=CronTrigger(hour=3, minute=30, timezone=TEHRAN),
+        id="btc_candle_daily_sync",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
     if os.environ.get("OPTIONFLOW_BEHAVIOR_SCAN", "1").strip() in ("1", "true", "yes"):
         scheduler.add_job(
             run_scheduled_behavior_scan,
@@ -636,7 +644,7 @@ async def lifespan(app: FastAPI):
         logger.info("OPTIONFLOW_BEHAVIOR_SCAN=0 — behavior scan job disabled")
     scheduler.start()
     logger.info(
-        "Scheduler: 4h at :%s (hours %s); daily at %s:%s (Asia/Tehran)",
+        "Scheduler: 4h at :%s (hours %s); daily at %s:%s; candles at 03:30 (Asia/Tehran)",
         REPORT_MINUTE,
         CRON_4H_HOURS,
         CRON_DAILY_HOUR,
@@ -1062,10 +1070,8 @@ async def backtest_page(
             request,
             active="menu",
             tab=tab,
-            cache_rows=cache_status(data_dir()),
             run_id=run_id,
             active_run=active_run,
-            history_dl=history_download_state(),
             category_labels={
                 "triangle": "مثلث فشرده",
                 "flag": "الگوی پرچم",
@@ -1184,8 +1190,22 @@ async def backtest_run_cancel(request: Request, run_id: int):
     return RedirectResponse(referer, status_code=303)
 
 
-@app.get("/backtest/api/history")
-async def backtest_history_api():
+@app.get("/menu/candles", response_class=HTMLResponse)
+async def menu_candles_page(request: Request):
+    return templates.TemplateResponse(
+        request,
+        "menu_candles.html",
+        _page_ctx(
+            request,
+            active="menu",
+            cache_rows=cache_status(data_dir()),
+            history_dl=history_download_state(),
+        ),
+    )
+
+
+@app.get("/menu/candles/api/status")
+async def menu_candles_api_status():
     return JSONResponse(
         {
             "download": history_download_state(),
@@ -1194,16 +1214,14 @@ async def backtest_history_api():
     )
 
 
-@app.post("/backtest/history/download")
-async def backtest_history_download(
-    interval: str = Form("all"),
-):
+@app.post("/menu/candles/download")
+async def menu_candles_download(interval: str = Form("all")):
     iv = None if interval in ("", "all") else interval
-    if iv and iv not in ("5m", "15m", "1h", "4h", "1d"):
+    if iv and iv not in BACKTEST_INTERVALS:
         iv = None
     started = start_history_download(interval=iv)
     q = "dl=busy" if not started else "dl=started"
-    return RedirectResponse(f"/backtest?{q}", status_code=303)
+    return RedirectResponse(f"/menu/candles?{q}", status_code=303)
 
 
 @app.post("/backtest/start")
@@ -1798,6 +1816,22 @@ async def app_menu_page(request: Request):
         "menu.html",
         _page_ctx(request, active="menu"),
     )
+
+
+@app.get("/backtest/api/history")
+async def backtest_history_api_legacy():
+    """سازگاری با نسخهٔ قدیم — همان API صفحهٔ کندل‌ها."""
+    return JSONResponse(
+        {
+            "download": history_download_state(),
+            "cache": cache_status(data_dir()),
+        }
+    )
+
+
+@app.post("/backtest/history/download")
+async def backtest_history_download_legacy(interval: str = Form("all")):
+    return RedirectResponse("/menu/candles", status_code=302)
 
 
 TV_CHART_MARKETS = {

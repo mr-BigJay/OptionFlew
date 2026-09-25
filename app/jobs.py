@@ -71,6 +71,18 @@ def run_scheduled_report() -> None:
     run_manual_reports()
 
 
+def run_scheduled_candle_sync() -> None:
+    """۰۳:۳۰ تهران — پس از پایان روز UTC، کندل‌های روز قبل را incremental می‌گیرد."""
+    try:
+        from app.storage import data_dir
+        from optionflow.patterns.seed_history import run_daily_candle_sync
+
+        run_daily_candle_sync(data_dir())
+        logger.info("Scheduled BTC candle sync completed")
+    except Exception:
+        logger.exception("Scheduled BTC candle sync failed (service keeps running)")
+
+
 def run_scheduled_behavior_scan() -> None:
     if os.environ.get("OPTIONFLOW_BEHAVIOR_SCAN", "1").strip() not in ("1", "true", "yes"):
         return

@@ -5,7 +5,12 @@ import threading
 from typing import Any
 
 from app.storage import data_dir
-from optionflow.patterns.history import BACKTEST_INTERVALS
+from optionflow.patterns.history import (
+    BACKTEST_INTERVALS,
+    expected_sync_utc_day_str,
+    history_data_dir,
+    record_daily_sync_success,
+)
 from optionflow.patterns.seed_history import seed_btc_history
 
 logger = logging.getLogger("optionflow.history.jobs")
@@ -25,6 +30,14 @@ def history_download_state() -> dict[str, Any]:
         return dict(_state)
 
 
+def _set_progress(pct: int, message: str, interval: str = "") -> None:
+    with _lock:
+        _state["progress_pct"] = max(0, min(100, pct))
+        _state["message"] = message
+        if interval:
+            _state["interval"] = interval
+
+
 def start_history_download(*, interval: str | None = None, days: int = 730) -> bool:
     with _lock:
         if _state["running"]:
@@ -42,16 +55,18 @@ def start_history_download(*, interval: str | None = None, days: int = 730) -> b
     def _work() -> None:
         try:
             base = data_dir()
-            total = len(ivs)
-            for n, iv in enumerate(ivs):
-                with _lock:
-                    _state["message"] = f"در حال دانلود {iv}…"
-                    _state["interval"] = iv
-                seed_btc_history(base, days=days, intervals=(iv,))
-                with _lock:
-                    _state["progress_pct"] = int((n + 1) * 100 / total)
-            with _lock:
-                _state["message"] = "دانلود تمام شد."
+
+            def on_iv(iv: str, pct: int, msg: str) -> None:
+                label = iv
+                if msg and msg != "تمام":
+                    _set_progress(pct, f"{label}: {msg}", iv)
+                else:
+                    _set_progress(pct, f"در حال دانلود {label}… ({pct}٪)", iv)
+
+            seed_btc_history(base, days=days, intervals=ivs, on_interval_progress=on_iv)
+            utc_day = expected_sync_utc_day_str()
+            record_daily_sync_success(history_data_dir(base), utc_day=utc_day, intervals=ivs)
+            _set_progress(100, "دانلود تمام شد.")
         except Exception as e:
             logger.exception("history download failed")
             with _lock:
