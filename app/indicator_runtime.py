@@ -6,6 +6,7 @@ import re
 from typing import Any
 
 from app.indicator_pine_inputs import parse_pine_inputs, pine_overlay_on_chart
+from app.indicator_viewport import initial_viewport
 from app.paper_chart import _load_pattern_bars
 from optionflow.patterns.chart_overlays import candles_payload
 from optionflow.patterns.indicators import ema, rsi
@@ -238,7 +239,8 @@ def build_indicator_live_payload(
         fields = []
         eff_settings = settings or {}
 
-    return {
+    vp = initial_viewport(timeframe, bars)
+    out: dict[str, Any] = {
         "timeframe": timeframe,
         "candles": candles_payload(bars),
         "panes": panes,
@@ -246,6 +248,9 @@ def build_indicator_live_payload(
         "tv_fields": fields,
         "tv_settings": eff_settings,
     }
+    if vp:
+        out["viewport"] = vp
+    return out
 
 
 def tv_fields_json(indicator: dict[str, Any]) -> str:

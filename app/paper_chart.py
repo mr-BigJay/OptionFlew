@@ -14,7 +14,14 @@ from optionflow.patterns.types import PatternHit
 
 logger = logging.getLogger("optionflow.paper.chart")
 
-_PATTERN_LIMITS = {"5m": 1000, "15m": 1000, "1h": 1000, "4h": 1000, "1d": 1000}
+_PATTERN_LIMITS = {
+    "1m": 5000,
+    "5m": 2000,
+    "15m": 2000,
+    "1h": 1500,
+    "4h": 1200,
+    "1d": 1000,
+}
 
 
 def _pick_interval(timeframe: str) -> str:

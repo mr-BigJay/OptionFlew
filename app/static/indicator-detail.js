@@ -8,7 +8,7 @@
   var language = root.getAttribute("data-language") || "pine";
   var tf = root.getAttribute("data-chart-tf") || "15m";
   var mount = document.getElementById("indicator-live-mount");
-  var panesMount = document.getElementById("indicator-live-panes");
+  var payloadEl = document.getElementById("indicator-live-payload");
   var hint = document.getElementById("indicator-live-hint");
   var modalRoot = document.getElementById("indicator-modals");
   var tvForm = document.getElementById("tv-settings-form");
@@ -187,8 +187,9 @@
           return;
         }
         if (hint) hint.hidden = true;
-        if (window.IndicatorChart) {
-          window.IndicatorChart.mount(mount, panesMount, res.j);
+        if (payloadEl) payloadEl.textContent = JSON.stringify(res.j);
+        if (window.refreshLiveOverlayMount) {
+          window.refreshLiveOverlayMount(mount);
         }
       })
       .catch(function () {

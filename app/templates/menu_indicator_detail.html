@@ -30,22 +30,51 @@
   data-language="{{ indicator.language }}"
   data-chart-tf="{{ chart_tf }}">
 
-  <div class="indicator-detail__toolbar" role="toolbar" aria-label="اندیکاتور">
-    <button type="button" class="btn secondary btn-compact" data-modal-open="tv">تنظیمات TV</button>
-    <button type="button" class="btn secondary btn-compact" data-modal-open="source">سورس کد</button>
-    <button type="button" class="btn secondary btn-compact" data-modal-open="panel">تنظیمات پنل</button>
-  </div>
-
   <nav class="indicator-tf-tabs" aria-label="تایم‌فریم چارت" dir="ltr">
-    {% for tf in ['5m', '15m', '1h', '4h'] %}
+    {% for tf in ['1m', '5m', '15m', '1h', '4h'] %}
     <button type="button" class="indicator-tf-btn{% if chart_tf == tf %} on{% endif %}" data-tf="{{ tf }}">{{ tf }}</button>
     {% endfor %}
   </nav>
 
   <div class="indicator-live-wrap card">
     <p class="muted bt-hint indicator-live-hint" id="indicator-live-hint">در حال بارگذاری چارت…</p>
-    <div class="indicator-live-mount" id="indicator-live-mount" aria-label="چارت زنده"></div>
+    <figure class="scenario-chart pattern-chart indicator-live-figure" aria-label="چارت زنده">
+      <div class="live-ov-chart-wrap">
+        <div class="live-ov-chart-toolbar" role="toolbar" aria-label="ابزار چارت">
+          <button
+            type="button"
+            class="live-ov-measure-btn"
+            data-measure-for="indicator-live-payload"
+            aria-pressed="false"
+            title="کشیدن باکس لانگ/شورت روی چارت"
+          >
+            <span class="live-ov-measure-icon" aria-hidden="true">📏</span>
+            خطکش · لانگ/شورت
+          </button>
+          <output class="live-ov-measure-readout" for="indicator-live-payload" aria-live="polite"></output>
+        </div>
+        <div class="scenario-chart-frame">
+          <div class="live-ov-chart-inner">
+            <div
+              id="indicator-live-mount"
+              class="live-ov-chart-mount"
+              data-live-overlay-chart
+              data-payload-id="indicator-live-payload"
+              aria-label="چارت زنده"
+            ></div>
+            <div class="live-ov-measure-layer" aria-hidden="true"></div>
+          </div>
+        </div>
+      </div>
+    </figure>
     <div class="indicator-live-panes" id="indicator-live-panes"></div>
+    <script type="application/json" id="indicator-live-payload">{}</script>
+  </div>
+
+  <div class="indicator-detail__toolbar" role="toolbar" aria-label="اندیکاتور">
+    <button type="button" class="btn secondary btn-compact" data-modal-open="tv">تنظیمات TV</button>
+    <button type="button" class="btn secondary btn-compact" data-modal-open="source">سورس کد</button>
+    <button type="button" class="btn secondary btn-compact" data-modal-open="panel">تنظیمات پنل</button>
   </div>
 
 </section>
@@ -120,6 +149,6 @@
 
 {% block scripts %}
 <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js" crossorigin="anonymous"></script>
-<script src="/static/indicator-chart.js?v=2"></script>
-<script src="/static/indicator-detail.js?v=1"></script>
+<script src="/static/live-overlay-chart.js?v=28"></script>
+<script src="/static/indicator-detail.js?v=2"></script>
 {% endblock %}

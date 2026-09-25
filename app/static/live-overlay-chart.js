@@ -748,6 +748,56 @@
     return paint;
   }
 
+  function renderIndicatorPanes(panesMount, payload, mainChart, width) {
+    panesMount.innerHTML = "";
+    var charts = [];
+    (payload.panes || []).forEach(function (pane) {
+      var wrap = document.createElement("div");
+      wrap.className = "indicator-pane-wrap";
+      panesMount.appendChild(wrap);
+      var ph = 118;
+      var pc = LightweightCharts.createChart(wrap, {
+        width: width,
+        height: ph,
+        layout: { background: { color: "#121a26" }, textColor: "#90a4ae" },
+        grid: {
+          vertLines: { color: "rgba(42,52,65,0.5)" },
+          horzLines: { color: "rgba(42,52,65,0.5)" },
+        },
+        rightPriceScale: { borderColor: "#2a3441" },
+        timeScale: { borderColor: "#2a3441", visible: false },
+      });
+      charts.push(pc);
+      (pane.series || []).forEach(function (ser) {
+        var ls = pc.addLineSeries({
+          color: ser.color || "#7E57C2",
+          lineWidth: 2,
+          priceLineVisible: false,
+          lastValueVisible: true,
+        });
+        ls.setData(ser.points || []);
+      });
+      (pane.levels || []).forEach(function (lv) {
+        pc.addLineSeries({
+          color: "rgba(120,144,156,0.4)",
+          lineWidth: 1,
+          lineStyle: 2,
+          priceLineVisible: false,
+          lastValueVisible: false,
+        }).setData([
+          { time: payload.candles[0].time, value: lv },
+          { time: payload.candles[payload.candles.length - 1].time, value: lv },
+        ]);
+      });
+    });
+    mainChart.timeScale().subscribeVisibleLogicalRangeChange(function (range) {
+      if (!range) return;
+      charts.forEach(function (c) {
+        c.timeScale().setVisibleLogicalRange(range);
+      });
+    });
+  }
+
   function initMount(mount) {
     if (mount.dataset.liveChartReady === "1") return;
     var payload = readPayload(mount);
@@ -897,17 +947,23 @@
       if (cs.length < 2) return;
       var vp = payload.viewport;
       var end = cs.length - 1;
-      if (vp && vp.to != null) {
+      var fromIdx = 0;
+      if (vp && vp.from != null && vp.to != null) {
+        fromIdx = candleIndexAt(vp.from, "from");
+        end = candleIndexAt(vp.to, "to");
+        fromIdx = Math.max(0, Math.min(fromIdx, end));
+        end = Math.min(cs.length - 1, Math.max(end, fromIdx));
+      } else if (vp && vp.to != null) {
         end = candleIndexAt(vp.to, "to");
         end = Math.min(cs.length - 1, end + 6);
+        var capacityFallback = Math.max(24, Math.floor((plotW - 52) / 6));
+        fromIdx = Math.max(0, end - capacityFallback + 1);
+      } else {
+        var capacityDefault = Math.max(24, Math.floor((plotW - 52) / 6));
+        fromIdx = Math.max(0, end - capacityDefault + 1);
       }
-      var spacing = 6;
-      var capacity = Math.max(24, Math.floor((plotW - 52) / spacing));
-      var fromIdx = Math.max(0, end - capacity + 1);
-      var barsInView = end - fromIdx + 1;
-      if (barsInView < capacity) {
-        spacing = Math.max(2, (plotW - 52) / barsInView);
-      }
+      var barsInView = Math.max(1, end - fromIdx + 1);
+      var spacing = Math.max(3, Math.min(14, (plotW - 52) / barsInView));
       applyingView = true;
       chart.timeScale().applyOptions({
         barSpacing: spacing,
@@ -984,6 +1040,12 @@
     var paintPosition = drawPositionBox(chart, series, mount, payload);
     setupMeasure(chart, series, mount, payload);
 
+    var liveWrap = mount.closest(".indicator-live-wrap");
+    var panesMount = liveWrap && liveWrap.querySelector(".indicator-live-panes");
+    if (panesMount && payload.panes && payload.panes.length) {
+      renderIndicatorPanes(panesMount, payload, chart, w);
+    }
+
     var pollUrl = mount.getAttribute("data-poll-url");
     if (pollUrl) {
       window.setInterval(function () {
@@ -1012,13 +1074,26 @@
     );
   }
 
-  function boot() {
-    document.querySelectorAll("[data-live-overlay-chart]").forEach(initMount);
+  function boot(root) {
+    var scope = root && root.querySelectorAll ? root : document;
+    scope.querySelectorAll("[data-live-overlay-chart]").forEach(initMount);
   }
 
+  window.refreshLiveOverlayMount = function (mount) {
+    if (!mount) return;
+    delete mount.dataset.liveChartReady;
+    mount.innerHTML = "";
+    var liveWrap = mount.closest(".indicator-live-wrap");
+    var panesMount = liveWrap && liveWrap.querySelector(".indicator-live-panes");
+    if (panesMount) panesMount.innerHTML = "";
+    initMount(mount);
+  };
+
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", boot);
+    document.addEventListener("DOMContentLoaded", function () {
+      boot(document);
+    });
   } else {
-    boot();
+    boot(document);
   }
 })();
