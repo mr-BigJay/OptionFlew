@@ -503,10 +503,6 @@ a.app-header__back:hover {
   background: rgba(220, 38, 38, 0.18);
 }
 
-.indicator-detail__toolbar {
-  margin-bottom: 10px;
-}
-
 .live-ov-measure-readout {
   flex: 1;
   min-width: 0;
