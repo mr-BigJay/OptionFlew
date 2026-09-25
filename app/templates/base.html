@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0a1018">
   <title>{% block title %}OptionFlow{% endblock %}</title>
-    <link rel="stylesheet" href="/static/app.css?v=45">
+    <link rel="stylesheet" href="/static/app.css?v=46">
 </head>
 <body>
   <header class="app-header">
@@ -36,28 +36,31 @@
     {% block content %}{% endblock %}
   </main>
 
-  <nav class="bottom-nav" aria-label="ناوبری">
-    <a href="/patterns" class="bottom-nav__item{% if active == 'patterns' %} active{% endif %}">
-      <span class="nav-icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24"><circle cx="7" cy="7" r="2.25"/><rect x="14" y="4.75" width="4.5" height="4.5" rx="0.5"/><path d="M5 18.5 L9 13.5 L13 18.5"/><circle cx="17.5" cy="16.5" r="2.25"/></svg>
-      </span>
-      <span class="nav-label">الگوها</span>
-    </a>
-    <a href="/scalp" class="bottom-nav__item{% if active == 'scalp' %} active{% endif %}">
+  <nav class="bottom-nav" aria-label="ناوبری" id="bottom-nav">
+    <a href="/scalp" class="bottom-nav__item{% if active == 'scalp' %} active{% endif %}" data-nav="scalp">
       <span class="nav-icon" aria-hidden="true">
         <svg viewBox="0 0 24 24"><path d="M13 2 L4.5 13.5 H11 L10 22 L19.5 10.5 H13 Z"/></svg>
       </span>
       <span class="nav-label">استراتژی‌ها</span>
     </a>
-    <a href="/reports" class="bottom-nav__item{% if active == 'reports' %} active{% endif %}">
+    <a href="/patterns" class="bottom-nav__item{% if active == 'patterns' %} active{% endif %}" data-nav="patterns">
+      <span class="nav-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><circle cx="7" cy="7" r="2.25"/><rect x="14" y="4.75" width="4.5" height="4.5" rx="0.5"/><path d="M5 18.5 L9 13.5 L13 18.5"/><circle cx="17.5" cy="16.5" r="2.25"/></svg>
+        {% if nav_badges.patterns %}<span class="nav-badge" data-badge="patterns">{{ nav_badges.patterns }}</span>{% endif %}
+      </span>
+      <span class="nav-label">الگوها</span>
+    </a>
+    <a href="/reports" class="bottom-nav__item{% if active == 'reports' %} active{% endif %}" data-nav="reports">
       <span class="nav-icon" aria-hidden="true">
         <svg viewBox="0 0 24 24"><path d="M3 20 V12 M8 20 V8 M13 20 V15"/><path d="M15.5 7.5 L19 4 L22.5 7.5"/><path d="M19 4 V12"/></svg>
+        {% if nav_badges.reports %}<span class="nav-badge" data-badge="reports">{{ nav_badges.reports }}</span>{% endif %}
       </span>
       <span class="nav-label">گزارش‌ها</span>
     </a>
-    <a href="/position" class="bottom-nav__item{% if active == 'position' %} active{% endif %}">
+    <a href="/position" class="bottom-nav__item{% if active == 'position' %} active{% endif %}" data-nav="position">
       <span class="nav-icon" aria-hidden="true">
         <svg viewBox="0 0 24 24"><path d="M12 2.5 L20.5 7.5 L12 12.5 L3.5 7.5 Z"/><path d="M3.5 11 L12 16 L20.5 11"/><path d="M3.5 14.5 L12 19.5 L20.5 14.5"/></svg>
+        {% if nav_badges.position %}<span class="nav-badge" data-badge="position">{{ nav_badges.position }}</span>{% endif %}
       </span>
       <span class="nav-label">پوزیشن‌ها</span>
     </a>
@@ -81,6 +84,7 @@
 
   <script src="/static/chart-lightbox.js?v=3" defer></script>
   <script src="/static/app-header.js?v=2" defer></script>
+  <script src="/static/nav-badges.js?v=1" defer></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

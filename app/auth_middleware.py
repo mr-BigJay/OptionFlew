@@ -39,6 +39,9 @@ def current_user(request: Request) -> dict | None:
 def login_session(request: Request, user: dict, *, admin_panel: bool) -> None:
     request.session[SESSION_USER_KEY] = user["id"]
     request.session[SESSION_ADMIN_PANEL_KEY] = 1 if admin_panel else 0
+    from app.nav_badges import init_nav_seen_session
+
+    init_nav_seen_session(request)
 
 
 def logout_session(request: Request) -> None:

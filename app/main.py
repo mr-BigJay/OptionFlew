@@ -52,6 +52,7 @@ from app.scalp_store import (
     update_scenario_settings,
 )
 from app.history_jobs import history_download_state, start_history_download
+from app.nav_badges import compute_nav_badges, mark_nav_seen
 from app.jobs import (
     run_scheduled_4h_report,
     run_scheduled_candle_sync,
@@ -500,11 +501,20 @@ def _first_live_hit_for_category(
 
 def _page_ctx(request: Request, **extra: Any) -> dict[str, Any]:
     user = current_user(request)
+    active = extra.get("active")
+    if isinstance(active, str) and active in ("patterns", "reports", "position"):
+        mark_nav_seen(request, active)
+    nav_badges = compute_nav_badges(
+        request,
+        active=active if isinstance(active, str) else None,
+        scheduled_reports_only=_scheduled_only(request),
+    )
     return _template_ctx(
         request=request,
         auth_user=user,
         is_admin=bool(user and user.get("is_admin")),
         channel_label=deployment_channel_label(),
+        nav_badges=nav_badges,
         **extra,
     )
 
@@ -1645,6 +1655,25 @@ async def position_live_api(request: Request):
         return JSONResponse({"error": "auth"}, status_code=401)
     uid = int(user["id"])
     return JSONResponse(live_open_state(uid))
+
+
+@app.get("/api/nav/badges")
+async def api_nav_badges(request: Request):
+    path = (request.headers.get("referer") or "").split("?")[0]
+    active: str | None = None
+    if "/patterns" in path:
+        active = "patterns"
+    elif "/reports" in path:
+        active = "reports"
+    elif "/position" in path:
+        active = "position"
+    return JSONResponse(
+        compute_nav_badges(
+            request,
+            active=active,
+            scheduled_reports_only=_scheduled_only(request),
+        )
+    )
 
 
 @app.get("/api/chart/live/patterns/scan")

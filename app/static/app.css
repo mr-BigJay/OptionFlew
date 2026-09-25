@@ -291,6 +291,7 @@ a.menu-card:active {
 }
 
 .nav-icon {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -306,6 +307,25 @@ a.menu-card:active {
   stroke-width: 1.65;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.nav-badge {
+  position: absolute;
+  top: -3px;
+  inset-inline-end: -6px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 0.58rem;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  box-shadow: 0 0 0 2px #0b111a;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
 }
 
 .card {
