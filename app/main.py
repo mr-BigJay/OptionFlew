@@ -218,6 +218,29 @@ def _clean_paragraph(text: str) -> str:
     return text.strip()
 
 
+def _report_body_html(body: str) -> str:
+    """بدنهٔ بخش گزارش — بدون فاصلهٔ اضافه از newlineهای پشت‌سرهم."""
+    import html as html_mod
+    import re
+
+    raw = re.sub(r"\n{3,}", "\n\n", (body or "").strip())
+    if not raw:
+        return ""
+    paras = [p.strip() for p in re.split(r"\n\n+", raw) if p.strip()]
+    chunks: list[str] = []
+    for para in paras:
+        lines = [ln.strip() for ln in para.split("\n") if ln.strip()]
+        if len(lines) <= 1:
+            chunks.append(
+                f'<p class="report-section-body">{html_mod.escape(lines[0] if lines else para)}</p>'
+            )
+            continue
+        for i, ln in enumerate(lines):
+            cls = "report-section-body report-section-tight" if i else "report-section-body"
+            chunks.append(f'<p class="{cls}">{html_mod.escape(ln)}</p>')
+    return "\n".join(chunks)
+
+
 def _format_prose_report_html(text: str) -> str:
     """prose-v3: **تیتر** → section؛ برای داشبورد (نه فقط چارت)."""
     import html as html_mod
@@ -235,15 +258,13 @@ def _format_prose_report_html(text: str) -> str:
         m = re.match(r"^\*\*(.+?)\*\*\s*\n?(.*)$", block, re.DOTALL)
         if m:
             title = html_mod.escape(m.group(1).strip())
-            body = html_mod.escape(m.group(2).strip())
             parts.append(f'<section class="report-section"><h3 class="report-section-title">{title}</h3>')
-            if body:
-                parts.append(f'<p class="report-section-body">{body}</p>')
+            body_html = _report_body_html(m.group(2))
+            if body_html:
+                parts.append(body_html)
             parts.append("</section>")
         else:
-            parts.append(
-                f'<p class="report-section-body">{html_mod.escape(block)}</p>'
-            )
+            parts.append(_report_body_html(block) or f'<p class="report-section-body">{html_mod.escape(block)}</p>')
     return "\n".join(parts)
 
 
