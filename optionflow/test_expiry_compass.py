@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
 
+from optionflow.report_chart import scenario_plan_from_snapshot
+from optionflow.report_service import ReportSnapshot
 from optionflow.expiry_compass import (
     PriorCompass,
     apply_shift,
@@ -77,3 +79,32 @@ def test_shift_down_only_when_band_and_zone_both_drop() -> None:
     )
     assert classify_shift(flat, compass) == "flat"
     assert classify_shift(None, compass) == "unknown"
+
+
+def test_chart_plan_keeps_band_and_zone() -> None:
+    snapshot = ReportSnapshot(
+        created_at="2026-09-25T00:00:00Z",
+        window_hours=4,
+        report_kind="4h",
+        paragraph="x",
+        headline="h",
+        bias="neutral",
+        score=0,
+        confidence_pct=50,
+        support_zone=80_000,
+        target_zone=86_000,
+        spot=84_000,
+        trade_count=10,
+        scenario_b=78_000,
+        band_low=76_000,
+        band_high=90_000,
+        zone_low=77_500,
+        zone_high=78_500,
+    )
+    plan = scenario_plan_from_snapshot(snapshot)
+    assert plan is not None
+    assert plan.band_low == 76_000
+    assert plan.band_high == 90_000
+    assert plan.zone_low == 77_500
+    assert plan.zone_high == 78_500
+    assert plan.two_legs is False

@@ -36,35 +36,31 @@ def parse_scenario_from_paragraph(paragraph: str) -> tuple[float, int, int] | No
     return spot, b, c
 
 
+def _levels_from_snapshot(snapshot: ReportSnapshot) -> dict[str, int | None]:
+    return {
+        "zone_low": snapshot.zone_low,
+        "zone_high": snapshot.zone_high,
+        "band_low": snapshot.band_low,
+        "band_high": snapshot.band_high,
+    }
+
+
 def scenario_plan_from_snapshot(snapshot: ReportSnapshot) -> ScenarioPlan | None:
-    if snapshot.scenario_b is not None and snapshot.scenario_c is not None:
+    levels = _levels_from_snapshot(snapshot)
+    has_levels = any(levels.values())
+    if snapshot.scenario_b is not None:
+        two_legs = snapshot.scenario_c is not None
         return ScenarioPlan(
             spot=float(snapshot.spot),
             b=int(snapshot.scenario_b),
-            c=int(snapshot.scenario_c),
+            c=int(snapshot.scenario_c if two_legs else snapshot.scenario_b),
             first_dir="up",
             second_dir="down",
-            two_legs=True,
+            two_legs=two_legs,
+            first_confident=True,
+            **levels,
         )
     parsed = parse_scenario_from_paragraph(snapshot.paragraph)
-    if not parsed:
-        return None
-    spot, b, c = parsed
-    return ScenarioPlan(
-        spot=spot,
-        b=b,
-        c=c,
-        first_dir="up",
-        second_dir="down",
-        two_legs=True,
-    )
-
-
-def scenario_plan_from_row(report: dict[str, Any]) -> ScenarioPlan | None:
-    paragraph = report.get("paragraph") or ""
-    if "مقصد اول نامشخص" in paragraph:
-        return None
-    parsed = parse_scenario_from_paragraph(paragraph)
     if parsed:
         spot, b, c = parsed
         return ScenarioPlan(
@@ -74,6 +70,46 @@ def scenario_plan_from_row(report: dict[str, Any]) -> ScenarioPlan | None:
             first_dir="up",
             second_dir="down",
             two_legs=True,
+            **levels,
+        )
+    if has_levels and snapshot.spot:
+        return ScenarioPlan(
+            spot=float(snapshot.spot),
+            b=0,
+            c=0,
+            first_dir="down",
+            second_dir="up",
+            two_legs=False,
+            first_confident=False,
+            **levels,
+        )
+    return None
+
+
+def _levels_from_row(report: dict[str, Any]) -> dict[str, int | None]:
+    out: dict[str, int | None] = {}
+    for key in ("zone_low", "zone_high", "band_low", "band_high"):
+        raw = report.get(key)
+        out[key] = int(raw) if raw not in (None, "") else None
+    return out
+
+
+def scenario_plan_from_row(report: dict[str, Any]) -> ScenarioPlan | None:
+    paragraph = report.get("paragraph") or ""
+    levels = _levels_from_row(report)
+    if "مقصد اول نامشخص" in paragraph and not any(levels.values()):
+        return None
+    parsed = None if "مقصد اول نامشخص" in paragraph else parse_scenario_from_paragraph(paragraph)
+    if parsed:
+        spot, b, c = parsed
+        return ScenarioPlan(
+            spot=spot,
+            b=b,
+            c=c,
+            first_dir="up",
+            second_dir="down",
+            two_legs=True,
+            **levels,
         )
     spot = float(report.get("spot") or 0)
     support = report.get("support_zone")
@@ -90,6 +126,18 @@ def scenario_plan_from_row(report: dict[str, Any]) -> ScenarioPlan | None:
             first_dir="up",
             second_dir="down",
             two_legs=True,
+            **levels,
+        )
+    if spot > 0 and any(levels.values()):
+        return ScenarioPlan(
+            spot=spot,
+            b=0,
+            c=0,
+            first_dir="down",
+            second_dir="up",
+            two_legs=False,
+            first_confident=False,
+            **levels,
         )
     return None
 
