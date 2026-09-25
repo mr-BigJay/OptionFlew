@@ -178,11 +178,31 @@ def expected_direction(hit: PatternHit) -> str | None:
     return None
 
 
+def divergence_entry_index(hit: PatternHit, fallback: int | None = None) -> int | None:
+    """ورود واگرایی: تأیید نهایی BigBeluga (final_index) یا early_index."""
+    meta = hit.meta
+    if meta.get("stage") == "confirmed":
+        fi = meta.get("final_index")
+        if isinstance(fi, int):
+            return fi
+    for key in ("early_index", "confirm_index"):
+        v = meta.get(key)
+        if isinstance(v, int):
+            return v
+    return fallback
+
+
 def entry_price_for_hit(
     bars: list[OhlcBar], idx: int, hit: PatternHit
 ) -> float | None:
     meta = hit.meta
     blended = meta.get("entry_blended_px")
+    if hit.category == "divergence":
+        if isinstance(blended, (int, float)) and blended > 0:
+            return float(blended)
+        ei = divergence_entry_index(hit, fallback=idx)
+        if ei is not None and 0 <= ei < len(bars):
+            return float(bars[ei].close)
     if isinstance(blended, (int, float)) and blended > 0:
         return float(blended)
     if hit.category == "ema50":
@@ -200,6 +220,79 @@ def entry_price_for_hit(
     if 0 <= idx < len(bars):
         return float(bars[idx].close)
     return None
+
+
+def evaluate_divergence_target_profit(
+    bars: list[OhlcBar],
+    idx: int,
+    hit: PatternHit,
+    target_pct: float,
+    *,
+    timeframe: str,
+) -> tuple[bool | None, str]:
+    """هدف سود در پنجرهٔ محدود؛ شکست کف/سقف واگرایی (pivot B) = رد."""
+    direction = expected_direction(hit)
+    if direction not in ("up", "down"):
+        return None, "جهت پیش‌بینی مشخص نشد."
+    entry_i = divergence_entry_index(hit, fallback=idx)
+    if entry_i is None:
+        return None, "اندیس ورود واگرایی مشخص نیست."
+    entry_i = max(0, min(entry_i, len(bars) - 1))
+    entry_px = bars[entry_i].close
+    if entry_px <= 0:
+        return None, "قیمت ورود نامعتبر است."
+    pivot_b = hit.meta.get("pivot_b")
+    if not isinstance(pivot_b, (list, tuple)) or len(pivot_b) < 2:
+        return None, "pivot واگرایی برای ارزیابی ناقص است."
+    struct_px = float(pivot_b[1])
+    move = target_pct / 100.0
+    max_fwd = FORWARD_BARS.get(timeframe, 24)
+    start = entry_i + 1
+    if start >= len(bars):
+        return None, "کندل کافی بعد از ورود برای ارزیابی نبود."
+    scan_end = min(len(bars), entry_i + 1 + max_fwd)
+    tp_px = entry_px * (1 + move) if direction == "up" else entry_px * (1 - move)
+    exit_i: int | None = None
+    exit_px: float | None = None
+    reason = ""
+    for i in range(start, scan_end):
+        b = bars[i]
+        if direction == "up":
+            if b.low < struct_px:
+                exit_i, exit_px, reason = i, b.close, "شکست کف واگرایی"
+                break
+            if b.high >= tp_px:
+                exit_i, exit_px, reason = i, tp_px, f"بستن در سود {target_pct:g}٪"
+                break
+        else:
+            if b.high > struct_px:
+                exit_i, exit_px, reason = i, b.close, "شکست سقف واگرایی"
+                break
+            if b.low <= tp_px:
+                exit_i, exit_px, reason = i, tp_px, f"بستن در سود {target_pct:g}٪"
+                break
+    hit.meta["entry_index"] = entry_i
+    hit.meta["tp_px"] = tp_px
+    hit.meta["target_profit_pct"] = target_pct
+    if exit_i is None:
+        return (
+            False,
+            f"در {max_fwd} کندل بعد از ورود ({entry_px:,.0f}) "
+            f"نه سود {target_pct:g}٪ و نه شکست ساختار دیده شد.",
+        )
+    if direction == "up":
+        pct = (exit_px - entry_px) / entry_px if exit_px else 0.0
+    else:
+        pct = (entry_px - exit_px) / entry_px if exit_px else 0.0
+    hit.meta["exit_index"] = exit_i
+    hit.meta["path_pct"] = pct
+    hit.meta["exit_reason"] = reason
+    ok = reason.startswith("بستن در سود")
+    note = (
+        f"{reason} — ورود {entry_px:,.0f} → ~{exit_px:,.0f} "
+        f"({pct * 100:+.2f}٪)"
+    )
+    return ok, note
 
 
 def evaluate_target_profit(
@@ -271,6 +364,18 @@ def evaluate_outcome(
             tp = target_profit_pct / 100.0
         return evaluate_trendline_path(
             bars, idx, hit, take_profit_pct=tp, timeframe=timeframe
+        )
+    if (
+        hit.category == "divergence"
+        and target_profit_pct is not None
+        and target_profit_pct >= 0.1
+    ):
+        return evaluate_divergence_target_profit(
+            bars,
+            idx,
+            hit,
+            target_profit_pct,
+            timeframe=timeframe,
         )
     if target_profit_pct is not None and target_profit_pct >= 0.1:
         return evaluate_target_profit(bars, idx, hit, target_profit_pct)
@@ -679,7 +784,11 @@ def run_backtest(
 
         _phase(float(n) + 0.05)
         entry_ix = idx
-        if hit.category == "three_rp":
+        if hit.category == "divergence":
+            dei = divergence_entry_index(hit, fallback=idx)
+            if isinstance(dei, int):
+                entry_ix = dei
+        elif hit.category == "three_rp":
             ei = hit.meta.get("entry_index")
             if isinstance(ei, int):
                 entry_ix = ei

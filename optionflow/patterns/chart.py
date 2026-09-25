@@ -1154,8 +1154,14 @@ def _render_divergence(
         for price, color, ls, label in extra_hlines:
             ax1.axhline(price, color=color, linewidth=1.1, linestyle=ls, label=label)
 
+    path_ix = meta.get("entry_index", sig)
+    if isinstance(meta.get("exit_index"), int) and isinstance(path_ix, int):
+        _mark_trendline_path(ax1, xs, start, meta, outcome_success)
+    elif sig is not None and 0 <= sig < len(bars):
+        _mark_signal_and_forward(
+            ax1, xs, slice_bars, sig, start, forward_bars, outcome_success
+        )
     if sig is not None and 0 <= sig < len(bars):
-        _mark_signal_and_forward(ax1, xs, slice_bars, sig, start, forward_bars, outcome_success)
         ax2.axvline(mdates.date2num(bars[sig].ts), color="#78909c", linewidth=0.8, linestyle=":")
 
     _style_axes(ax1, f"BTCUSDT {hit.timeframe} — {hit.title_fa}")
