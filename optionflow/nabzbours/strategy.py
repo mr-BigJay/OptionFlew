@@ -161,6 +161,28 @@ def _pivot_high(values: list[float], p: int, left: int, right: int) -> bool:
     return True
 
 
+def _pivot_high_opt(values: list[float | None], p: int, left: int, right: int) -> bool:
+    if p - left < 0 or p + right >= len(values) or values[p] is None:
+        return False
+    v = values[p]
+    for j in range(p - left, p + right + 1):
+        o = values[j]
+        if o is None or (j != p and o >= v):
+            return False
+    return True
+
+
+def _pivot_low_opt(values: list[float | None], p: int, left: int, right: int) -> bool:
+    if p - left < 0 or p + right >= len(values) or values[p] is None:
+        return False
+    v = values[p]
+    for j in range(p - left, p + right + 1):
+        o = values[j]
+        if o is None or (j != p and o <= v):
+            return False
+    return True
+
+
 def _pivot_low(values: list[float], p: int, left: int, right: int) -> bool:
     if p - left < 0 or p + right >= len(values):
         return False
@@ -188,24 +210,16 @@ def divergence_at(
     last_p = i - right
     if last_p < left:
         return out
-    for p in range(left, last_p + 1):
+    # فقط پیوت‌های اخیر؛ اسکن کل تاریخچه بکتست را قفل می‌کند
+    start_p = max(left, last_p - 80)
+    for p in range(start_p, last_p + 1):
         rv = rsi_vals[p]
         if rv is None:
             continue
-        if _pivot_high(prices_h, p, left, right) and _pivot_high(
-            [rv if rsi_vals[k] is not None else -1e9 for k in range(len(bars))],
-            p,
-            left,
-            right,
-        ):
+        if _pivot_high(prices_h, p, left, right) and _pivot_high_opt(rsi_vals, p, left, right):
             highs.append((p, bars[p].high, rv))
-        if _pivot_low(prices_l, p, left, right) and _pivot_low(
-            [rv if rsi_vals[k] is not None else 1e9 for k in range(len(bars))],
-            p,
-            left,
-            right,
-        ):
-            lows.append((p, bars[p].low, float(rsi_vals[p] or 0)))
+        if _pivot_low(prices_l, p, left, right) and _pivot_low_opt(rsi_vals, p, left, right):
+            lows.append((p, bars[p].low, float(rv)))
     if len(highs) >= 2:
         _, p1, r1 = highs[-2]
         _, p2, r2 = highs[-1]
@@ -657,11 +671,18 @@ def scan_backtest(
     cfg: dict[str, Any],
     scan_start: int,
     scan_end: int,
+    on_progress: Any = None,
+    should_cancel: Any = None,
 ) -> list[tuple[int, SetupView, TradeStat]]:
     cfg = merge_config(cfg)
     out: list[tuple[int, SetupView, TradeStat]] = []
+    span = max(1, scan_end - scan_start + 1)
     i = scan_start
     while i <= scan_end:
+        if should_cancel and should_cancel():
+            break
+        if on_progress and (i == scan_start or (i - scan_start) % 40 == 0):
+            on_progress(i - scan_start, span)
         setup = evaluate_entry(
             entry_bars,
             i,
@@ -675,6 +696,8 @@ def scan_backtest(
         stat = simulate_trade(entry_bars, i, setup, cfg, exit_bars or None)
         out.append((i, setup, stat))
         i += max(1, int(cfg["max_hold_bars"]))
+    if on_progress:
+        on_progress(span, span)
     return out
 
 

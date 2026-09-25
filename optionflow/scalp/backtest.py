@@ -136,7 +136,6 @@ def run_scalp_backtest(
         from optionflow.nabzbours import (
             merge_config,
             pairs_for_engine,
-            resample_minutes,
             scan_backtest,
             summarize_trades,
         )
@@ -144,20 +143,29 @@ def run_scalp_backtest(
         cfg = merge_config(scenario.get("params") or {})
         higher = load_cached_bars(hist_dir, str(cfg["higher_timeframe"]))
         exit_raw = load_cached_bars(hist_dir, str(cfg["exit_timeframe"]))
-        if not exit_raw and str(cfg["exit_timeframe"]) == "3m":
-            one = load_cached_bars(hist_dir, "1m")
-            exit_raw = resample_minutes(one, 3) if one else []
+        # کش ۳m جدا نداریم؛ کل ۱m را برای resample بار نمی‌کنیم (بکتست قفل می‌شود).
         if timeframe != str(cfg["entry_timeframe"]):
             result.error = f"نبض‌بورس روی تایم‌فریم ورود ({cfg['entry_timeframe']}) بکتست می‌شود."
             return result
+        warm = 220
+        lo = max(0, scan_start - warm)
+        window = full[lo : scan_end + 1]
+        hi_lo = 0
+        if higher:
+            t0 = window[0].ts
+            hi_lo = max(0, next((k for k, b in enumerate(higher) if b.ts >= t0), len(higher)) - 80)
+        higher_w = higher[hi_lo:] if higher else []
         raw = scan_backtest(
-            full,
-            higher_bars=higher,
+            window,
+            higher_bars=higher_w,
             exit_bars=exit_raw,
             cfg=cfg,
-            scan_start=scan_start,
-            scan_end=scan_end,
+            scan_start=scan_start - lo,
+            scan_end=scan_end - lo,
+            on_progress=on_progress,
+            should_cancel=should_cancel,
         )
+        raw = [(i + lo, setup, stat) for i, setup, stat in raw]
         stats = summarize_trades([t for _, _, t in raw])
         pairs = pairs_for_engine(full, raw, scenario, timeframe)
         result.bars_scanned = max(0, scan_end - scan_start + 1)
