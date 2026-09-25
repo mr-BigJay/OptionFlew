@@ -19,10 +19,13 @@ BINANCE_KLINES_MIRROR = "https://data-api.binance.vision/api/v3/klines"
 
 
 def chart_settings_for_report(report_kind: ReportChartKind) -> tuple[str, int, int]:
-    """بازه و تعداد کندل: 4h گزارش → چارت 1h؛ daily → چارت 4h."""
+    """بازه و تعداد کندل: 4h گزارش → چارت 1h؛ daily → چارت 4h.
+
+    عدد وسط کندل‌های قبل از قیمت فعلی است (فضای مسیر جلو جداست).
+    """
     if report_kind == "daily":
-        return "4h", 360, 14
-    return "1h", 360, 20
+        return "4h", 180, 14
+    return "1h", 180, 20
 
 
 @dataclass
