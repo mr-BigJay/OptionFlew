@@ -42,6 +42,18 @@ def test_trendline_entry_requires_a_touch() -> None:
     )
     assert pattern_hit_allows_entry(away) is False
     assert pattern_hit_allows_entry(touched) is True
+    confirmed_no_touch = PatternHit(
+        category="trendline",
+        timeframe="5m",
+        pattern_id="trendline_high_confirmed",
+        title_fa="t",
+        status_fa="",
+        summary_fa="",
+        forecast_fa="",
+        meta={"direction": "down", "stage": "confirmed", "testing": False},
+    )
+    assert pattern_hit_allows_entry(confirmed_no_touch, {"pattern_early": []}) is True
+    assert pattern_hit_allows_entry(confirmed_no_touch, {"pattern_early": ["trendline"]}) is False
     early = PatternHit(
         category="trendline",
         timeframe="5m",
