@@ -183,8 +183,9 @@ def evaluate_trendline_path(
     stop_loss_pct: float | None = None,
     timeframe: str = "15m",
     entry_on_early: bool = False,
+    exit_on_line_break: bool = True,
 ) -> tuple[bool | None, str]:
-    """ورود = سیگنال اولیه؛ خروج = سود هدف یا شکست معتبر (هرکدام زودتر)."""
+    """ورود روی کلوز سیگنال. با TP/SL صریح فقط همان دو سطح؛ وگرنه شکست خط هم خروج است."""
     meta = hit.meta
     side = meta.get("side")
     if side == "low":
@@ -257,9 +258,11 @@ def evaluate_trendline_path(
         if _take_profit_hit(b, side=side, entry_px=entry_px, pct=tp_pct):
             exit_i, exit_px, reason = i, tp_px, f"بستن در سود {tp_label}"
             break
+        if not exit_on_line_break:
+            continue
         line = _y(float(slope), float(intercept), i - wo)
-        hit = _beyond_line(bar=b, line=line, side=side, buf=buf)
-        break_run = break_run + 1 if hit else 0
+        beyond = _beyond_line(bar=b, line=line, side=side, buf=buf)
+        break_run = break_run + 1 if beyond else 0
         if break_run >= 2:
             exit_i, exit_px, reason = i, b.close, "شکست معتبر"
             break

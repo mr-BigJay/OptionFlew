@@ -448,6 +448,7 @@ def evaluate_outcome(
             stop_loss_pct=sl,
             timeframe=timeframe,
             entry_on_early=entry_on_early,
+            exit_on_line_break=tp is None and sl is None,
         )
     if (
         hit.category == "divergence"
