@@ -40,6 +40,15 @@ def test_sliding_window_quantizes_touch_buckets() -> None:
     assert backtest_dedupe_key(a) == backtest_dedupe_key(b)
 
 
+def test_early_entry_key_ignores_the_third_touch() -> None:
+    early = _trendline_hit(stage="early", touch_highs=[12, 40])
+    confirmed = _trendline_hit(touch_highs=[12, 40, 88])
+    assert backtest_dedupe_key(early, entry_on_early=True) == backtest_dedupe_key(
+        confirmed, entry_on_early=True
+    )
+    assert backtest_dedupe_key(early) != backtest_dedupe_key(confirmed)
+
+
 def test_different_lines_different_keys() -> None:
     a = _trendline_hit(touch_highs=[12, 40, 88])
     b = _trendline_hit(touch_highs=[12, 40, 200])

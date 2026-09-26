@@ -122,6 +122,84 @@ def _empty_short() -> list[OhlcBar]:
     return bars
 
 
+def test_early_checkbox_enters_on_the_second_touch_once() -> None:
+    """تیک سیگنال اولیه: ورود روی برخورد دوم، حتی اگر خط بعداً تأیید شود. یک‌بار."""
+    from optionflow.patterns.backtest import replay_category
+    from optionflow.patterns.test_trendline import _empty, _set_swing
+
+    bars = _empty(80, 99_780)
+    _set_swing(bars, 24, 98_800, "low")
+    _set_swing(bars, 48, 99_200, "low")
+    _set_swing(bars, 72, 99_600, "low")
+    _set_swing(bars, 36, 101_400, "high")
+    _set_swing(bars, 60, 101_500, "high")
+    early_hits = [
+        (i, hit)
+        for i, hit in replay_category(
+            bars,
+            category="trendline",
+            timeframe="15m",
+            scan_start=55,
+            scan_end=79,
+            stride=1,
+            entry_on_early=True,
+        )
+        if hit.meta.get("side") == "low"
+    ]
+    assert len(early_hits) == 1
+    _idx, hit = early_hits[0]
+    assert hit.meta["early_index"] == 48
+
+    final_hits = [
+        (i, hit)
+        for i, hit in replay_category(
+            bars,
+            category="trendline",
+            timeframe="15m",
+            scan_start=55,
+            scan_end=79,
+            stride=1,
+            entry_on_early=False,
+        )
+        if hit.meta.get("side") == "low"
+    ]
+    assert len(final_hits) == 1
+    _idx, hit = final_hits[0]
+    assert hit.meta.get("stage") == "confirmed"
+    assert hit.meta["confirm_index"] == 72
+
+
+def test_two_touch_line_is_only_in_the_early_backtest() -> None:
+    from optionflow.patterns.backtest import replay_category
+    from optionflow.patterns.test_trendline import _empty, _set_swing
+
+    bars = _empty(90, 100_200)
+    _set_swing(bars, 28, 99_000, "low")
+    _set_swing(bars, 52, 99_480, "low")
+    _set_swing(bars, 36, 101_200, "high")
+    _set_swing(bars, 66, 101_050, "high")
+    early = replay_category(
+        bars,
+        category="trendline",
+        timeframe="15m",
+        scan_start=70,
+        scan_end=89,
+        stride=1,
+        entry_on_early=True,
+    )
+    final = replay_category(
+        bars,
+        category="trendline",
+        timeframe="15m",
+        scan_start=70,
+        scan_end=89,
+        stride=1,
+        entry_on_early=False,
+    )
+    assert any(h.meta.get("stage") == "early" for _, h in early)
+    assert final == []
+
+
 def test_path_timeout_counts_as_fail() -> None:
     from optionflow.patterns.test_trendline import _empty, _support_hit
 

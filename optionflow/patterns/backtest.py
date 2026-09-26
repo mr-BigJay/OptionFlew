@@ -143,7 +143,7 @@ class BacktestResult:
         }
 
 
-def _detector(category: str):
+def _detector(category: str, *, entry_on_early: bool = False):
     return {
         "triangle": lambda bars, tf: detect_triangle(
             bars, tf, require_breakout=True
@@ -153,7 +153,9 @@ def _detector(category: str):
             bars, tf, allow_early=False
         ),
         "trendline": lambda bars, tf: detect_trendline(
-            bars, tf, allow_early=False
+            bars,
+            tf,
+            allow_early=entry_on_early,
         ),
         "channel": lambda bars, tf: detect_channel(
             bars, tf, allow_early=False
@@ -548,11 +550,16 @@ def _dedupe_window(category: str, timeframe: str) -> int:
 
 
 def _should_skip_dedupe(
-    last_key: dict[str, int], hit: PatternHit, bar_index: int, dedupe: int
+    last_key: dict[str, int],
+    hit: PatternHit,
+    bar_index: int,
+    dedupe: int,
+    *,
+    once: bool = False,
 ) -> bool:
-    key = backtest_dedupe_key(hit)
+    key = backtest_dedupe_key(hit, entry_on_early=once)
     prev = last_key.get(key)
-    if prev is not None and bar_index - prev < dedupe:
+    if prev is not None and (once or bar_index - prev < dedupe):
         return True
     last_key[key] = bar_index
     return False
@@ -708,9 +715,11 @@ def _replay_sliding_window(
     stride: int,
     on_progress: ProgressFn | None = None,
     should_cancel: CancelFn | None = None,
+    entry_on_early: bool = False,
 ) -> list[tuple[int, PatternHit]]:
     dedupe = _dedupe_window(category, timeframe)
-    detect = _detector(category)
+    detect = _detector(category, entry_on_early=entry_on_early)
+    once = category == "trendline" and entry_on_early
     win = _replay_window_bars(category)
     last_key: dict[str, int] = {}
     out: list[tuple[int, PatternHit]] = []
@@ -730,7 +739,7 @@ def _replay_sliding_window(
         if hit is None:
             continue
         _shift_hit_bar_indices(hit, lo)
-        if _should_skip_dedupe(last_key, hit, i, dedupe):
+        if _should_skip_dedupe(last_key, hit, i, dedupe, once=once):
             continue
         out.append((i, hit))
     if on_progress:
@@ -748,6 +757,7 @@ def replay_category(
     stride: int | None = None,
     on_progress: ProgressFn | None = None,
     should_cancel: CancelFn | None = None,
+    entry_on_early: bool = False,
 ) -> list[tuple[int, PatternHit]]:
     st = _replay_stride(category, timeframe, stride)
     if category == "three_rp":
@@ -780,6 +790,7 @@ def replay_category(
         stride=st,
         on_progress=on_progress,
         should_cancel=should_cancel,
+        entry_on_early=entry_on_early,
     )
 
 
@@ -863,6 +874,7 @@ def run_backtest(
         stride=stride_val,
         on_progress=scan_progress if on_progress else None,
         should_cancel=should_cancel,
+        entry_on_early=entry_on_early,
     )
 
     n_findings = max(1, len(raw_hits))

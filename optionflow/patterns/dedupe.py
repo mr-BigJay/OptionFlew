@@ -9,12 +9,13 @@ def _touch_bucket(timeframe: str) -> int:
     return _TOUCH_BUCKET.get(timeframe, 12)
 
 
-def backtest_dedupe_key(hit: PatternHit) -> str:
+def backtest_dedupe_key(hit: PatternHit, *, entry_on_early: bool = False) -> str:
     """کلید پایدار برای حذف تکرار در بکتست — هم‌راستا با بخش الگو."""
     meta = hit.meta or {}
     cat = hit.category
     if cat in ("trendline", "channel"):
-        return _trendline_channel_key(hit, meta)
+        anchor = 2 if entry_on_early and cat == "trendline" else None
+        return _trendline_channel_key(hit, meta, anchor_touches=anchor)
     if cat == "triangle":
         kind = meta.get("kind") or ""
         u = meta.get("upper_now")
@@ -53,12 +54,21 @@ def backtest_dedupe_key(hit: PatternHit) -> str:
     return hit.pattern_id
 
 
-def _trendline_channel_key(hit: PatternHit, meta: dict) -> str:
+def _trendline_channel_key(
+    hit: PatternHit, meta: dict, *, anchor_touches: int | None = None
+) -> str:
     side = meta.get("side") or meta.get("early_side") or ""
     wo = int(meta.get("window_offset") or 0)
     bucket = _touch_bucket(hit.timeframe)
     hi = [int(t) for t in meta.get("touch_highs") or []]
     lo = [int(t) for t in meta.get("touch_lows") or []]
+    if anchor_touches and (hi or lo):
+        if side == "low" or (lo and not hi):
+            lo = lo[:anchor_touches]
+            hi = []
+        else:
+            hi = hi[:anchor_touches]
+            lo = []
     if hi or lo:
         g_hi = sorted(wo + t for t in hi)
         g_lo = sorted(wo + t for t in lo)
