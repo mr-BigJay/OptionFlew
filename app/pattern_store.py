@@ -196,6 +196,8 @@ def _triangle_row_rank(row: dict[str, Any]) -> int:
     status = str(row.get("status_fa") or "")
     if stage in ("breakout", "fakeout") or "فیک" in status or "شکست" in status:
         return 2
+    if stage == "testing" or "خروج" in status:
+        return 1
     return 0
 
 
@@ -261,7 +263,7 @@ def save_pattern_hit(hit: PatternHit, *, created_at: str | None = None) -> int |
             )
             if cur.rowcount == 0:
                 new_stage = str((hit.meta or {}).get("stage") or "")
-                if new_stage not in ("breakout", "fakeout"):
+                if new_stage not in ("breakout", "fakeout", "testing"):
                     return None
                 row = conn.execute(
                     "SELECT id, status_fa, meta_json FROM pattern_events WHERE event_key = ?",
@@ -275,6 +277,8 @@ def save_pattern_hit(hit: PatternHit, *, created_at: str | None = None) -> int |
                 except json.JSONDecodeError:
                     prev_meta = {}
                 prev_stage = str(prev_meta.get("stage") or "")
+                if new_stage == "testing" and prev_stage in ("breakout", "fakeout"):
+                    return None
                 if prev_stage == new_stage:
                     conn.execute(
                         """

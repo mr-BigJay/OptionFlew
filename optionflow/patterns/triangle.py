@@ -236,6 +236,42 @@ def _wick_side(bar: OhlcBar, upper: float, lower: float, buf: float) -> str | No
     return None
 
 
+def _pressing_side(
+    window: list[OhlcBar], best: dict, atr_now: float
+) -> str | None:
+    """قیمت به ضلع رسیده و رو به همان سمت حرکت کرده، ولی هنوز دو کلوز بیرون خط نیست."""
+    n = len(window)
+    if n < 8:
+        return None
+    su, iu = best["su"], best["iu"]
+    sl, il = best["sl"], best["il"]
+    upper = _y(su, iu, n - 1)
+    lower = _y(sl, il, n - 1)
+    gap = upper - lower
+    if gap <= 0:
+        return None
+    close = window[-1].close
+    band = max(atr_now * 0.6, gap * 0.18)
+    touch = atr_now * 0.08
+
+    def _touched(side: str) -> bool:
+        for i in range(n - 8, n):
+            u = _y(su, iu, i)
+            l = _y(sl, il, i)
+            bar = window[i]
+            if side == "up" and bar.high >= u - touch:
+                return True
+            if side == "down" and bar.low <= l + touch:
+                return True
+        return False
+
+    if close >= upper - band and close > lower + gap * 0.55 and _touched("up"):
+        return "up"
+    if close <= lower + band and close < upper - gap * 0.55 and _touched("down"):
+        return "down"
+    return None
+
+
 def _resolve_triangle_break(window: list[OhlcBar], best: dict, atr_now: float) -> dict:
     """شکست معتبر دو کلوز پشت‌سرهم است. خروج یک کندل یا سایه که برگردد فیک‌اوت است."""
     n = len(window)
@@ -300,6 +336,16 @@ def _resolve_triangle_break(window: list[OhlcBar], best: dict, atr_now: float) -
             "fake_side": fake,
             "held": held,
             "stage": "breakout",
+        }
+    pressing = _pressing_side(window, best, atr_now)
+    if pressing and confirmed is None:
+        return {
+            "direction": pressing,
+            "fresh": False,
+            "retesting": False,
+            "fake_side": None,
+            "held": False,
+            "stage": "testing",
         }
     if confirmed and failed is None:
         return {
@@ -446,6 +492,17 @@ def detect_triangle(
         )
         resolution = (
             f" — فیک‌اوت {side_fa[fake_side]}؛ خروج {side_fa[direction]} هنوز یک کندل است."
+        )
+    elif direction in side_fa and stage == "testing":
+        status = f"خروج {side_fa[direction]}"
+        line_px = u_now if direction == "up" else l_now
+        way = "بالا" if direction == "up" else "پایین"
+        forecast = (
+            f"قیمت به خط {way} رسیده و به سمت {way} خارج شده. "
+            f"بسته شدن آن‌طرف خط، شکست را قطعی می‌کند."
+        )
+        resolution = (
+            f" — خروج {side_fa[direction]}؛ قیمت {last.close:,.0f} کنار خط {line_px:,.0f}."
         )
     elif direction in side_fa:
         status = f"شکست {side_fa[direction]}"
