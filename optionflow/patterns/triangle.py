@@ -11,6 +11,8 @@ _MIN_SWINGS = 5  # حداقل یک فنر کامل: مثلاً H-L-H-L-H
 _MIN_SPAN = {"5m": 20, "15m": 16, "1h": 30, "4h": 14, "1d": 10}
 _FLAT_PCT = {"5m": 0.0028, "15m": 0.0038, "1h": 0.005, "4h": 0.007, "1d": 0.01}
 _MAX_PIVOT_AGE = {"5m": 20, "15m": 14, "1h": 18, "4h": 10, "1d": 8}
+# بعد از بسته شدن بیرون خط، چند کندلِ برگشت هنوز «شکست» می‌ماند
+_BREAKOUT_HOLD = 4
 
 
 def _y(slope: float, intercept: float, i: float) -> float:
@@ -210,7 +212,53 @@ def _score_window(
         "score": score,
         "touches_high": len(ph),
         "touches_low": len(pl),
+        "hi_px": hi_px,
+        "lo_px": lo_px,
     }
+
+
+def _close_side(close: float, upper: float, lower: float, buf: float) -> str | None:
+    if close > upper + buf:
+        return "up"
+    if close < lower - buf:
+        return "down"
+    return None
+
+
+def _breakout_state(
+    window: list[OhlcBar], best: dict, atr_now: float
+) -> tuple[str | None, bool, bool]:
+    """جهت شکست، تازه بودن عبور، و برگشت روی خط.
+
+    عبور فقط وقتی «تازه» است که کندل قبلی داخل دو خط باشد.
+    اگر قیمت بیرون بماند، وضعیت شکست می‌ماند.
+    برگشت کوتاه داخل محدوده هم تأیید را پاک نمی‌کند.
+    """
+    n = len(window)
+    su, iu = best["su"], best["iu"]
+    sl, il = best["sl"], best["il"]
+    buf = atr_now * 0.12
+    end_i = int(best["end_i"])
+    apex = best["apex"]
+    apex_reached = isinstance(apex, (int, float)) and float(apex) <= (n - 1)
+
+    def side_at(i: int) -> str | None:
+        return _close_side(window[i].close, _y(su, iu, i), _y(sl, il, i), buf)
+
+    last_side = side_at(n - 1)
+    if last_side:
+        prev_inside = True
+        if n >= 2:
+            prev = window[-2].close
+            prev_inside = _y(sl, il, n - 2) <= prev <= _y(su, iu, n - 2)
+        return last_side, prev_inside, False
+
+    floor = end_i if apex_reached else max(end_i, (n - 1) - _BREAKOUT_HOLD)
+    for i in range(n - 2, floor - 1, -1):
+        side = side_at(i)
+        if side:
+            return side, False, True
+    return None, False, False
 
 
 def detect_triangle(
@@ -279,34 +327,38 @@ def detect_triangle(
     }
     title, forecast = titles[kind]
     u_now, l_now = best["u_now"], best["l_now"]
-    atr_buf = atr_now * 0.12
-    broke_up = last.close > u_now + atr_buf
-    broke_down = last.close < l_now - atr_buf
-    prev_inside = True
-    if n >= 2:
-        prev = window[-2]
-        u_prev = _y(best["su"], best["iu"], n - 2)
-        l_prev = _y(best["sl"], best["il"], n - 2)
-        prev_inside = l_prev <= prev.close <= u_prev
-
-    direction: str | None = None
-    if broke_up and prev_inside:
-        direction = "up"
-    elif broke_down and prev_inside:
-        direction = "down"
-
-    if require_breakout and direction is None:
+    direction, fresh, retesting = _breakout_state(window, best, atr_now)
+    apex = best["apex"]
+    apex_reached = isinstance(apex, (int, float)) and float(apex) <= (n - 1)
+    if direction is None and apex_reached:
+        return None
+    if require_breakout and not fresh:
         return None
 
-    if direction == "up":
+    if direction == "up" and retesting:
+        status = "شکست صعودی"
+        forecast = (
+            f"شکست بالای خط تأیید شده. قیمت {last.close:,.0f} دوباره نزدیک خط است."
+        )
+        resolution = " — شکست صعودی تأیید شده؛ قیمت روی خط برگشته."
+    elif direction == "down" and retesting:
+        status = "شکست نزولی"
+        forecast = (
+            f"شکست پایین خط تأیید شده. قیمت {last.close:,.0f} دوباره نزدیک خط است."
+        )
+        resolution = " — شکست نزولی تأیید شده؛ قیمت روی خط برگشته."
+    elif direction == "up":
         status = "شکست صعودی"
         forecast = f"شکست بالای خط در قیمت {last.close:,.0f}."
+        resolution = " — تأیید شکست صعودی."
     elif direction == "down":
         status = "شکست نزولی"
         forecast = f"شکست پایین خط در قیمت {last.close:,.0f}."
+        resolution = " — تأیید شکست نزولی."
     else:
         status = "در حال فشردگی"
         forecast = titles[kind][1]
+        resolution = " — هنوز داخل الگو؛ منتظر شکست."
 
     return PatternHit(
         category="triangle",
@@ -317,12 +369,7 @@ def detect_triangle(
         summary_fa=(
             f"{best['touches_high']} برخورد سقف و {best['touches_low']} برخورد کف. "
             f"فاصله خطوط از {best['gap_start']:,.0f} به {best['gap_end']:,.0f} دلار. "
-            f"قیمت {last.close:,.0f}"
-            + (
-                f" — تأیید شکست {'صعودی' if direction == 'up' else 'نزولی'}."
-                if direction
-                else " — هنوز داخل الگو؛ منتظر شکست."
-            )
+            f"قیمت {last.close:,.0f}{resolution}"
         ),
         forecast_fa=forecast,
         meta={
@@ -341,8 +388,11 @@ def detect_triangle(
             "touches_low": best["touches_low"],
             "touch_highs": best["hi_idx"],
             "touch_lows": best["lo_idx"],
+            "touch_high_prices": [float(p) for p in best["hi_px"]],
+            "touch_low_prices": [float(p) for p in best["lo_px"]],
             "direction": direction,
             "stage": "breakout" if direction else "forming",
+            "retest": retesting,
             "confirm_index": n - 1 + (len(bars) - n),
             "upper_now": u_now,
             "lower_now": l_now,

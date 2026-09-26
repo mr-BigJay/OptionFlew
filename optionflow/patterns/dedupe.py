@@ -9,6 +9,49 @@ def _touch_bucket(timeframe: str) -> int:
     return _TOUCH_BUCKET.get(timeframe, 12)
 
 
+def _price_sig(points: object) -> str:
+    if not isinstance(points, list):
+        return ""
+    out: list[str] = []
+    for p in points:
+        if isinstance(p, (int, float)):
+            out.append(str(int(round(float(p)))))
+    return "-".join(out)
+
+
+def triangle_structure_key(
+    meta: dict, timeframe: str = "", *, prefer_prices: bool = False
+) -> str:
+    """هویت مثلث، مستقل از مرحله و قیمت لحظه‌ای خط.
+
+    در بخش الگو اندیس برخورد ملاک است تا کارت‌های قبلی هم یکی شوند.
+    بکتست قیمت برخورد را ترجیح می‌دهد چون اندیس بعد از جابه‌جایی پنجره عوض می‌شود.
+    """
+    kind = str(meta.get("kind") or "")
+    wo = int(meta.get("window_offset") or 0)
+    bucket = _touch_bucket(timeframe or "15m")
+
+    def _idx_sig(points: object) -> str:
+        if not isinstance(points, list):
+            return ""
+        vals = [
+            str((wo + int(t)) // bucket)
+            for t in points
+            if isinstance(t, (int, float))
+        ]
+        return "-".join(vals)
+
+    hi = _idx_sig(meta.get("touch_highs"))
+    lo = _idx_sig(meta.get("touch_lows"))
+    idx = f"{kind}:h{hi}:l{lo}" if hi or lo else ""
+    hi_px = _price_sig(meta.get("touch_high_prices"))
+    lo_px = _price_sig(meta.get("touch_low_prices"))
+    price = f"{kind}:ph{hi_px}:pl{lo_px}" if hi_px or lo_px else ""
+    if prefer_prices and price:
+        return price
+    return idx or price or kind
+
+
 def backtest_dedupe_key(hit: PatternHit, *, entry_on_early: bool = False) -> str:
     """کلید پایدار برای حذف تکرار در بکتست — هم‌راستا با بخش الگو."""
     meta = hit.meta or {}
@@ -17,13 +60,9 @@ def backtest_dedupe_key(hit: PatternHit, *, entry_on_early: bool = False) -> str
         anchor = 2 if entry_on_early and cat == "trendline" else None
         return _trendline_channel_key(hit, meta, anchor_touches=anchor)
     if cat == "triangle":
-        kind = meta.get("kind") or ""
-        u = meta.get("upper_now")
-        lo = meta.get("lower_now")
-        uk = int(round(float(u))) if isinstance(u, (int, float)) else 0
-        lk = int(round(float(lo))) if isinstance(lo, (int, float)) else 0
-        stage = str(meta.get("stage") or "")
-        return f"triangle:{kind}:{stage}:u{uk}:l{lk}"
+        return (
+            f"triangle:{triangle_structure_key(meta, hit.timeframe, prefer_prices=True)}"
+        )
     if cat == "ema50":
         alert = meta.get("alert_key")
         if alert:

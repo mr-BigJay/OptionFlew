@@ -55,6 +55,38 @@ def test_different_lines_different_keys() -> None:
     assert backtest_dedupe_key(a) != backtest_dedupe_key(b)
 
 
+def test_triangle_key_ignores_stage_and_line_price() -> None:
+    meta = {
+        "kind": "descending",
+        "stage": "breakout",
+        "touch_high_prices": [84_300.0, 84_100.0],
+        "touch_low_prices": [83_900.0, 83_910.0],
+        "upper_now": 84_180.0,
+        "lower_now": 83_900.0,
+    }
+    a = PatternHit(
+        category="triangle",
+        timeframe="15m",
+        pattern_id="triangle_descending",
+        title_fa="",
+        status_fa="شکست صعودی",
+        summary_fa="",
+        forecast_fa="",
+        meta=dict(meta),
+    )
+    b = PatternHit(
+        category="triangle",
+        timeframe="15m",
+        pattern_id="triangle_descending",
+        title_fa="",
+        status_fa="در حال فشردگی",
+        summary_fa="",
+        forecast_fa="",
+        meta={**meta, "stage": "forming", "upper_now": 84_050.0, "lower_now": 83_905.0},
+    )
+    assert backtest_dedupe_key(a) == backtest_dedupe_key(b)
+
+
 def test_ema50_same_key_despite_stage_and_entry_px() -> None:
     from optionflow.patterns.test_ema50 import _flat_away_above
 

@@ -1,7 +1,9 @@
 from datetime import datetime, timedelta, timezone
 
+from optionflow.patterns.backtest import _shift_hit_bar_indices
 from optionflow.patterns.ohlc import OhlcBar
 from optionflow.patterns.triangle import detect_triangle
+from optionflow.patterns.types import PatternHit
 
 
 def _empty(n: int, price: float) -> list[OhlcBar]:
@@ -119,3 +121,69 @@ def test_backtest_only_counts_breakout_bar() -> None:
     assert hit is not None
     assert hit.meta["direction"] == "up"
     assert hit.meta["stage"] == "breakout"
+
+
+def _ascending_ready() -> list[OhlcBar]:
+    bars = _empty(125, 99_400)
+    _set_swing(bars, 40, 100_000, "high")
+    _set_swing(bars, 55, 98_400, "low")
+    _set_swing(bars, 70, 100_020, "high")
+    _set_swing(bars, 85, 98_900, "low")
+    _set_swing(bars, 100, 99_980, "high")
+    _set_swing(bars, 115, 99_350, "low")
+    for i in range(116, 124):
+        px = 99_500 + (i - 116) * 20
+        bars[i] = OhlcBar(bars[i].ts, px, px + 40, px - 40, px, 1.0)
+    bars[-1] = OhlcBar(bars[-1].ts, 99_800, 100_400, 99_750, 100_280, 1.0)
+    return bars
+
+
+def test_breakout_stays_while_price_remains_outside() -> None:
+    bars = _ascending_ready()
+    nxt = bars[-1].ts + timedelta(minutes=5)
+    bars.append(OhlcBar(nxt, 100_200, 100_360, 100_160, 100_240, 1.0))
+    live = detect_triangle(bars, "5m")
+    assert live is not None
+    assert live.meta["direction"] == "up"
+    assert live.meta["stage"] == "breakout"
+    assert live.status_fa == "شکست صعودی"
+    assert "هنوز داخل" not in live.summary_fa
+    assert detect_triangle(bars, "5m", require_breakout=True) is None
+
+
+def test_pullback_does_not_revert_to_compressing() -> None:
+    bars = _ascending_ready()
+    nxt = bars[-1].ts + timedelta(minutes=5)
+    bars.append(OhlcBar(nxt, 100_050, 100_120, 99_620, 99_680, 1.0))
+    live = detect_triangle(bars, "5m")
+    assert live is not None
+    assert live.meta["stage"] == "breakout"
+    assert live.meta["direction"] == "up"
+    assert live.meta["retest"] is True
+    assert live.status_fa == "شکست صعودی"
+    assert "هنوز داخل" not in live.summary_fa
+
+
+def test_replay_keeps_triangle_touches_local() -> None:
+    hit = PatternHit(
+        category="triangle",
+        timeframe="15m",
+        pattern_id="triangle_descending",
+        title_fa="",
+        status_fa="",
+        summary_fa="",
+        forecast_fa="",
+        meta={
+            "window_offset": 20,
+            "start_i": 8,
+            "end_i": 40,
+            "confirm_index": 48,
+            "touch_highs": [10, 30],
+            "touch_lows": [18, 36],
+        },
+    )
+    _shift_hit_bar_indices(hit, 400)
+    assert hit.meta["window_offset"] == 420
+    assert hit.meta["touch_highs"] == [10, 30]
+    assert hit.meta["touch_lows"] == [18, 36]
+    assert hit.meta["confirm_index"] == 448

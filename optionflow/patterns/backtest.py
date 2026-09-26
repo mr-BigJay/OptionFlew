@@ -606,7 +606,7 @@ def _shift_hit_bar_indices(hit: PatternHit, offset: int) -> None:
         t = meta.get(key)
         if isinstance(t, (list, tuple)) and len(t) >= 2:
             meta[key] = (int(t[0]) + offset, t[1])
-    if hit.category not in ("trendline", "channel"):
+    if hit.category not in ("trendline", "channel", "triangle"):
         for key in ("touch_highs", "touch_lows", "hi_idx", "lo_idx"):
             lst = meta.get(key)
             if isinstance(lst, list):

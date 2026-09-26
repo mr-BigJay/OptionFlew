@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from app.storage import connect
-from optionflow.patterns.dedupe import backtest_dedupe_key
+from optionflow.patterns.dedupe import backtest_dedupe_key, triangle_structure_key
 from optionflow.patterns.types import PatternHit
 
 logger = logging.getLogger("optionflow.pattern_store")
@@ -105,12 +105,7 @@ def pattern_content_signature(
     if category in ("trendline", "channel"):
         return _trendline_line_signature(category, pattern_id, meta, timeframe)
     if category == "triangle":
-        kind = meta.get("kind") or ""
-        u = meta.get("upper_now")
-        lo = meta.get("lower_now")
-        uk = int(round(float(u))) if isinstance(u, (int, float)) else 0
-        lk = int(round(float(lo))) if isinstance(lo, (int, float)) else 0
-        return f"{pattern_id}:{stage}:{kind}:u{uk}:l{lk}"
+        return f"{pattern_id}:{triangle_structure_key(meta, timeframe)}"
     if category == "flag":
         fh = meta.get("flag_high")
         fl = meta.get("flag_low")
@@ -154,12 +149,7 @@ def trade_signature_for_hit(hit: PatternHit) -> str:
             category, pattern_id, meta, str(hit.timeframe or "")
         )
     if category == "triangle":
-        kind = meta.get("kind") or ""
-        u = meta.get("upper_now")
-        lo = meta.get("lower_now")
-        uk = int(round(float(u))) if isinstance(u, (int, float)) else 0
-        lk = int(round(float(lo))) if isinstance(lo, (int, float)) else 0
-        return f"{pattern_id}:{kind}:u{uk}:l{lk}"
+        return f"{pattern_id}:{triangle_structure_key(meta, str(hit.timeframe or ""))}"
     if category == "flag":
         fh = meta.get("flag_high")
         fl = meta.get("flag_low")
@@ -197,24 +187,44 @@ def event_key_for_hit(hit: PatternHit) -> str:
     return f"{hit.category}:{hit.timeframe}:{sig}"
 
 
+def _triangle_row_is_breakout(row: dict[str, Any]) -> bool:
+    if str(row.get("category") or "") != "triangle":
+        return False
+    meta = row.get("meta") or {}
+    if str(meta.get("stage") or "") == "breakout":
+        return True
+    status = str(row.get("status_fa") or "")
+    return "شکست صعودی" in status or "شکست نزولی" in status
+
+
+def _event_bucket(row: dict[str, Any]) -> str:
+    meta = row.get("meta") or {}
+    sig = pattern_content_signature(
+        category=str(row.get("category") or ""),
+        pattern_id=str(row.get("pattern_id") or ""),
+        meta=meta,
+        timeframe=str(row.get("timeframe") or ""),
+    )
+    return f"{row.get('category')}:{row.get('timeframe')}:{sig}"
+
+
 def _dedupe_event_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """یک ردیف به ازای هر الگوی واقعی (جدیدترین created_at)."""
-    seen: set[str] = set()
-    out: list[dict[str, Any]] = []
+    """یک ردیف به ازای هر الگوی واقعی.
+
+    برای مثلث، کارت شکست بر کارت بعدی «در حال فشردگی» مقدم است.
+    """
+    best: dict[str, dict[str, Any]] = {}
+    order: list[str] = []
     for d in rows:
-        meta = d.get("meta") or {}
-        sig = pattern_content_signature(
-            category=str(d.get("category") or ""),
-            pattern_id=str(d.get("pattern_id") or ""),
-            meta=meta,
-            timeframe=str(d.get("timeframe") or ""),
-        )
-        bucket = f"{d.get('category')}:{d.get('timeframe')}:{sig}"
-        if bucket in seen:
+        bucket = _event_bucket(d)
+        prev = best.get(bucket)
+        if prev is None:
+            best[bucket] = d
+            order.append(bucket)
             continue
-        seen.add(bucket)
-        out.append(d)
-    return out
+        if _triangle_row_is_breakout(d) and not _triangle_row_is_breakout(prev):
+            best[bucket] = d
+    return [best[key] for key in order]
 
 
 def save_pattern_hit(hit: PatternHit, *, created_at: str | None = None) -> int | None:
@@ -248,7 +258,61 @@ def save_pattern_hit(hit: PatternHit, *, created_at: str | None = None) -> int |
                 ),
             )
             if cur.rowcount == 0:
-                return None
+                if str((hit.meta or {}).get("stage") or "") != "breakout":
+                    return None
+                row = conn.execute(
+                    "SELECT id, status_fa, meta_json FROM pattern_events WHERE event_key = ?",
+                    (key,),
+                ).fetchone()
+                if row is None:
+                    return None
+                prev_meta: dict[str, Any] = {}
+                try:
+                    prev_meta = json.loads(row["meta_json"] or "{}")
+                except json.JSONDecodeError:
+                    prev_meta = {}
+                was_breakout = str(prev_meta.get("stage") or "") == "breakout" or (
+                    "شکست" in str(row["status_fa"] or "")
+                )
+                if was_breakout:
+                    conn.execute(
+                        """
+                        UPDATE pattern_events
+                        SET title_fa = ?, status_fa = ?, summary_fa = ?,
+                            forecast_fa = ?, meta_json = ?, pattern_id = ?
+                        WHERE event_key = ?
+                        """,
+                        (
+                            hit.title_fa,
+                            hit.status_fa,
+                            hit.summary_fa,
+                            hit.forecast_fa,
+                            meta_json,
+                            hit.pattern_id,
+                            key,
+                        ),
+                    )
+                else:
+                    conn.execute(
+                        """
+                        UPDATE pattern_events
+                        SET title_fa = ?, status_fa = ?, summary_fa = ?,
+                            forecast_fa = ?, meta_json = ?, pattern_id = ?,
+                            created_at = ?
+                        WHERE event_key = ?
+                        """,
+                        (
+                            hit.title_fa,
+                            hit.status_fa,
+                            hit.summary_fa,
+                            hit.forecast_fa,
+                            meta_json,
+                            hit.pattern_id,
+                            ts,
+                            key,
+                        ),
+                    )
+                return int(row["id"])
             return int(cur.lastrowid)
     except Exception:
         logger.exception("save_pattern_hit failed key=%s", key)
