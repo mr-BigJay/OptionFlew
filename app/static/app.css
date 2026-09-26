@@ -1411,6 +1411,8 @@ a.pattern-nav-card:active {
   width: 100%;
   min-height: 280px;
   height: 100%;
+  overflow: visible;
+  padding-bottom: 2px;
 }
 
 /* Live overlay chart — جایگزین PNG در scenario-chart */
