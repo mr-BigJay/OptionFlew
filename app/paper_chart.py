@@ -197,7 +197,12 @@ def render_paper_position_chart(pos: dict[str, Any], *, mark: float | None = Non
                 return png
 
     if category in ("trendline", "channel") and meta and ev:
-        aligned = _reanchor_meta(bars_all, meta, ev)
+        from optionflow.patterns.chart_overlays import reanchor_meta
+
+        ts = str(ev.get("created_at") or "")
+        aligned = reanchor_meta(
+            bars_all, meta, created_at=ts, category=category
+        )
         hit = _pattern_hit_from_event(ev, aligned, category=category, pos=pos)
         sig = hit.meta.get("confirm_index") or hit.meta.get("early_index")
         if not isinstance(sig, int):
