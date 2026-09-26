@@ -128,7 +128,7 @@ def _slice_range(
             sig = max(0, min(sig, n - 1))
             return start, end, sig
         if hit.category in ("trendline", "channel"):
-            wo, li0, li1 = trendline_local_indices(meta, n, wo=int(wo))
+            wo, li0, li1 = trendline_local_indices(meta, n, bars=bars)
             i0, i1 = wo + li0, wo + li1
         else:
             i0 = wo + meta.get("start_i", 0)
@@ -199,7 +199,7 @@ def _visible_price_range(
     if hit.category in ("triangle", "trendline", "channel"):
         wo = int(meta.get("window_offset") or 0)
         if hit.category in ("trendline", "channel"):
-            wo, i0, i1 = trendline_local_indices(meta, len(bars), wo=wo)
+            wo, i0, i1 = trendline_local_indices(meta, len(bars), bars=bars)
         else:
             i0 = int(meta.get("start_i", 0))
             i1 = int(meta.get("end_i", i0))
@@ -693,7 +693,7 @@ def _render_price_pattern(
                     )
 
     elif hit.category in ("trendline", "channel"):
-        wo, li0, li1 = trendline_local_indices(meta, len(bars))
+        wo, li0, li1 = trendline_local_indices(meta, len(bars), bars=bars)
         last_li = max(0, len(bars) - 1 - wo)
         li_end = max(li1, last_li)
         span = max(1, li_end - li0)
@@ -701,25 +701,35 @@ def _render_price_pattern(
         li_a = max(0, li0 - pad)
         li_b = min(last_li + pad, li_end + pad)
 
-        def _x_at(li: float) -> float:
+        def _xy_at(li: float) -> tuple[float, float]:
             gi = wo + int(round(li))
             gi = max(0, min(gi, len(bars) - 1))
-            return mdates.date2num(bars[gi].ts)
+            return mdates.date2num(bars[gi].ts), gi
 
         su, iu = meta.get("upper_slope"), meta.get("upper_intercept")
         sl, il = meta.get("lower_slope"), meta.get("lower_intercept")
         if su is not None and iu is not None:
+            x0, g0 = _xy_at(li_a)
+            x1, g1 = _xy_at(li_b)
             ax.plot(
-                [_x_at(li_a), _x_at(li_b)],
-                [float(su) * li_a + float(iu), float(su) * li_b + float(iu)],
+                [x0, x1],
+                [
+                    float(su) * (g0 - wo) + float(iu),
+                    float(su) * (g1 - wo) + float(iu),
+                ],
                 color="#ffb74d",
                 linewidth=1.0,
                 label="مقاومت",
             )
         if sl is not None and il is not None:
+            x0, g0 = _xy_at(li_a)
+            x1, g1 = _xy_at(li_b)
             ax.plot(
-                [_x_at(li_a), _x_at(li_b)],
-                [float(sl) * li_a + float(il), float(sl) * li_b + float(il)],
+                [x0, x1],
+                [
+                    float(sl) * (g0 - wo) + float(il),
+                    float(sl) * (g1 - wo) + float(il),
+                ],
                 color="#81c784",
                 linewidth=1.0,
                 label="حمایت",
