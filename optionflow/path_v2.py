@@ -325,28 +325,29 @@ def path_line(
     end_unix: int,
     *,
     drift: str = "linear",
+    min_display_seconds: int | None = None,
     max_display_seconds: int | None = None,
 ) -> list[dict[str, float | int]]:
-    """یک خط از الان تا سررسید. در رژیم pin شیب اول آرام است.
+    """خط مسیر برای چارت: شیب واقعی تا سررسید، افق زمانی حداقل چند روز.
 
-    max_display_seconds: فقط برای چارت — همان شیب تا سررسید، ولی نقاط تا این افق
-    (تا fitContent کندل‌ها را له نکند).
+    اگر سررسید نزدیک باشد، قیمت در همان زمان به target می‌رسد و بعد افقی می‌ماند
+    (نه خط عمودی در چند ساعت).
     """
     if target is None or spot <= 0 or end_unix <= start_unix:
         return []
     if abs(target - spot) / spot < MIN_MOVE:
         return []
-    span = end_unix - start_unix
-    draw_until = end_unix
-    if max_display_seconds is not None and max_display_seconds > 0:
-        draw_until = min(end_unix, start_unix + int(max_display_seconds))
-    if draw_until <= start_unix:
-        return []
-    step = max(900, min(3600, span // 24 or 3600))
+    journey = max(1, end_unix - start_unix)
+    min_span = int(min_display_seconds or 96 * 3600)
+    max_span = int(max_display_seconds or 120 * 3600)
+    display_span = max(min_span, min(max_span, journey))
+    draw_until = start_unix + display_span
+    step = max(900, min(3600, display_span // 48 or 3600))
     points: list[dict[str, float | int]] = []
 
     def _value_at(t: int) -> float:
-        frac = (t - start_unix) / span
+        elapsed = max(0, t - start_unix)
+        frac = min(1.0, elapsed / journey)
         if drift == "pin":
             frac = frac * frac
         return round(spot + (target - spot) * frac, 2)

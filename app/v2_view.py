@@ -11,9 +11,11 @@ from optionflow.patterns.ohlc import load_btcusdt
 
 logger = logging.getLogger("optionflow.v2")
 
-V2_CANDLE_LIMIT = 120
-V2_CANDLE_BARS = 96
-V2_PATH_DISPLAY_HOURS = 36
+V2_CANDLE_INTERVAL = "15m"
+V2_CANDLE_LIMIT = 500
+V2_CANDLE_BARS = 384
+V2_PATH_MIN_HOURS = 96
+V2_PATH_MAX_HOURS = 120
 
 
 def v2_chart_payload() -> dict:
@@ -24,18 +26,22 @@ def v2_chart_payload() -> dict:
         logger.exception("v2 path failed")
     bars = []
     try:
-        bars = load_btcusdt("1h", limit=V2_CANDLE_LIMIT)[-V2_CANDLE_BARS:]
+        bars = load_btcusdt(V2_CANDLE_INTERVAL, limit=V2_CANDLE_LIMIT)[
+            -V2_CANDLE_BARS:
+        ]
     except Exception:
         logger.exception("v2 candles failed")
     line: list[dict] = []
     if path is not None and path.target is not None and bars:
+        anchor = float(bars[-1].close)
         line = path_line(
-            path.spot,
+            anchor,
             path.target,
             bar_unix(bars[-1]),
             path.expiry_unix,
             drift="pin" if path.side == "pin" else "linear",
-            max_display_seconds=V2_PATH_DISPLAY_HOURS * 3600,
+            min_display_seconds=V2_PATH_MIN_HOURS * 3600,
+            max_display_seconds=V2_PATH_MAX_HOURS * 3600,
         )
     return {
         "candles": candles_payload(bars),

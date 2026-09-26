@@ -33,7 +33,7 @@
       borderColor: "#2a3441",
       timeVisible: true,
       secondsVisible: false,
-      rightOffset: 4,
+      rightOffset: 6,
     },
   });
 
@@ -67,15 +67,23 @@
     },
   });
 
-  function visibleRange(rows, pts) {
-    if (!rows.length) return null;
-    var from = rows[0].time;
-    var to = rows[rows.length - 1].time;
+  function barStepSec(rows) {
+    if (rows.length < 2) return 900;
+    var d = rows[1].time - rows[0].time;
+    return d > 0 ? d : 900;
+  }
+
+  function applyViewport(rows, pts) {
+    if (!rows.length) return;
+    var step = barStepSec(rows);
+    var lineBars = 0;
     if (pts.length >= 2) {
-      to = Math.max(to, pts[pts.length - 1].time);
+      var lastT = rows[rows.length - 1].time;
+      var endT = pts[pts.length - 1].time;
+      lineBars = Math.max(12, Math.ceil((endT - lastT) / step));
     }
-    var pad = Math.max(3600, Math.round((to - from) * 0.04));
-    return { from: from, to: to + pad };
+    var to = rows.length - 1 + lineBars;
+    chart.timeScale().setVisibleLogicalRange({ from: 0, to: to });
   }
 
   function paint(data) {
@@ -100,12 +108,7 @@
     candles.setData(rows);
     line.setData(pts.length >= 2 ? pts : []);
     if (captionEl && data && data.caption) captionEl.textContent = data.caption;
-    var vr = visibleRange(rows, pts);
-    if (vr) {
-      chart.timeScale().setVisibleRange(vr);
-    } else {
-      chart.timeScale().fitContent();
-    }
+    applyViewport(rows, pts);
   }
 
   function resize() {
