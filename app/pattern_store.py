@@ -262,16 +262,18 @@ def persist_scan_hits(
     if not hits:
         return
     sample = next(iter(hits.values()), None)
+    from app.pattern_settings import signal_allowed
+
     if isinstance(sample, dict):
         for tf_map in hits.values():
             if not isinstance(tf_map, dict):
                 continue
             for hit in tf_map.values():
-                if hit:
+                if hit and signal_allowed(hit.category, hit.timeframe):
                     save_pattern_hit(hit)
         return
     for hit in hits.values():
-        if hit:
+        if hit and signal_allowed(hit.category, hit.timeframe):
             save_pattern_hit(hit)
 
 

@@ -2579,6 +2579,39 @@ bdi[dir="ltr"] {
   font: inherit;
 }
 
+.pattern-off-note {
+  margin: 0 0 10px;
+}
+
+.pattern-tf-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.pattern-tf-opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid #2a3441;
+  border-radius: 12px;
+  background: #121a26;
+}
+
+.pattern-nav-card.is-off {
+  opacity: 0.62;
+}
+
+.pattern-nav-off {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.72rem;
+  color: #f87171;
+  text-align: center;
+}
+
 .pattern-filter-hint {
   font-size: 0.72rem;
   margin: -8px 0 14px;

@@ -7,6 +7,18 @@
 {% block header_back %}
 <a href="/patterns" class="app-header__icon-btn" aria-label="بازگشت به الگوها">→</a>
 {% endblock %}
+{% block header_menu %}
+<details class="app-header__menu">
+  <summary class="app-header__icon-btn" aria-label="گزینه‌های الگو">⋮</summary>
+  <div class="app-header__dropdown" role="menu">
+    <button type="button" class="app-header__menu-btn app-header__menu-btn--neutral" data-open-pattern-settings role="menuitem">تنظیمات</button>
+    <form method="post" action="/patterns/{{ category }}/settings">
+      <input type="hidden" name="action" value="toggle">
+      <button type="submit" class="app-header__menu-btn" role="menuitem">{% if pattern_setting.enabled %}غیرفعال‌سازی{% else %}فعال‌سازی{% endif %}</button>
+    </form>
+  </div>
+</details>
+{% endblock %}
 
 {% block content %}
 
@@ -48,13 +60,11 @@
   <input type="number" name="min_profit" min="0" max="10" step="0.1" value="{{ min_profit }}" placeholder="حداقل سود ٪" aria-label="حداقل سود درصد">
   <button type="submit" class="btn secondary">اعمال</button>
 </form>
-<p class="muted pattern-filter-hint">حداقل سود: فقط پوزیشن‌هایی که از ورود سیگنال تا هدف این درصد (یا مسیر ثبت‌شده) برآورده شده باشند.</p>
 {% endif %}
 
-<form class="patterns-refresh" method="post" action="/patterns/refresh">
-  <input type="hidden" name="category" value="{{ category }}">
-  <button type="submit" class="btn secondary full">به‌روزرسانی اسکن</button>
-</form>
+{% if not pattern_setting.enabled %}
+<p class="muted pattern-off-note">این الگو غیرفعال است و سیگنال جدید نمی‌سازد.</p>
+{% endif %}
 
 {% if grouped %}
 {% for day_key, items in grouped %}
@@ -95,7 +105,58 @@
 {% endfor %}
 {% else %}
 <div class="empty">
-  <p>{% if raw_count and (tf_filter or min_profit) %}در این بازه {{ raw_count }} مورد بود؛ با فیلتر فعلی چیزی نمانده.{% else %}در این بازه تشخیصی ثبت نشده. «به‌روزرسانی اسکن» را بزنید.{% endif %}</p>
+  <p>{% if raw_count and (tf_filter or min_profit) %}در این بازه {{ raw_count }} مورد بود؛ با فیلتر فعلی چیزی نمانده.{% else %}در این بازه تشخیصی ثبت نشده.{% endif %}</p>
 </div>
 {% endif %}
+
+<div class="app-modal-root" id="pattern-settings-modal" hidden>
+  <div class="app-modal-backdrop" data-close-pattern-settings></div>
+  <div class="app-modal" role="dialog" aria-modal="true" aria-labelledby="pattern-settings-title">
+    <header class="app-modal__head">
+      <h2 id="pattern-settings-title" class="app-modal__title">تنظیمات {{ category_label }}</h2>
+      <button type="button" class="app-modal__close" data-close-pattern-settings aria-label="بستن">×</button>
+    </header>
+    <form method="post" action="/patterns/{{ category }}/settings">
+      <input type="hidden" name="action" value="save">
+      <div class="app-modal__body">
+        <p class="muted">تایم‌فریم‌هایی که سیگنال می‌سازند. برداشتن تیک یعنی برای آن تایم‌فریم سیگنال جدید نیاید.</p>
+        <div class="pattern-tf-options">
+          {% for tf in setting_tfs %}
+          <label class="pattern-tf-opt">
+            <input type="checkbox" name="timeframes" value="{{ tf.id }}" {% if tf.id in pattern_setting.timeframes %}checked{% endif %}>
+            <span>{{ tf.label }}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+      <footer class="app-modal__foot">
+        <button type="submit" class="btn primary">ذخیره</button>
+      </footer>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var root = document.getElementById("pattern-settings-modal");
+  var openBtn = document.querySelector("[data-open-pattern-settings]");
+  if (!root || !openBtn) return;
+  function openModal() {
+    var menu = openBtn.closest("details");
+    if (menu) menu.open = false;
+    root.hidden = false;
+    document.body.classList.add("modal-open");
+  }
+  function closeModal() {
+    root.hidden = true;
+    document.body.classList.remove("modal-open");
+  }
+  openBtn.addEventListener("click", openModal);
+  root.querySelectorAll("[data-close-pattern-settings]").forEach(function (el) {
+    el.addEventListener("click", closeModal);
+  });
+})();
+</script>
 {% endblock %}

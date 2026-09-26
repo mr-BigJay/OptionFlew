@@ -10,8 +10,9 @@
   <h2 id="pattern-types-head" class="section-title">نوع الگو</h2>
   <div class="pattern-nav-grid">
     {% for item in menu_items %}
-    <a href="/patterns/{{ item.slug }}" class="pattern-nav-card pattern-nav-card-compact">
+    <a href="/patterns/{{ item.slug }}" class="pattern-nav-card pattern-nav-card-compact{% if not item.enabled %} is-off{% endif %}">
       <span class="pattern-nav-title">{{ item.label }}</span>
+      {% if not item.enabled %}<span class="pattern-nav-off">غیرفعال</span>{% endif %}
     </a>
     {% endfor %}
   </div>
@@ -53,7 +54,7 @@
   </section>
   {% endfor %}
   {% else %}
-  <div class="empty card"><p>در ۲۴ ساعت گذشته تشخیصی ثبت نشده. یک الگو را باز کنید و «به‌روزرسانی اسکن» بزنید.</p></div>
+  <div class="empty card"><p>در ۲۴ ساعت گذشته تشخیصی ثبت نشده.</p></div>
   {% endif %}
 </section>
 {% endblock %}

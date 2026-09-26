@@ -137,8 +137,10 @@ def notify_new_behavior_hits(
     if not subs:
         return
 
+    from app.pattern_settings import signal_allowed
+
     for tf, hit in hits.items():
-        if hit is None:
+        if hit is None or not signal_allowed(hit.category, tf):
             continue
         key = str(hit.meta.get("alert_key") or "")
         if not key or key in sent:

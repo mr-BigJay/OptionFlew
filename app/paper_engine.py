@@ -226,6 +226,10 @@ def try_open_from_pattern_hit(user_id: int, hit: PatternHit) -> int | None:
     if not cfg.get("enabled"):
         return None
     cat = str(hit.category or "")
+    from app.pattern_settings import signal_allowed
+
+    if not signal_allowed(cat, str(hit.timeframe or "")):
+        return None
     if cat not in (cfg.get("pattern_categories") or []):
         return None
     entry = entry_hit_for_config(hit, cfg)

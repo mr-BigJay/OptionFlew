@@ -367,12 +367,16 @@ PATTERN_HINTS: dict[str, str] = {
 }
 
 
-def _pattern_menu_items() -> list[dict[str, str]]:
+def _pattern_menu_items() -> list[dict[str, str | bool]]:
+    from app.pattern_settings import all_pattern_settings
+
+    settings = all_pattern_settings(PATTERN_TABS)
     return [
         {
             "slug": slug,
             "label": _category_fa(slug),
             "hint": PATTERN_HINTS.get(slug, "BTCUSDT"),
+            "enabled": bool(settings[slug]["enabled"]),
         }
         for slug in PATTERN_TABS
     ]
@@ -1050,7 +1054,13 @@ async def patterns_menu(request: Request):
     start_iso = (
         datetime.now(timezone.utc) - timedelta(hours=24)
     ).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-    recent = list_all_pattern_events(start_iso=start_iso, limit=300)
+    from app.pattern_settings import signal_allowed
+
+    recent = [
+        row
+        for row in list_all_pattern_events(start_iso=start_iso, limit=300)
+        if signal_allowed(str(row.get("category") or ""), str(row.get("timeframe") or ""))
+    ]
     grouped_recent = _group_by_date(recent)
 
     return templates.TemplateResponse(
@@ -1142,6 +1152,13 @@ async def pattern_category_page(
     items = _filter_pattern_timeline(
         items, timeframe=tf, min_profit_pct=min_profit_pct
     )
+    from app.pattern_settings import get_pattern_setting, pattern_timeframes
+
+    pattern_setting = get_pattern_setting(category)
+    setting_tfs = [
+        {"id": tf, "label": PATTERN_TF_LABELS.get(tf, tf)}
+        for tf in pattern_timeframes(category)
+    ]
     grouped = _group_by_date(items)
     sub = (
         "Deribit · فلو · ۱h (burst 20m / baseline 4h)"
@@ -1170,8 +1187,28 @@ async def pattern_category_page(
             count=len(items),
             raw_count=raw_count,
             subheader=sub,
+            pattern_setting=pattern_setting,
+            setting_tfs=setting_tfs,
         ),
     )
+
+
+@app.post("/patterns/{category}/settings")
+async def pattern_settings_save(request: Request, category: str):
+    if category not in PATTERN_TABS:
+        return RedirectResponse("/patterns", status_code=303)
+    form = await request.form()
+    action = str(form.get("action") or "save")
+    from app.pattern_settings import get_pattern_setting, save_pattern_setting
+
+    if action == "toggle":
+        current = get_pattern_setting(category)
+        save_pattern_setting(category, enabled=not current["enabled"])
+    else:
+        save_pattern_setting(
+            category, timeframes=[str(v) for v in form.getlist("timeframes")]
+        )
+    return RedirectResponse(f"/patterns/{category}", status_code=303)
 
 
 @app.get("/backtest", response_class=HTMLResponse)
