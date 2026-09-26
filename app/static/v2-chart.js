@@ -33,7 +33,7 @@
       borderColor: "#2a3441",
       timeVisible: true,
       secondsVisible: false,
-      rightOffset: 2,
+      rightOffset: 4,
     },
   });
 
@@ -67,6 +67,17 @@
     },
   });
 
+  function visibleRange(rows, pts) {
+    if (!rows.length) return null;
+    var from = rows[0].time;
+    var to = rows[rows.length - 1].time;
+    if (pts.length >= 2) {
+      to = Math.max(to, pts[pts.length - 1].time);
+    }
+    var pad = Math.max(3600, Math.round((to - from) * 0.04));
+    return { from: from, to: to + pad };
+  }
+
   function paint(data) {
     var rows = ((data && data.candles) || []).slice();
     var pts = (data && data.line) || [];
@@ -86,13 +97,15 @@
       priceLo = 0;
       priceHi = 1;
     }
-    if (pts.length && rows.length && rows[rows.length - 1].time < pts[pts.length - 1].time) {
-      rows.push({ time: pts[pts.length - 1].time });
-    }
     candles.setData(rows);
     line.setData(pts.length >= 2 ? pts : []);
     if (captionEl && data && data.caption) captionEl.textContent = data.caption;
-    chart.timeScale().fitContent();
+    var vr = visibleRange(rows, pts);
+    if (vr) {
+      chart.timeScale().setVisibleRange(vr);
+    } else {
+      chart.timeScale().fitContent();
+    }
   }
 
   function resize() {

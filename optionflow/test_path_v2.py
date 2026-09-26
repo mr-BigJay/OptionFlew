@@ -136,3 +136,19 @@ def test_put_premium_stuck_on_spot_uses_the_next_support() -> None:
 
 def test_tiny_target_draws_no_line() -> None:
     assert path_line(SPOT, 83_950, 100, 5000) == []
+
+
+def test_display_horizon_keeps_slope_but_not_full_target() -> None:
+    start = 1_700_000_000
+    end = start + 7 * 24 * 3600
+    line = path_line(
+        SPOT,
+        90_000,
+        start,
+        end,
+        drift="linear",
+        max_display_seconds=36 * 3600,
+    )
+    assert line[-1]["time"] == start + 36 * 3600
+    assert line[-1]["value"] < 90_000
+    assert line[-1]["value"] > SPOT

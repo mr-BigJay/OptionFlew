@@ -325,24 +325,38 @@ def path_line(
     end_unix: int,
     *,
     drift: str = "linear",
+    max_display_seconds: int | None = None,
 ) -> list[dict[str, float | int]]:
-    """یک خط از الان تا سررسید. در رژیم pin شیب اول آرام است."""
+    """یک خط از الان تا سررسید. در رژیم pin شیب اول آرام است.
+
+    max_display_seconds: فقط برای چارت — همان شیب تا سررسید، ولی نقاط تا این افق
+    (تا fitContent کندل‌ها را له نکند).
+    """
     if target is None or spot <= 0 or end_unix <= start_unix:
         return []
     if abs(target - spot) / spot < MIN_MOVE:
         return []
     span = end_unix - start_unix
-    step = 3600
+    draw_until = end_unix
+    if max_display_seconds is not None and max_display_seconds > 0:
+        draw_until = min(end_unix, start_unix + int(max_display_seconds))
+    if draw_until <= start_unix:
+        return []
+    step = max(900, min(3600, span // 24 or 3600))
     points: list[dict[str, float | int]] = []
-    t = start_unix
-    while t < end_unix:
+
+    def _value_at(t: int) -> float:
         frac = (t - start_unix) / span
         if drift == "pin":
             frac = frac * frac
-        points.append({"time": t, "value": round(spot + (target - spot) * frac, 2)})
+        return round(spot + (target - spot) * frac, 2)
+
+    t = start_unix
+    while t < draw_until:
+        points.append({"time": t, "value": _value_at(t)})
         t += step
-    if not points or points[-1]["time"] != end_unix:
-        points.append({"time": end_unix, "value": float(target)})
+    if not points or points[-1]["time"] != draw_until:
+        points.append({"time": draw_until, "value": _value_at(draw_until)})
     return points
 
 
