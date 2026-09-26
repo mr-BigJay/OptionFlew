@@ -82,8 +82,16 @@ def entry_hit_for_config(hit: PatternHit, cfg: dict[str, Any] | None) -> Pattern
     return _detect_for_entry_stage(cat, bars, tf, want_early=want_early)
 
 
+def trendline_entry_price(meta: dict[str, Any]) -> float | None:
+    """ورود ترندلاین روی خود خط است، نه کلوز کندلی که از خط فاصله گرفته."""
+    y = meta.get("y_now")
+    if isinstance(y, (int, float)) and float(y) > 0:
+        return float(y)
+    return None
+
+
 def pattern_hit_allows_entry(hit: PatternHit, cfg: dict[str, Any] | None = None) -> bool:
-    """ترندلاین: تأییدشده در UI → ورود؛ اولیه فقط با تیک «سیگنال اولیه» در پوزیشن."""
+    """ترندلاین فقط وقتی قیمت همین کندل خط را لمس کرده. اولیه فقط با تیک تنظیمات."""
     cat = str(hit.category or "")
     meta = hit.meta or {}
     from app.position_store import PATTERN_EARLY_CATEGORIES
@@ -92,13 +100,13 @@ def pattern_hit_allows_entry(hit: PatternHit, cfg: dict[str, Any] | None = None)
     stage = str(meta.get("stage") or "")
 
     if cat == "trendline":
+        if not meta.get("testing"):
+            return False
+        if not stage:
+            return True
         if want_early:
             return stage == "early"
-        if stage == "confirmed":
-            return True
-        if stage == "early":
-            return False
-        return bool(meta.get("testing"))
+        return stage == "confirmed"
 
     if cat not in PATTERN_EARLY_CATEGORIES:
         return True
@@ -238,7 +246,9 @@ def try_open_from_pattern_hit(user_id: int, hit: PatternHit) -> int | None:
     direction = _direction_from_pattern(meta)
     if not direction:
         return None
-    price = latest_btc_price()
+    price = trendline_entry_price(meta) if cat == "trendline" else None
+    if price is None:
+        price = latest_btc_price()
     if price is None:
         return None
     risk = _source_risk(cfg, "pattern", cat)

@@ -78,6 +78,21 @@ def test_three_touch_support_is_confirmed() -> None:
     assert hit.meta["side"] == "low"
 
 
+def test_newest_third_swing_is_confirmed_not_early() -> None:
+    """آخرین سوئینگِ تمام‌شده (دقیقاً دو کندل مانده) نباید سیگنال اولیه بماند."""
+    bars = _empty(80, 99_780)
+    _set_swing(bars, 20, 98_800, "low")
+    _set_swing(bars, 48, 99_200, "low")
+    _set_swing(bars, 77, 99_640, "low")
+    _set_swing(bars, 36, 101_400, "high")
+    _set_swing(bars, 60, 101_500, "high")
+    hit = detect_trendline(bars, "15m")
+    assert hit is not None
+    assert len(hit.meta["touch_lows"]) >= 3
+    assert hit.meta["stage"] == "confirmed"
+    assert "اولیه" not in hit.status_fa
+
+
 def test_falling_resistance_trendline() -> None:
     bars = _empty(54, 101_650)
     _set_swing(bars, 22, 102_600, "high")

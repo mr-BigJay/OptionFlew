@@ -52,7 +52,7 @@ def test_trendline_entry_requires_a_touch() -> None:
         forecast_fa="",
         meta={"direction": "down", "stage": "confirmed", "testing": False},
     )
-    assert pattern_hit_allows_entry(confirmed_no_touch, {"pattern_early": []}) is True
+    assert pattern_hit_allows_entry(confirmed_no_touch, {"pattern_early": []}) is False
     assert pattern_hit_allows_entry(confirmed_no_touch, {"pattern_early": ["trendline"]}) is False
     early = PatternHit(
         category="trendline",
@@ -78,3 +78,10 @@ def test_trendline_entry_requires_a_touch() -> None:
     assert pattern_hit_allows_entry(final, {"pattern_early": ["trendline"]}) is False
     assert pattern_hit_allows_entry(early, {"pattern_early": []}) is False
     assert pattern_hit_allows_entry(final, {"pattern_early": []}) is True
+
+
+def test_trendline_entry_price_is_the_line_not_the_close() -> None:
+    from app.paper_engine import trendline_entry_price
+
+    assert trendline_entry_price({"y_now": 83976.4, "last_close": 84217}) == 83976.4
+    assert trendline_entry_price({}) is None

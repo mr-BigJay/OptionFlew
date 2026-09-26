@@ -410,8 +410,9 @@ def _fit_line(
                 continue
             if length == 2 and last_age > max_age and not testing:
                 continue
-            forming = last_age <= SWING_RIGHT
-            stage = "confirmed" if length >= 3 and not forming else "early"
+            # سوئینگ از قبل SWING_RIGHT کندل راست دارد؛ تساوی یعنی برخورد تمام‌شده است.
+            forming = last_age < SWING_RIGHT
+            stage = "confirmed" if length >= 3 else "early"
             score = length * 4.0 + (3.0 if testing else 0.0) + (2.0 if stage == "confirmed" else 0.0)
             score -= dist / max(atr_now, 1.0) * 0.25
             score -= outside / bars_n * 4.0
@@ -531,7 +532,7 @@ def detect_trendline(
     if stage == "early":
         status = "سیگنال اولیه"
         forecast = (
-            f"خط با دو برخورد شناسایی شد. اگر قیمت نزدیک {primary['y_now']:,.0f} "
+            f"خط با {n_pri} برخورد شناسایی شد. اگر قیمت نزدیک {primary['y_now']:,.0f} "
             f"نگه دارد، برخورد سوم تأیید می‌کند."
         )
     else:
