@@ -13,9 +13,9 @@ logger = logging.getLogger("optionflow.v2")
 
 V2_CANDLE_INTERVAL = "15m"
 V2_CANDLE_LIMIT = 500
-V2_CANDLE_BARS = 384
-V2_PATH_MIN_HOURS = 96
-V2_PATH_MAX_HOURS = 120
+V2_CANDLE_BARS = 480
+V2_PATH_MIN_HOURS = 72
+V2_PATH_MAX_HOURS = 96
 
 
 def v2_chart_payload() -> dict:

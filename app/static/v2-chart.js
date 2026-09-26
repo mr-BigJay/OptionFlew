@@ -76,13 +76,22 @@
   function applyViewport(rows, pts) {
     if (!rows.length) return;
     var step = barStepSec(rows);
+    var end = rows.length - 1;
     var lineBars = 0;
     if (pts.length >= 2) {
       var lastT = rows[rows.length - 1].time;
       var endT = pts[pts.length - 1].time;
-      lineBars = Math.max(12, Math.ceil((endT - lastT) / step));
+      lineBars = Math.max(8, Math.ceil((endT - lastT) / step));
     }
-    var to = rows.length - 1 + lineBars;
+    var to = end + lineBars;
+    var plotW = Math.max(280, mount.clientWidth || 320);
+    var barsInView = Math.max(1, to + 1);
+    var spacing = Math.max(3, Math.min(14, (plotW - 52) / barsInView));
+    chart.timeScale().applyOptions({
+      barSpacing: spacing,
+      rightOffset: 2,
+      fixLeftEdge: true,
+    });
     chart.timeScale().setVisibleLogicalRange({ from: 0, to: to });
   }
 

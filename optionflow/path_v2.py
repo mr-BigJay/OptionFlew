@@ -340,6 +340,7 @@ def path_line(
     journey = max(1, end_unix - start_unix)
     min_span = int(min_display_seconds or 96 * 3600)
     max_span = int(max_display_seconds or 120 * 3600)
+    # افق رسم: حداقل چند روز؛ اگر سررسید دورتر است تا همان journey
     display_span = max(min_span, min(max_span, journey))
     draw_until = start_unix + display_span
     step = max(900, min(3600, display_span // 48 or 3600))
@@ -347,7 +348,8 @@ def path_line(
 
     def _value_at(t: int) -> float:
         elapsed = max(0, t - start_unix)
-        frac = min(1.0, elapsed / journey)
+        # شیب روی کل افق دیده‌شده، نه فقط تا سررسید (جلوگیری از خط عمودی)
+        frac = min(1.0, elapsed / display_span)
         if drift == "pin":
             frac = frac * frac
         return round(spot + (target - spot) * frac, 2)

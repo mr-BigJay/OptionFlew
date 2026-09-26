@@ -155,3 +155,5 @@ def test_display_horizon_reaches_target_then_flattens_when_expiry_soon() -> None
     early = line[2]["value"]
     assert early < 90_000
     assert early > SPOT
+    # با سررسید ۴ ساعته شیب روی ۹۶h است، نه روی ۴h
+    assert early < SPOT + (90_000 - SPOT) * 0.08
