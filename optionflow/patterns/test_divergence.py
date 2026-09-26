@@ -92,6 +92,50 @@ def test_entry_lines_early_and_final() -> None:
     assert "اولیه" in extra_early
 
 
+def test_render_divergence_chart_smoke() -> None:
+    from optionflow.patterns.chart import _render_divergence
+    from optionflow.patterns.types import PatternHit
+
+    t0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    bars = [
+        OhlcBar(
+            ts=t0 + timedelta(minutes=5 * i),
+            open=65000.0 + i * 2,
+            high=65100.0 + i * 2,
+            low=64900.0 + i * 2,
+            close=65000.0 + i * 2,
+            volume=1.0,
+        )
+        for i in range(90)
+    ]
+    hit = PatternHit(
+        category="divergence",
+        timeframe="5m",
+        pattern_id="rsi_bearish",
+        title_fa="واگرایی",
+        summary_fa="تست",
+        forecast_fa="پایین",
+        status_fa="تأیید",
+        meta={
+            "pivot_a": (30, 65120.0),
+            "pivot_b": (55, 65200.0),
+            "rsi_a": 72.0,
+            "rsi_b": 68.0,
+            "direction": "down",
+            "confirm_index": 60,
+        },
+    )
+    png = _render_divergence(
+        bars,
+        hit,
+        signal_index=60,
+        forward_bars=12,
+        outcome_success=True,
+    )
+    assert png is not None
+    assert len(png) > 200
+
+
 def test_short_bars_no_hit() -> None:
     t0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
     bars = [

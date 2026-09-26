@@ -13,8 +13,6 @@ logger = logging.getLogger("optionflow.report_chart")
 
 def parse_scenario_from_paragraph(paragraph: str) -> tuple[float, int, int] | None:
     """B/C/Spot از متن prose-v3 (برای بازسازی چارت روی گزارش‌های قدیمی)."""
-    if "مقصد اول نامشخص" in paragraph:
-        return None
     if "حرکت اول" not in paragraph or "حرکت دوم" not in paragraph:
         return None
     m_spot = re.search(r"قیمت فعلی:\s*([\d,]+)", paragraph)
@@ -36,70 +34,45 @@ def parse_scenario_from_paragraph(paragraph: str) -> tuple[float, int, int] | No
     return spot, b, c
 
 
-def _levels_from_snapshot(snapshot: ReportSnapshot) -> dict[str, int | None]:
-    return {
-        "zone_low": snapshot.zone_low,
-        "zone_high": snapshot.zone_high,
-        "band_low": snapshot.band_low,
-        "band_high": snapshot.band_high,
-    }
-
-
 def scenario_plan_from_snapshot(snapshot: ReportSnapshot) -> ScenarioPlan | None:
-    levels = _levels_from_snapshot(snapshot)
-    has_levels = any(levels.values())
     if snapshot.scenario_b is not None:
-        two_legs = snapshot.scenario_c is not None
+        c = snapshot.scenario_c if snapshot.scenario_c is not None else int(snapshot.scenario_b)
         return ScenarioPlan(
             spot=float(snapshot.spot),
             b=int(snapshot.scenario_b),
-            c=int(snapshot.scenario_c if two_legs else snapshot.scenario_b),
-            first_dir="up",
+            c=c,
+            first_dir="up" if snapshot.scenario_b >= snapshot.spot else "down",
             second_dir="down",
-            two_legs=two_legs,
-            first_confident=True,
-            **levels,
+            two_legs=False,
         )
     parsed = parse_scenario_from_paragraph(snapshot.paragraph)
-    if parsed:
-        spot, b, c = parsed
-        return ScenarioPlan(
-            spot=spot,
-            b=b,
-            c=c,
-            first_dir="up",
-            second_dir="down",
-            two_legs=True,
-            **levels,
-        )
-    if has_levels and snapshot.spot:
-        return ScenarioPlan(
-            spot=float(snapshot.spot),
-            b=0,
-            c=0,
-            first_dir="down",
-            second_dir="up",
-            two_legs=False,
-            first_confident=False,
-            **levels,
-        )
-    return None
-
-
-def _levels_from_row(report: dict[str, Any]) -> dict[str, int | None]:
-    out: dict[str, int | None] = {}
-    for key in ("zone_low", "zone_high", "band_low", "band_high"):
-        raw = report.get(key)
-        out[key] = int(raw) if raw not in (None, "") else None
-    return out
+    if not parsed:
+        return None
+    spot, b, c = parsed
+    return ScenarioPlan(
+        spot=spot,
+        b=b,
+        c=c,
+        first_dir="up",
+        second_dir="down",
+        two_legs=True,
+    )
 
 
 def scenario_plan_from_row(report: dict[str, Any]) -> ScenarioPlan | None:
-    paragraph = report.get("paragraph") or ""
-    levels = _levels_from_row(report)
-    if "مقصد اول نامشخص" in paragraph and not any(levels.values()):
-        return None
-    parsed = None if "مقصد اول نامشخص" in paragraph else parse_scenario_from_paragraph(paragraph)
+    spot = float(report.get("spot") or 0)
+    zone = report.get("zone_mid")
+    if zone and spot > 0 and abs(int(zone) - spot) / spot >= 0.0015:
+        b = int(zone)
+        return ScenarioPlan(
+            spot=spot,
+            b=b,
+            c=b,
+            first_dir="up" if b >= spot else "down",
+            second_dir="down",
+            two_legs=False,
+        )
+    parsed = parse_scenario_from_paragraph(report.get("paragraph") or "")
     if parsed:
         spot, b, c = parsed
         return ScenarioPlan(
@@ -109,7 +82,6 @@ def scenario_plan_from_row(report: dict[str, Any]) -> ScenarioPlan | None:
             first_dir="up",
             second_dir="down",
             two_legs=True,
-            **levels,
         )
     spot = float(report.get("spot") or 0)
     support = report.get("support_zone")
@@ -126,18 +98,6 @@ def scenario_plan_from_row(report: dict[str, Any]) -> ScenarioPlan | None:
             first_dir="up",
             second_dir="down",
             two_legs=True,
-            **levels,
-        )
-    if spot > 0 and any(levels.values()):
-        return ScenarioPlan(
-            spot=spot,
-            b=0,
-            c=0,
-            first_dir="down",
-            second_dir="up",
-            two_legs=False,
-            first_confident=False,
-            **levels,
         )
     return None
 

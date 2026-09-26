@@ -1,8 +1,5 @@
 from datetime import datetime, timezone
 
-from optionflow.scenario_chart import spread_label_ys
-from optionflow.report_chart import scenario_plan_from_snapshot
-from optionflow.report_service import ReportSnapshot
 from optionflow.expiry_compass import (
     drop_flat_target,
     PriorCompass,
@@ -105,38 +102,3 @@ def test_target_on_spot_is_not_a_scenario() -> None:
     flat = drop_flat_target(compass)
     assert flat.path_level == 86_000
 
-
-def test_chart_plan_keeps_band_and_zone() -> None:
-    snapshot = ReportSnapshot(
-        created_at="2026-09-25T00:00:00Z",
-        window_hours=4,
-        report_kind="4h",
-        paragraph="x",
-        headline="h",
-        bias="neutral",
-        score=0,
-        confidence_pct=50,
-        support_zone=80_000,
-        target_zone=86_000,
-        spot=84_000,
-        trade_count=10,
-        scenario_b=78_000,
-        band_low=76_000,
-        band_high=90_000,
-        zone_low=77_500,
-        zone_high=78_500,
-    )
-    plan = scenario_plan_from_snapshot(snapshot)
-    assert plan is not None
-    assert plan.band_low == 76_000
-    assert plan.band_high == 90_000
-    assert plan.zone_low == 77_500
-    assert plan.zone_high == 78_500
-    assert plan.two_legs is False
-
-
-def test_nearby_labels_are_separated() -> None:
-    placed = spread_label_ys([83223, 83000, 84017], min_gap=400)
-    assert placed[1] == 83000
-    assert placed[0] >= placed[1] + 400
-    assert placed[2] >= placed[0] + 400

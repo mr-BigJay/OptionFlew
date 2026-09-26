@@ -10,8 +10,8 @@ from app.storage import (
     save_report_chart,
     save_scheduled_report,
 )
-from optionflow.expiry_compass import PriorCompass
 from app.telegram_notify import maybe_send_report
+from optionflow.expiry_compass import PriorCompass
 from optionflow.report_chart import chart_png_for_snapshot
 from optionflow.report_codes import scheduled_report_code
 from optionflow.report_service import ReportKind, produce_report
@@ -48,31 +48,30 @@ def _generate_scheduled(kind: ReportKind) -> None:
     )
     snapshot.report_code = scheduled_report_code(kind)
     save_scheduled_report(snapshot)
-    prefix = "【۴ ساعته】" if kind == "4h" else "【روزانه】"
+    prefix = "【۲ ساعته】" if kind == "4h" else "【روزانه】"
     _notify_report(snapshot, prefix)
     logger.info("Scheduled report [%s] saved at %s", kind, snapshot.created_at)
 
 
-def _generate_manual(kind: ReportKind, compass=None, prior: PriorCompass | None = None) -> None:
+def _generate_manual(kind: ReportKind) -> None:
     enriched = os.environ.get("OPTIONFLOW_ENRICHED", "0") == "1"
     snapshot = produce_report(
         report_kind=kind,
         use_candle_window=True,
         enriched=enriched,
-        prior=prior if prior is not None else _prior_for(kind),
-        compass=compass,
+        prior=_prior_for(kind),
     )
     rid = save_manual_report(snapshot)
     saved = get_report(rid)
     if saved:
         snapshot.report_code = saved.get("report_code") or ""
-    prefix = "【دستی · ۴ ساعته】" if kind == "4h" else "【دستی · روزانه】"
+    prefix = "【دستی · ۲ ساعته】" if kind == "4h" else "【دستی · روزانه】"
     _notify_report(snapshot, prefix)
     logger.info("Manual report [%s] id=%s at %s", kind, rid, snapshot.created_at)
 
 
 def run_scheduled_4h_report() -> None:
-    logger.info("Generating 4h candle report (Tehran)")
+    logger.info("Generating 2h premium report (Tehran)")
     _generate_scheduled("4h")
 
 
@@ -82,19 +81,9 @@ def run_scheduled_daily_report() -> None:
 
 
 def run_manual_reports() -> None:
-    """Admin «تولید الان»: هر دو نوع با یک قطب‌نما، تا دو سناریوی متفاوت ساخته نشود."""
-    from optionflow.deribit_client import DeribitClient
-    from optionflow.expiry_compass import live_compass
-
-    shared = None
-    try:
-        with DeribitClient() as client:
-            shared = live_compass(client.get_index_price())
-    except Exception:
-        logger.warning("Shared compass fetch failed; each report will fetch its own")
-    prior = _prior_for("daily") or _prior_for("4h")
-    _generate_manual("4h", shared, prior)
-    _generate_manual("daily", shared, prior)
+    """Admin «تولید الان»: temporary j-codes, expire after 24h."""
+    _generate_manual("4h")
+    _generate_manual("daily")
 
 
 def run_scheduled_report() -> None:

@@ -18,20 +18,6 @@ BINANCE_KLINES_PRIMARY = "https://api.binance.com/api/v3/klines"
 BINANCE_KLINES_MIRROR = "https://data-api.binance.vision/api/v3/klines"
 
 
-def spread_label_ys(ys: list[float], min_gap: float) -> list[float]:
-    """برچسب‌های نزدیک را در محور قیمت از هم دور می‌کند تا روی هم ننشینند."""
-    order = sorted(range(len(ys)), key=lambda i: ys[i])
-    out = list(ys)
-    prev: float | None = None
-    for i in order:
-        y = ys[i]
-        if prev is not None and y < prev + min_gap:
-            y = prev + min_gap
-        out[i] = y
-        prev = y
-    return out
-
-
 def chart_settings_for_report(report_kind: ReportChartKind) -> tuple[str, int, int]:
     """بازه و تعداد کندل: 4h گزارش → چارت 1h؛ daily → چارت 4h.
 
@@ -119,13 +105,12 @@ def render_btcusdt_scenario_chart(
 
     if len(candles) < 3:
         return None
-    # نیمی از کندل‌های همین پنجرهٔ اخیر حذف می‌شود تا A و B جا داشته باشند.
-    keep = max(3, int(len(candles) * 0.15))
-    candles = candles[-keep:]
+
+    candles = candles[-48:]
 
     spot = float(plan.spot)
     b = float(plan.b)
-    draw_path = plan.first_confident and b > 0
+    draw_path = spot > 0 and abs(b - spot) / spot >= 0.0015
 
     fig_w = 8.0
     fig_h = 4.6
@@ -155,13 +140,11 @@ def render_btcusdt_scenario_chart(
 
     last_x = xs[-1]
     bar_days = xs[-1] - xs[-2] if len(xs) > 1 else 15 / (24 * 60)
+    t_b = last_x + bar_days * forward_bars
 
-    forward = bar_days * forward_bars
-    t_b = last_x + forward
-
-    ax.axhline(spot, color="#42a5f5", linewidth=1.0, linestyle="-", alpha=0.55, zorder=4)
-    if draw_path and abs(b - spot) > spot * 0.0015:
-        ax.axhline(b, color="#ffb74d", linewidth=1.2, linestyle="--", alpha=0.85, zorder=4)
+    ax.axhline(spot, color="#42a5f5", linewidth=1.0, linestyle="-", alpha=0.55)
+    if draw_path:
+        ax.axhline(b, color="#ffb74d", linewidth=1.2, linestyle="--", alpha=0.85)
         ax.plot(
             [last_x, t_b],
             [spot, b],
@@ -181,37 +164,29 @@ def render_btcusdt_scenario_chart(
     y_min = min(candle.low for candle in candles)
     y_max = max(candle.high for candle in candles)
     pad = max(spot * 0.002, 80.0)
-    extras = [spot]
-    if draw_path:
-        extras.append(b)
-    ax.set_ylim(min(y_min, *extras) - pad, max(y_max, *extras) + pad)
+    y_lo = min(y_min, spot, b if draw_path else spot)
+    y_hi = max(y_max, spot, b if draw_path else spot)
+    ax.set_ylim(y_lo - pad, y_hi + pad)
 
-    x_end = (t_b if draw_path else last_x + bar_days * 4) + bar_days * 2
+    x_end = t_b + bar_days * 2
     ax.set_xlim(xs[0] - bar_days * 2, x_end)
 
-    label_x = xs[-1] + (x_end - xs[-1]) * 0.04
-    labels: list[tuple[float, str, str]] = [(spot, f"A {spot:,.0f}", "#90caf9")]
-    if draw_path and abs(b - spot) > spot * 0.0015:
+    label_x = xs[-1] + (x_end - xs[-1]) * 0.02
+    labels = [(spot, f"A {spot:,.0f}", "#90caf9")]
+    if draw_path:
         labels.append((b, f"B {b:,.0f}", "#ffcc80"))
-    y_span = max(y_max, *extras) - min(y_min, *extras)
-    placed = spread_label_ys([y for y, _t, _c in labels], max(y_span * 0.045, spot * 0.004))
-    for (y_val, label, color), text_y in zip(labels, placed):
+    for y_val, label, color in labels:
         ax.annotate(
             label,
             xy=(label_x, y_val),
-            xytext=(label_x, text_y),
-            textcoords="data",
+            xytext=(4, 0),
+            textcoords="offset points",
             va="center",
             ha="left",
             color=color,
             fontsize=8,
             fontfamily="monospace",
             annotation_clip=False,
-            arrowprops=(
-                {"arrowstyle": "-", "color": color, "lw": 0.6}
-                if abs(text_y - y_val) > spot * 0.001
-                else None
-            ),
         )
 
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%m-%d %H:%M"))
@@ -224,7 +199,7 @@ def render_btcusdt_scenario_chart(
         (
             f"BTCUSDT {interval} — مسیر A → B"
             if draw_path
-            else f"BTCUSDT {interval} — مقصد اول نامشخص"
+            else f"BTCUSDT {interval} — مقصد مشخص نیست"
         ),
         color="#eceff1",
         fontsize=11,

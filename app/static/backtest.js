@@ -30,7 +30,12 @@
           setTimeout(function () {
             pollRun(runId);
           }, 800);
-        } else {
+          return;
+        }
+        if (wrap) {
+          wrap.hidden = true;
+        }
+        if (data.status === "error" || data.status === "done") {
           window.location.href =
             "/backtest?tab=" +
             encodeURIComponent(new URLSearchParams(window.location.search).get("tab") || "triangle") +
@@ -45,8 +50,8 @@
     var runWrap = document.getElementById("bt-run-progress");
     var runId = runWrap && runWrap.getAttribute("data-run-id");
     if (runId && runId !== "0") {
-      var activeRun = document.querySelector(".bt-finding");
-      if (!activeRun) {
+      var status = runWrap && runWrap.getAttribute("data-run-status");
+      if (status === "running") {
         pollRun(runId);
       }
     }

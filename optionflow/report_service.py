@@ -6,23 +6,17 @@ from datetime import datetime, timezone
 from typing import Literal
 
 from optionflow.deribit_client import DeribitClient
-from optionflow.flow_analyzer import analyze_trades
-from optionflow.guide import build_guidance, format_enriched_simple_paragraph, format_simple_paragraph
-from optionflow.market_context import collect_market_context
+from optionflow.expiry_compass import PriorCompass, fetch_book, list_expiry_bands
+from optionflow.path_v2 import _gamma_near, build_path_v2
 from optionflow.price_levels import fetch_price_levels
-from optionflow.expiry_compass import (
-    Compass,
-    PriorCompass,
-    apply_shift,
-    classify_shift,
-    drop_flat_target,
-    format_compass_paragraph,
-    live_compass,
+from optionflow.report_path import (
+    classify_level_shift,
+    format_path_paragraph,
+    headline_fa,
+    path_quality,
 )
-from optionflow.scenario_narrative import ScenarioPlan, resolve_scenario_plan
 
 from optionflow.tehran_time import (
-    candle_window_4h,
     candle_window_daily,
     to_utc_ms,
 )
@@ -72,8 +66,8 @@ def _window_for_kind(kind: ReportKind) -> tuple[int, int, str, float]:
     if kind == "daily":
         start_dt, end_dt, label = candle_window_daily()
         return to_utc_ms(start_dt), to_utc_ms(end_dt), label, 24.0
-    start_dt, end_dt, label = candle_window_4h()
-    return to_utc_ms(start_dt), to_utc_ms(end_dt), label, 4.0
+    start_ms, end_ms = DeribitClient.window_ms(2.0)
+    return start_ms, end_ms, "۲ ساعت اخیر", 2.0
 
 
 def produce_report(
@@ -83,12 +77,12 @@ def produce_report(
     window_hours: float | None = None,
     enriched: bool = False,
     prior: PriorCompass | None = None,
-    compass: Compass | None = None,
 ) -> ReportSnapshot:
+    del enriched  # مسیر از حق‌بیمه می‌آید؛ متن غنی‌شدهٔ قبلی مقصد را عوض نمی‌کند.
     if use_candle_window:
         start_ms, end_ms, window_label, wh = _window_for_kind(report_kind)
     else:
-        wh = window_hours or (24.0 if report_kind == "daily" else 4.0)
+        wh = window_hours or (24.0 if report_kind == "daily" else 2.0)
         start_ms, end_ms = DeribitClient.window_ms(wh)
         window_label = f"{wh:g} ساعت اخیر"
 
@@ -98,112 +92,87 @@ def produce_report(
             spot = client.get_index_price()
         except Exception:
             spot = None
+    if not spot and trades:
+        try:
+            spot = float(trades[0].get("index_price") or 0)
+        except (TypeError, ValueError):
+            spot = None
+    spot_f = float(spot or 0)
 
-    analysis = analyze_trades(
-        trades,
-        spot=spot,
-        window_label=window_label,
-        window_hours=wh,
+    books: list = []
+    try:
+        books = fetch_book()
+    except Exception:
+        logger.warning("Option book unavailable; report will not invent a target")
+
+    moment = datetime.now(timezone.utc)
+    path = None
+    if books and spot_f > 0:
+        path = build_path_v2(books=books, trades=trades, spot=spot_f, now=moment)
+        if path is not None:
+            try:
+                greeks = _gamma_near(books, spot_f, path.expiry)
+            except Exception:
+                greeks = {}
+            if greeks:
+                path = build_path_v2(
+                    books=books,
+                    trades=trades,
+                    spot=spot_f,
+                    now=moment,
+                    greeks=greeks,
+                ) or path
+    bands = list_expiry_bands(books, spot_f, now=moment) if books and spot_f > 0 else []
+    primary = bands[0] if bands else None
+    down_mid = None if path is None else path.bps
+    up_mid = None if path is None else path.scg
+    shift = classify_level_shift(
+        prior,
+        spot=spot_f,
+        band_low=None if primary is None else primary.band_low,
+        down_mid=down_mid,
+        up_mid=up_mid,
     )
-    guidance = build_guidance(analysis)
-    compass = compass if compass is not None else live_compass(analysis.spot)
-    shift = "unknown"
-    if compass is not None:
-        shift = classify_shift(prior, compass)
-        compass = drop_flat_target(apply_shift(compass, shift))
-    if compass is not None:
-        contracts = analysis.contracts
-        effective = analysis.effective_usd
-        paragraph = format_compass_paragraph(
-            compass,
-            shift,
-            buyer_call=contracts.buyer_call,
-            buyer_put=contracts.buyer_put,
-            seller_call=contracts.seller_call,
-            seller_put=contracts.seller_put,
-            eff_buyer_call=effective.buyer_call,
-            eff_buyer_put=effective.buyer_put,
-            eff_seller_call=effective.seller_call,
-            eff_seller_put=effective.seller_put,
-        )
-        plan = _plan_from_compass(compass)
-    else:
-        plan = resolve_scenario_plan(
-            analysis,
-            support=guidance.support_zone,
-            target=guidance.target_zone,
-            path_primary=guidance.path_primary,
-            path_alternate=guidance.path_alternate,
-        )
-        if enriched:
-            ctx = collect_market_context(analysis.spot)
-            paragraph = format_enriched_simple_paragraph(analysis, guidance, ctx)
-        else:
-            paragraph = format_simple_paragraph(analysis, guidance)
-    if enriched and ("جمع‌بندی" not in paragraph and "نتیجه‌گیری" not in paragraph):
-        logger.error(
-            "Enriched report missing prose narrative; check deployment."
-        )
+    bias, score, confidence = path_quality(path)
+    paragraph = format_path_paragraph(
+        path=path,
+        spot=spot_f,
+        window_label=window_label,
+        bands=bands,
+        shift=shift,
+    )
     levels = fetch_price_levels()
-    now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    now = moment.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    spot_i = int(round(spot_f)) if spot_f > 0 else 0
+    support = down_mid or spot_i
+    target = (path.target if path and path.side in ("up", "pin") and path.target else None) or up_mid or spot_i
+    scenario_b = path.target if path and path.target else None
 
     return ReportSnapshot(
         created_at=now,
         window_hours=wh,
         report_kind=report_kind,
         paragraph=paragraph,
-        headline=guidance.headline_fa,
-        bias=guidance.bias,
-        score=guidance.score,
-        confidence_pct=guidance.confidence_pct,
-        support_zone=(
-            compass.zone_down.mid if compass and compass.zone_down else guidance.support_zone
-        ),
-        target_zone=(
-            compass.zone_up.mid if compass and compass.zone_up else guidance.target_zone
-        ),
-        spot=round(analysis.spot, 2),
-        trade_count=analysis.trade_count,
+        headline=headline_fa(bias, score, confidence),
+        bias=bias,
+        score=score,
+        confidence_pct=confidence,
+        support_zone=int(support),
+        target_zone=int(target),
+        spot=round(spot_f, 2),
+        trade_count=len(trades),
         window_label=window_label,
         pdh=levels.pdh,
         pdl=levels.pdl,
         pwh=levels.pwh,
         pwl=levels.pwl,
-        scenario_b=plan.b if plan and plan.first_confident else None,
-        scenario_c=plan.c if plan and plan.first_confident and plan.two_legs else None,
-        band_low=compass.primary.band_low if compass and compass.primary else None,
-        band_high=compass.primary.band_high if compass and compass.primary else None,
-        zone_low=plan.zone_low if plan else None,
-        zone_high=plan.zone_high if plan else None,
-        zone_mid=compass.path_level if compass else None,
-        down_zone_mid=compass.zone_down.mid if compass and compass.zone_down else None,
-        up_zone_mid=compass.zone_up.mid if compass and compass.zone_up else None,
-    )
-
-
-def _plan_from_compass(compass) -> ScenarioPlan | None:
-    primary = compass.primary
-    if primary is None:
-        return None
-    zone = compass.zone_down if compass.path_side == "down" else None
-    if compass.path_side == "up":
-        zone = compass.zone_up
-    other = None
-    if compass.path_side == "down":
-        other = compass.zone_up
-    elif compass.path_side == "up":
-        other = compass.zone_down
-    level = compass.path_level
-    return ScenarioPlan(
-        spot=compass.spot,
-        b=level or int(round(compass.spot)),
-        c=other.mid if other and level else (level or int(round(compass.spot))),
-        first_dir=compass.path_side or "down",
-        second_dir="up" if compass.path_side != "up" else "down",
-        two_legs=bool(level and other),
-        first_confident=bool(level),
-        zone_low=zone.low if zone else None,
-        zone_high=zone.high if zone else None,
-        band_low=primary.band_low,
-        band_high=primary.band_high,
+        scenario_b=scenario_b,
+        scenario_c=None,
+        band_low=None if primary is None else primary.band_low,
+        band_high=None if primary is None else primary.band_high,
+        zone_low=scenario_b,
+        zone_high=scenario_b,
+        zone_mid=scenario_b,
+        down_zone_mid=down_mid,
+        up_zone_mid=up_mid,
     )

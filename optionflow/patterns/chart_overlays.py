@@ -349,13 +349,10 @@ def triangle_viewport(meta: dict[str, Any], bars: list[OhlcBar]) -> dict[str, fl
 
 def _trendline_focus_viewport(meta: dict[str, Any], bars: list[OhlcBar]) -> dict[str, float | int] | None:
     """زوم اولیه روی بدنهٔ خط؛ کندل‌های قبل از g0 در سری می‌مانند تا اسکرول چپ کار کند."""
-    wo = int(meta.get("window_offset") or 0)
-    i0 = meta.get("start_i")
-    i1 = meta.get("end_i")
-    if not isinstance(i0, int) or not isinstance(i1, int) or not bars:
+    if not bars:
         return None
-    last_local = len(bars) - 1 - wo
-    li_end = max(int(i0), min(int(i1), last_local))
+    wo, i0, i1 = trendline_local_indices(meta, len(bars), bars=bars)
+    li_end = max(i0, i1)
     pad_left = 16
     pad_right = 14
     g0 = max(0, wo + int(i0) - pad_left)
@@ -426,6 +423,89 @@ def live_pattern_viewport(
 TRENDLINE_LINE_EXTEND_RATIO = 0.5
 
 
+def resolve_trendline_window_offset(
+    meta: dict[str, Any], bars: list[OhlcBar]
+) -> int:
+    """window_offset درست = confirm − آخرین touch محلی (یا کم‌خطای برخورد با کندل)."""
+    n = len(bars)
+    if n == 0:
+        return int(meta.get("window_offset") or 0)
+    wo = int(meta.get("window_offset") or 0)
+    side = meta.get("side")
+    if side == "high":
+        touches = meta.get("touch_highs") or []
+        slope, intercept = meta.get("upper_slope"), meta.get("upper_intercept")
+        pick = lambda b: float(b.high)
+    elif side == "low":
+        touches = meta.get("touch_lows") or []
+        slope, intercept = meta.get("lower_slope"), meta.get("lower_intercept")
+        pick = lambda b: float(b.low)
+    else:
+        return max(0, wo)
+    if not touches or not isinstance(slope, (int, float)) or not isinstance(
+        intercept, (int, float)
+    ):
+        return max(0, wo)
+
+    candidates: set[int] = {wo}
+    confirm = meta.get("confirm_index")
+    if isinstance(confirm, int):
+        candidates.add(confirm - int(touches[-1]))
+    early = meta.get("early_index")
+    if isinstance(early, int) and touches:
+        mid = int(touches[min(1, len(touches) - 1)])
+        candidates.add(early - mid)
+
+    def _touch_err(test_wo: int) -> float:
+        err = 0.0
+        for ti in touches:
+            gi = test_wo + int(ti)
+            if gi < 0 or gi >= n:
+                return float("inf")
+            y_line = float(slope) * int(ti) + float(intercept)
+            err += abs(y_line - pick(bars[gi]))
+        return err / len(touches)
+
+    best = wo
+    best_err = _touch_err(wo)
+    for c in candidates:
+        if c < 0:
+            continue
+        e = _touch_err(c)
+        if e < best_err:
+            best_err = e
+            best = c
+    return max(0, best)
+
+
+def trendline_local_indices(
+    meta: dict[str, Any],
+    n_bars: int,
+    *,
+    wo: int | None = None,
+    bars: list[OhlcBar] | None = None,
+) -> tuple[int, int, int]:
+    """window_offset و start_i/end_i محلی نسبت به پنجرهٔ فیت — نه اندیس سراسری سری."""
+    if bars is not None:
+        w = resolve_trendline_window_offset(meta, bars)
+    elif wo is None:
+        w = int(meta.get("window_offset") or 0)
+    else:
+        w = int(wo)
+    i0 = int(meta.get("start_i") or 0)
+    i1_raw = meta.get("end_i", i0)
+    i1 = int(i1_raw) if isinstance(i1_raw, (int, float)) else i0
+    if i1 < i0:
+        i0, i1 = i1, i0
+    last_li = max(0, n_bars - 1 - w)
+    if i0 > last_li + 32:
+        i0 -= w
+        i1 -= w
+    i0 = max(0, min(i0, last_li))
+    i1 = max(i0, min(i1, last_li))
+    return w, i0, i1
+
+
 def _trendline_extended_local_range(li0: int, li_end: int) -> tuple[int, int]:
     span = max(1, li_end - li0)
     pad = int(round(span * TRENDLINE_LINE_EXTEND_RATIO))
@@ -446,15 +526,7 @@ def _trendline_line_points(
             return []
         if side == "high" and not upper:
             return []
-    wo = int(meta.get("window_offset") or 0)
-    i0 = meta.get("start_i")
-    i1 = meta.get("end_i")
-    if isinstance(i0, int) and isinstance(i1, int):
-        li0, li1 = int(i0), int(i1)
-    else:
-        li0, li1 = 0, max(0, len(bars) - 1 - wo)
-    if li1 < li0:
-        li0, li1 = li1, li0
+    wo, li0, li1 = trendline_local_indices(meta, len(bars), bars=bars)
     # مثل چارت الگو: خط تا آخرین کندل می‌رود، بعد از هر طرف نصف همین طول اضافه می‌شود.
     last_li = len(bars) - 1 - wo
     li_end = max(li1, last_li)

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0a1018">
   <title>{% block title %}OptionFlow{% endblock %}</title>
-    <link rel="stylesheet" href="/static/app.css?v=57">
+    <link rel="stylesheet" href="/static/app.css?v=59">
 </head>
 <body>
   <header class="app-header">
@@ -52,6 +52,12 @@
         {% if nav_badges.position %}<span class="nav-badge" data-badge="position">{{ nav_badges.position }}</span>{% endif %}
       </span>
       <span class="nav-label">پوزیشن‌ها</span>
+    </a>
+    <a href="/v2" class="bottom-nav__item{% if active == 'v2' %} active{% endif %}" data-nav="v2">
+      <span class="nav-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M4 16 L10 11 L14 14 L20 7"/><path d="M15 7 H20 V12"/></svg>
+      </span>
+      <span class="nav-label">v2</span>
     </a>
     <a href="/menu" class="bottom-nav__item{% if active == 'menu' %} active{% endif %}">
       <span class="nav-icon" aria-hidden="true">

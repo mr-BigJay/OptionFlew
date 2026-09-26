@@ -6,7 +6,13 @@
 <div class="bt-stats-row" aria-label="خلاصه بکتست">
   <span class="bt-stat-item">بکتست <bdi dir="ltr">#{{ active_run.id }}</bdi></span>
   {% if active_run.target_profit_pct %}
-  <span class="bt-stat-item">هدف سود <bdi dir="ltr">{{ active_run.target_profit_pct }}٪</bdi></span>
+  <span class="bt-stat-item">TP <bdi dir="ltr">{{ active_run.target_profit_pct }}٪</bdi></span>
+  {% endif %}
+  {% if active_run.stop_loss_pct %}
+  <span class="bt-stat-item">SL <bdi dir="ltr">{{ active_run.stop_loss_pct }}٪</bdi></span>
+  {% endif %}
+  {% if active_run.entry_on_early %}
+  <span class="bt-stat-item">ورود اولیه</span>
   {% endif %}
   <span class="bt-stat-item bt-stat-ok">موفق <bdi dir="ltr">{{ active_run.success_count }}</bdi></span>
   <span class="bt-stat-item bt-stat-fail">ناموفق <bdi dir="ltr">{{ active_run.fail_count }}</bdi></span>

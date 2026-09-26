@@ -319,7 +319,7 @@ a.app-header__back:hover {
 }
 
 .nav-label {
-  font-size: 0.68rem;
+  font-size: 0.62rem;
   line-height: 1.15;
   letter-spacing: -0.01em;
 }
@@ -1400,6 +1400,19 @@ a.pattern-nav-card:active {
   text-decoration: none;
 }
 
+.v2-caption {
+  margin: 0 12px 8px;
+  font-size: 0.92rem;
+  color: #ffb74d;
+}
+
+.v2-chart-mount {
+  flex: 1;
+  width: 100%;
+  min-height: 280px;
+  height: 100%;
+}
+
 /* Live overlay chart — جایگزین PNG در scenario-chart */
 .live-ov-chart-mount {
   width: 100%;
@@ -2208,6 +2221,20 @@ bdi[dir="ltr"] {
 .bt-hint {
   font-size: 0.78rem;
   margin: 0 0 12px;
+}
+
+.bt-check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 0.82rem;
+  margin: 8px 0 4px;
+  cursor: pointer;
+}
+
+.bt-check-row input {
+  margin-top: 3px;
+  flex-shrink: 0;
 }
 
 .bt-cache-table {

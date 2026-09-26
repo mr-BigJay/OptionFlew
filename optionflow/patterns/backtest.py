@@ -46,14 +46,14 @@ CATEGORIES = (
     "ema50",
     "three_rp",
 )
-STRIDE_BY_TF = {"5m": 6, "15m": 2, "1h": 1, "4h": 1, "1d": 1}
-STRIDE_HEAVY = {"5m": 12, "15m": 4, "1h": 2, "4h": 1, "1d": 1}
+STRIDE_BY_TF = {"1m": 30, "5m": 6, "15m": 2, "1h": 1, "4h": 1, "1d": 1}
+STRIDE_HEAVY = {"1m": 60, "5m": 12, "15m": 4, "1h": 2, "4h": 1, "1d": 1}
 HEAVY_STRIDE_CATEGORIES = frozenset({"divergence", "trendline", "channel", "ema50"})
-DEDUPE_BARS = {"5m": 48, "15m": 20, "1h": 24, "4h": 8, "1d": 4}
-DEDUPE_BARS_HEAVY = {"5m": 96, "15m": 48, "1h": 36, "4h": 16, "1d": 8}
-FORWARD_BARS = {"5m": 36, "15m": 24, "1h": 18, "4h": 12, "1d": 8}
-MIN_MOVE_PCT = {"5m": 0.008, "15m": 0.012, "1h": 0.015, "4h": 0.02, "1d": 0.025}
-BACKTEST_TIMEFRAMES = ("5m", "15m", "1h", "4h", "1d")
+DEDUPE_BARS = {"1m": 120, "5m": 48, "15m": 20, "1h": 24, "4h": 8, "1d": 4}
+DEDUPE_BARS_HEAVY = {"1m": 240, "5m": 96, "15m": 48, "1h": 36, "4h": 16, "1d": 8}
+FORWARD_BARS = {"1m": 60, "5m": 36, "15m": 24, "1h": 18, "4h": 12, "1d": 8}
+MIN_MOVE_PCT = {"1m": 0.006, "5m": 0.008, "15m": 0.012, "1h": 0.015, "4h": 0.02, "1d": 0.025}
+BACKTEST_TIMEFRAMES = ("1m", "5m", "15m", "1h", "4h", "1d")
 
 ProgressFn = Callable[[int, int], None]
 CancelFn = Callable[[], bool]
@@ -121,6 +121,8 @@ class BacktestResult:
     fail_count: int = 0
     error: str = ""
     target_profit_pct: float | None = None
+    stop_loss_pct: float | None = None
+    entry_on_early: bool = False
 
     def to_dict(self) -> dict:
         return {
@@ -136,6 +138,8 @@ class BacktestResult:
             "findings": [asdict(f) for f in self.findings],
             "error": self.error,
             "target_profit_pct": self.target_profit_pct,
+            "stop_loss_pct": self.stop_loss_pct,
+            "entry_on_early": self.entry_on_early,
         }
 
 
@@ -178,11 +182,44 @@ def expected_direction(hit: PatternHit) -> str | None:
     return None
 
 
+def divergence_entry_index(
+    hit: PatternHit,
+    fallback: int | None = None,
+    *,
+    entry_on_early: bool = False,
+) -> int | None:
+    """ورود واگرایی: final_index (پیش‌فرض) یا early_index با entry_on_early."""
+    meta = hit.meta
+    if entry_on_early:
+        ei = meta.get("early_index")
+        if isinstance(ei, int):
+            return ei
+    if meta.get("stage") == "confirmed":
+        fi = meta.get("final_index")
+        if isinstance(fi, int):
+            return fi
+    for key in ("early_index", "confirm_index"):
+        v = meta.get(key)
+        if isinstance(v, int):
+            return v
+    return fallback
+
+
 def entry_price_for_hit(
     bars: list[OhlcBar], idx: int, hit: PatternHit
 ) -> float | None:
     meta = hit.meta
     blended = meta.get("entry_blended_px")
+    if hit.category == "divergence":
+        if isinstance(blended, (int, float)) and blended > 0:
+            return float(blended)
+        ei = divergence_entry_index(
+            hit,
+            fallback=idx,
+            entry_on_early=bool(meta.get("_backtest_entry_on_early")),
+        )
+        if ei is not None and 0 <= ei < len(bars):
+            return float(bars[ei].close)
     if isinstance(blended, (int, float)) and blended > 0:
         return float(blended)
     if hit.category == "ema50":
@@ -202,11 +239,111 @@ def entry_price_for_hit(
     return None
 
 
+def _stop_loss_px(entry_px: float, direction: str, stop_pct: float) -> float:
+    move = stop_pct / 100.0
+    if direction == "up":
+        return entry_px * (1 - move)
+    return entry_px * (1 + move)
+
+
+def evaluate_divergence_target_profit(
+    bars: list[OhlcBar],
+    idx: int,
+    hit: PatternHit,
+    target_pct: float,
+    *,
+    timeframe: str,
+    stop_loss_pct: float | None = None,
+    entry_on_early: bool = False,
+) -> tuple[bool | None, str]:
+    """هدف سود در پنجرهٔ محدود؛ شکست کف/سقف واگرایی (pivot B) = رد."""
+    direction = expected_direction(hit)
+    if direction not in ("up", "down"):
+        return None, "جهت پیش‌بینی مشخص نشد."
+    entry_i = divergence_entry_index(
+        hit, fallback=idx, entry_on_early=entry_on_early
+    )
+    if entry_i is None:
+        return None, "اندیس ورود واگرایی مشخص نیست."
+    entry_i = max(0, min(entry_i, len(bars) - 1))
+    entry_px = bars[entry_i].close
+    if entry_px <= 0:
+        return None, "قیمت ورود نامعتبر است."
+    pivot_b = hit.meta.get("pivot_b")
+    if not isinstance(pivot_b, (list, tuple)) or len(pivot_b) < 2:
+        return None, "pivot واگرایی برای ارزیابی ناقص است."
+    struct_px = float(pivot_b[1])
+    move = target_pct / 100.0
+    max_fwd = FORWARD_BARS.get(timeframe, 24)
+    start = entry_i + 1
+    if start >= len(bars):
+        return None, "کندل کافی بعد از ورود برای ارزیابی نبود."
+    scan_end = min(len(bars), entry_i + 1 + max_fwd)
+    tp_px = entry_px * (1 + move) if direction == "up" else entry_px * (1 - move)
+    sl_px: float | None = None
+    if stop_loss_pct is not None and stop_loss_pct >= 0.1:
+        sl_px = _stop_loss_px(entry_px, direction, stop_loss_pct)
+    exit_i: int | None = None
+    exit_px: float | None = None
+    reason = ""
+    for i in range(start, scan_end):
+        b = bars[i]
+        if direction == "up":
+            if sl_px is not None and b.low <= sl_px:
+                exit_i, exit_px, reason = i, sl_px, f"استاپ {stop_loss_pct:g}٪"
+                break
+            if b.low < struct_px:
+                exit_i, exit_px, reason = i, b.close, "شکست کف واگرایی"
+                break
+            if b.high >= tp_px:
+                exit_i, exit_px, reason = i, tp_px, f"بستن در سود {target_pct:g}٪"
+                break
+        else:
+            if sl_px is not None and b.high >= sl_px:
+                exit_i, exit_px, reason = i, sl_px, f"استاپ {stop_loss_pct:g}٪"
+                break
+            if b.high > struct_px:
+                exit_i, exit_px, reason = i, b.close, "شکست سقف واگرایی"
+                break
+            if b.low <= tp_px:
+                exit_i, exit_px, reason = i, tp_px, f"بستن در سود {target_pct:g}٪"
+                break
+    hit.meta["entry_index"] = entry_i
+    hit.meta["tp_px"] = tp_px
+    if sl_px is not None:
+        hit.meta["sl_px"] = sl_px
+    hit.meta["target_profit_pct"] = target_pct
+    if stop_loss_pct is not None:
+        hit.meta["stop_loss_pct"] = stop_loss_pct
+    if exit_i is None:
+        return (
+            False,
+            f"در {max_fwd} کندل بعد از ورود ({entry_px:,.0f}) "
+            f"نه سود {target_pct:g}٪ و نه شکست ساختار دیده شد.",
+        )
+    if direction == "up":
+        pct = (exit_px - entry_px) / entry_px if exit_px else 0.0
+    else:
+        pct = (entry_px - exit_px) / entry_px if exit_px else 0.0
+    hit.meta["exit_index"] = exit_i
+    hit.meta["path_pct"] = pct
+    hit.meta["exit_reason"] = reason
+    ok = reason.startswith("بستن در سود")
+    note = (
+        f"{reason} — ورود {entry_px:,.0f} → ~{exit_px:,.0f} "
+        f"({pct * 100:+.2f}٪)"
+    )
+    return ok, note
+
+
 def evaluate_target_profit(
     bars: list[OhlcBar],
     idx: int,
     hit: PatternHit,
     target_pct: float,
+    *,
+    stop_loss_pct: float | None = None,
+    timeframe: str = "15m",
 ) -> tuple[bool | None, str]:
     direction = expected_direction(hit)
     if direction not in ("up", "down"):
@@ -225,14 +362,37 @@ def evaluate_target_profit(
             start_i = idx + 1
     else:
         start_i = idx + 1
-    for i in range(start_i, len(bars)):
+    max_fwd = FORWARD_BARS.get(timeframe, 24)
+    scan_end = min(len(bars), start_i + max_fwd)
+    sl_px: float | None = None
+    if stop_loss_pct is not None and stop_loss_pct >= 0.1:
+        sl_px = _stop_loss_px(entry, direction, stop_loss_pct)
+    for i in range(start_i, scan_end):
         b = bars[i]
         if direction == "up":
+            if sl_px is not None and b.low <= sl_px:
+                exit_i, exit_px = i, sl_px
+                hit.meta["exit_index"] = exit_i
+                hit.meta["sl_px"] = sl_px
+                hit.meta["target_profit_pct"] = target_pct
+                return (
+                    False,
+                    f"استاپ {stop_loss_pct:g}٪ — ورود {entry:,.0f} → ~{exit_px:,.0f}",
+                )
             target = entry * (1 + move)
             if b.high >= target:
                 exit_i, exit_px = i, target
                 break
         else:
+            if sl_px is not None and b.high >= sl_px:
+                exit_i, exit_px = i, sl_px
+                hit.meta["exit_index"] = exit_i
+                hit.meta["sl_px"] = sl_px
+                hit.meta["target_profit_pct"] = target_pct
+                return (
+                    False,
+                    f"استاپ {stop_loss_pct:g}٪ — ورود {entry:,.0f} → ~{exit_px:,.0f}",
+                )
             target = entry * (1 - move)
             if b.low <= target:
                 exit_i, exit_px = i, target
@@ -240,10 +400,14 @@ def evaluate_target_profit(
     if exit_i is None or exit_px is None:
         return (
             False,
-            f"تا پایان داده هدف سود {target_pct:g}٪ (ورود {entry:,.0f}) محقق نشد.",
+            f"در {max_fwd} کندل بعد از ورود هدف سود {target_pct:g}٪ "
+            f"(ورود {entry:,.0f}) محقق نشد.",
         )
     hit.meta["exit_index"] = exit_i
     hit.meta["target_profit_pct"] = target_pct
+    if sl_px is not None:
+        hit.meta["sl_px"] = sl_px
+        hit.meta["stop_loss_pct"] = stop_loss_pct
     note = (
         f"هدف سود {target_pct:g}٪ محقق شد — "
         f"ورود {entry:,.0f} → ~{exit_px:,.0f}"
@@ -264,16 +428,50 @@ def evaluate_outcome(
     timeframe: str,
     *,
     target_profit_pct: float | None = None,
+    stop_loss_pct: float | None = None,
+    entry_on_early: bool = False,
 ) -> tuple[bool | None, str]:
+    if entry_on_early:
+        hit.meta["_backtest_entry_on_early"] = True
     if hit.category == "trendline":
         tp = None
         if target_profit_pct is not None and target_profit_pct >= 0.1:
             tp = target_profit_pct / 100.0
+        sl = None
+        if stop_loss_pct is not None and stop_loss_pct >= 0.1:
+            sl = stop_loss_pct / 100.0
         return evaluate_trendline_path(
-            bars, idx, hit, take_profit_pct=tp, timeframe=timeframe
+            bars,
+            idx,
+            hit,
+            take_profit_pct=tp,
+            stop_loss_pct=sl,
+            timeframe=timeframe,
+            entry_on_early=entry_on_early,
+        )
+    if (
+        hit.category == "divergence"
+        and target_profit_pct is not None
+        and target_profit_pct >= 0.1
+    ):
+        return evaluate_divergence_target_profit(
+            bars,
+            idx,
+            hit,
+            target_profit_pct,
+            timeframe=timeframe,
+            stop_loss_pct=stop_loss_pct,
+            entry_on_early=entry_on_early,
         )
     if target_profit_pct is not None and target_profit_pct >= 0.1:
-        return evaluate_target_profit(bars, idx, hit, target_profit_pct)
+        return evaluate_target_profit(
+            bars,
+            idx,
+            hit,
+            target_profit_pct,
+            stop_loss_pct=stop_loss_pct,
+            timeframe=timeframe,
+        )
     if hit.category == "ema50":
         return evaluate_ema50_path(bars, idx, hit)
     if hit.category == "three_rp":
@@ -597,6 +795,8 @@ def run_backtest(
     chart_prefix: str = "",
     on_progress: ProgressFn | None = None,
     target_profit_pct: float | None = None,
+    stop_loss_pct: float | None = None,
+    entry_on_early: bool = False,
     should_cancel: CancelFn | None = None,
 ) -> BacktestResult:
     if category not in CATEGORIES:
@@ -613,6 +813,8 @@ def run_backtest(
             bars_scanned=0,
             stride=1,
             target_profit_pct=target_profit_pct,
+            stop_loss_pct=stop_loss_pct,
+            entry_on_early=entry_on_early,
         )
         result.error = "۳BRP فقط روی تایم‌فریم ۱ ساعت قابل بکتست است."
         return result
@@ -629,6 +831,8 @@ def run_backtest(
         bars_scanned=max(0, scan_end - scan_start + 1) if scan_end >= scan_start else 0,
         stride=stride or STRIDE_BY_TF.get(timeframe, 1),
         target_profit_pct=target_profit_pct,
+        stop_loss_pct=stop_loss_pct,
+        entry_on_early=entry_on_early,
     )
 
     if not bars:
@@ -679,7 +883,13 @@ def run_backtest(
 
         _phase(float(n) + 0.05)
         entry_ix = idx
-        if hit.category == "three_rp":
+        if hit.category == "divergence":
+            dei = divergence_entry_index(
+                hit, fallback=idx, entry_on_early=entry_on_early
+            )
+            if isinstance(dei, int):
+                entry_ix = dei
+        elif hit.category == "three_rp":
             ei = hit.meta.get("entry_index")
             if isinstance(ei, int):
                 entry_ix = ei
@@ -690,6 +900,8 @@ def run_backtest(
             hit,
             timeframe,
             target_profit_pct=target_profit_pct,
+            stop_loss_pct=stop_loss_pct,
+            entry_on_early=entry_on_early,
         )
         _phase(float(n) + 0.45)
         finding = BacktestFinding.from_hit(

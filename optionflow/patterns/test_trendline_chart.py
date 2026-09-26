@@ -61,3 +61,78 @@ def test_trendline_chart_png_and_sane_bounds() -> None:
     assert png[:8] == b"\x89PNG\r\n\x1a\n"
     lo, hi = _visible_price_range(bars, hit, 0, len(bars))
     assert hi - lo < 20_000
+
+
+def test_trendline_chart_line_hugs_touch_lows_when_wo_was_zero() -> None:
+    """PNG: window_offset=0 ولی confirm/touch درست — خط باید روی برخوردها بنشیند."""
+    from optionflow.patterns.chart_overlays import resolve_trendline_window_offset
+    from optionflow.patterns.ohlc import OhlcBar
+    from optionflow.patterns.trendline import evaluate_trendline_path
+
+    wo = 80
+    slope, intercept = 5.0, 80_500.0
+    touch_lows = [12, 32, 48]
+    bars = _empty(200, 84_000)
+    for ti in touch_lows:
+        gi = wo + ti
+        y = slope * ti + intercept
+        b = bars[gi]
+        bars[gi] = OhlcBar(b.ts, y, y + 30, y - 5, y, 1.0)
+    hit = _support_hit(early=wo + touch_lows[1], slope=slope, intercept=intercept)
+    hit.meta["window_offset"] = 0
+    hit.meta["start_i"] = 10
+    hit.meta["end_i"] = 119
+    hit.meta["touch_lows"] = touch_lows
+    hit.meta["confirm_index"] = wo + touch_lows[-1]
+    hit.meta["early_index"] = wo + touch_lows[1]
+    assert resolve_trendline_window_offset(hit.meta, bars) == wo
+    ok, _ = evaluate_trendline_path(bars, wo + 100, hit, timeframe="5m")
+    assert ok is True
+    sig = hit.meta["entry_index"]
+    png = render_pattern_chart(
+        bars, hit, signal_index=sig, forward_bars=24, outcome_success=ok
+    )
+    assert png is not None
+
+
+def test_trendline_chart_xlim_when_start_i_stored_as_global() -> None:
+    """بکتست/متای قدیمی: start_i گاهی اندیس سراسری بود — PNG نباید محور X را منفجر کند."""
+    import matplotlib.dates as mdates
+    import matplotlib.pyplot as plt
+
+    from optionflow.patterns.chart import render_pattern_chart
+    from optionflow.patterns.ohlc import OhlcBar
+
+    bars = _empty(5000, 100_000)
+    wo = 4880
+    for i, b in enumerate(bars):
+        y = 100_000 - 2 * i
+        bars[i] = OhlcBar(b.ts, y + 100, y + 200, y - 50, y + 100, 1.0)
+    hit = _support_hit(early=40, slope=-2.0, intercept=200_000.0)
+    hit.meta["window_offset"] = wo
+    hit.meta["start_i"] = wo + 8
+    hit.meta["end_i"] = wo + 119
+    hit.meta["early_index"] = wo + 58
+    hit.meta["confirm_index"] = wo + 106
+    ok, _ = evaluate_trendline_path(bars, wo + 110, hit, timeframe="5m")
+    sig = hit.meta["entry_index"]
+    xlims: dict[str, tuple[float, float]] = {}
+    orig_save = plt.Figure.savefig
+
+    def grab(self, *args, **kwargs):
+        xlims["v"] = self.axes[0].get_xlim()
+        return orig_save(self, *args, **kwargs)
+
+    plt.Figure.savefig = grab  # type: ignore[method-assign]
+    try:
+        png = render_pattern_chart(
+            bars, hit, signal_index=sig, forward_bars=36, outcome_success=ok
+        )
+    finally:
+        plt.Figure.savefig = orig_save  # type: ignore[method-assign]
+    assert png is not None
+    xl0, xl1 = xlims["v"]
+    assert xl1 - xl0 < 5.0
+    t0 = mdates.num2date(xl0)
+    t1 = mdates.num2date(xl1)
+    assert abs((t1 - t0).total_seconds()) < 5 * 86400

@@ -9,6 +9,7 @@ from optionflow.patterns.chart_overlays import (
     TRENDLINE_LINE_EXTEND_RATIO,
     _triangle_range,
     time_at_local_index,
+    trendline_local_indices,
 )
 from optionflow.patterns.ohlc import OhlcBar
 from optionflow.patterns.types import PatternHit
@@ -16,6 +17,7 @@ from optionflow.patterns.types import PatternHit
 logger = logging.getLogger("optionflow.patterns.chart")
 
 FORWARD_BARS_DEFAULT = {
+    "1m": 60,
     "5m": 36,
     "15m": 24,
     "1h": 18,
@@ -125,8 +127,12 @@ def _slice_range(
             end = min(n, wo + int(li_end) + 12)
             sig = max(0, min(sig, n - 1))
             return start, end, sig
-        i0 = wo + meta.get("start_i", 0)
-        i1 = wo + meta.get("end_i", sig)
+        if hit.category in ("trendline", "channel"):
+            wo, li0, li1 = trendline_local_indices(meta, n, bars=bars)
+            i0, i1 = wo + li0, wo + li1
+        else:
+            i0 = wo + meta.get("start_i", 0)
+            i1 = wo + meta.get("end_i", sig)
         early = meta.get("early_index")
         extra0 = early if isinstance(early, int) else i0
         start = max(0, min(i0, extra0, sig) - 8)
@@ -192,8 +198,11 @@ def _visible_price_range(
     meta = hit.meta
     if hit.category in ("triangle", "trendline", "channel"):
         wo = int(meta.get("window_offset") or 0)
-        i0 = int(meta.get("start_i", 0))
-        i1 = int(meta.get("end_i", i0))
+        if hit.category in ("trendline", "channel"):
+            wo, i0, i1 = trendline_local_indices(meta, len(bars), bars=bars)
+        else:
+            i0 = int(meta.get("start_i", 0))
+            i1 = int(meta.get("end_i", i0))
         g0, g1 = wo + i0, wo + i1
         if g1 >= start and g0 < end:
             li0 = max(i0, start - wo)
@@ -252,6 +261,15 @@ def _apply_price_ylim(
     pad = span * 0.10
     top = hi + pad + span * extra_top_frac
     ax.set_ylim(lo - pad, top)
+
+
+def _clamp_chart_xlim(ax: Any, xs: list[float]) -> None:
+    """کندل‌ها در slice هستند؛ خط ترند با extrapolate نباید محور X را منفجر کند."""
+    if len(xs) < 2:
+        return
+    span = xs[-1] - xs[0]
+    pad = max(span * 0.02, 1e-6)
+    ax.set_xlim(xs[0] - pad, xs[-1] + pad)
 
 
 def _candle_widths(xs: list[float]) -> list[float]:
@@ -675,33 +693,43 @@ def _render_price_pattern(
                     )
 
     elif hit.category in ("trendline", "channel"):
-        wo = meta.get("window_offset", max(0, len(bars) - 120))
-        i0, i1 = meta["start_i"], meta["end_i"]
-        li0, li1 = int(i0), int(i1)
-        li_end = max(li1, len(bars) - 1 - int(wo))
+        wo, li0, li1 = trendline_local_indices(meta, len(bars), bars=bars)
+        last_li = max(0, len(bars) - 1 - wo)
+        li_end = max(li1, last_li)
         span = max(1, li_end - li0)
         pad = int(round(span * TRENDLINE_LINE_EXTEND_RATIO))
-        li_a, li_b = li0 - pad, li_end + pad
+        li_a = max(0, li0 - pad)
+        li_b = min(last_li + pad, li_end + pad)
 
-        def _x_at(li: float) -> float:
-            return mdates.date2num(
-                datetime.fromtimestamp(time_at_local_index(bars, int(wo), li), tz=timezone.utc)
-            )
+        def _xy_at(li: float) -> tuple[float, float]:
+            gi = wo + int(round(li))
+            gi = max(0, min(gi, len(bars) - 1))
+            return mdates.date2num(bars[gi].ts), gi
 
         su, iu = meta.get("upper_slope"), meta.get("upper_intercept")
         sl, il = meta.get("lower_slope"), meta.get("lower_intercept")
         if su is not None and iu is not None:
+            x0, g0 = _xy_at(li_a)
+            x1, g1 = _xy_at(li_b)
             ax.plot(
-                [_x_at(li_a), _x_at(li_b)],
-                [float(su) * li_a + float(iu), float(su) * li_b + float(iu)],
+                [x0, x1],
+                [
+                    float(su) * (g0 - wo) + float(iu),
+                    float(su) * (g1 - wo) + float(iu),
+                ],
                 color="#ffb74d",
                 linewidth=1.0,
                 label="مقاومت",
             )
         if sl is not None and il is not None:
+            x0, g0 = _xy_at(li_a)
+            x1, g1 = _xy_at(li_b)
             ax.plot(
-                [_x_at(li_a), _x_at(li_b)],
-                [float(sl) * li_a + float(il), float(sl) * li_b + float(il)],
+                [x0, x1],
+                [
+                    float(sl) * (g0 - wo) + float(il),
+                    float(sl) * (g1 - wo) + float(il),
+                ],
                 color="#81c784",
                 linewidth=1.0,
                 label="حمایت",
@@ -1002,7 +1030,7 @@ def _render_price_pattern(
 
     _style_axes(ax, f"BTCUSDT {hit.timeframe} — {hit.title_fa}")
     ax.set_ylabel("USDT", color="#90a4ae", fontsize=8)
-    ax.margins(x=0.02)
+    _clamp_chart_xlim(ax, xs)
     extra_top = 0.08 if isinstance(hit.meta.get("path_pct"), (int, float)) else 0.0
     _apply_price_ylim(ax, bars, hit, start, end, extra_top_frac=extra_top)
 
@@ -1067,6 +1095,7 @@ def _render_divergence(
         return None
 
     from optionflow.patterns.divergence import RSI_PERIOD
+    from optionflow.patterns.indicators import rsi
 
     closes = [b.close for b in bars]
     rs = rsi(closes, RSI_PERIOD)
@@ -1135,8 +1164,14 @@ def _render_divergence(
         for price, color, ls, label in extra_hlines:
             ax1.axhline(price, color=color, linewidth=1.1, linestyle=ls, label=label)
 
+    path_ix = meta.get("entry_index", sig)
+    if isinstance(meta.get("exit_index"), int) and isinstance(path_ix, int):
+        _mark_trendline_path(ax1, xs, start, meta, outcome_success)
+    elif sig is not None and 0 <= sig < len(bars):
+        _mark_signal_and_forward(
+            ax1, xs, slice_bars, sig, start, forward_bars, outcome_success
+        )
     if sig is not None and 0 <= sig < len(bars):
-        _mark_signal_and_forward(ax1, xs, slice_bars, sig, start, forward_bars, outcome_success)
         ax2.axvline(mdates.date2num(bars[sig].ts), color="#78909c", linewidth=0.8, linestyle=":")
 
     _style_axes(ax1, f"BTCUSDT {hit.timeframe} — {hit.title_fa}")
