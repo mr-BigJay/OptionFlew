@@ -108,7 +108,7 @@ def test_balanced_diffuse_book_has_no_line() -> None:
 
 def test_pin_line_starts_flat_and_ends_on_target() -> None:
     start = 1_700_000_000
-    end = start + 4 * 3600
+    end = start + 4 * 24 * 3600
     line = path_line(SPOT, 85_000, start, end, drift="pin")
     assert line[0]["time"] == start
     assert line[0]["value"] == SPOT
@@ -152,6 +152,6 @@ def test_display_horizon_reaches_target_then_flattens_when_expiry_soon() -> None
     )
     assert line[-1]["time"] == start + 96 * 3600
     assert line[-1]["value"] == 90_000
-    mid = line[len(line) // 4]["value"]
-    assert mid < 90_000
-    assert mid > SPOT
+    early = line[2]["value"]
+    assert early < 90_000
+    assert early > SPOT
