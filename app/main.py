@@ -290,6 +290,8 @@ def _pattern_signal_kind(row: dict[str, Any]) -> str:
         return "rejected"
     if "رد شده" in status or status.strip() == "رد":
         return "rejected"
+    if "فیک" in status:
+        return "fakeout"
     if "شکست صعودی" in status:
         return "break_up"
     if "شکست نزولی" in status:

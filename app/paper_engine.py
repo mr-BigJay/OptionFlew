@@ -108,6 +108,9 @@ def pattern_hit_allows_entry(hit: PatternHit, cfg: dict[str, Any] | None = None)
             return stage == "early"
         return stage == "confirmed"
 
+    if cat == "triangle":
+        return stage == "breakout" and bool(meta.get("held"))
+
     if cat not in PATTERN_EARLY_CATEGORIES:
         return True
     if want_early:

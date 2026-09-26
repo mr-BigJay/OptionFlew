@@ -117,10 +117,19 @@ def test_backtest_only_counts_breakout_bar() -> None:
     bars[-1] = OhlcBar(
         bars[-1].ts, 99_800, 100_400, 99_750, 100_280, 1.0
     )
+    live = detect_triangle(bars, "5m")
+    assert live is not None
+    assert live.meta["direction"] == "up"
+    assert live.meta["held"] is False
+    assert "کندل اول" in live.summary_fa
+    assert detect_triangle(bars, "5m", require_breakout=True) is None
+    nxt = bars[-1].ts + timedelta(minutes=5)
+    bars.append(OhlcBar(nxt, 100_220, 100_400, 100_180, 100_320, 1.0))
     hit = detect_triangle(bars, "5m", require_breakout=True)
     assert hit is not None
     assert hit.meta["direction"] == "up"
     assert hit.meta["stage"] == "breakout"
+    assert hit.meta["held"] is True
 
 
 def _ascending_ready() -> list[OhlcBar]:
@@ -147,21 +156,55 @@ def test_breakout_stays_while_price_remains_outside() -> None:
     assert live.meta["direction"] == "up"
     assert live.meta["stage"] == "breakout"
     assert live.status_fa == "شکست صعودی"
+    assert live.meta["held"] is True
     assert "هنوز داخل" not in live.summary_fa
-    assert detect_triangle(bars, "5m", require_breakout=True) is None
+    assert detect_triangle(bars, "5m", require_breakout=True) is not None
 
 
-def test_pullback_does_not_revert_to_compressing() -> None:
+def test_one_close_that_returns_is_a_fakeout() -> None:
     bars = _ascending_ready()
     nxt = bars[-1].ts + timedelta(minutes=5)
     bars.append(OhlcBar(nxt, 100_050, 100_120, 99_620, 99_680, 1.0))
     live = detect_triangle(bars, "5m")
     assert live is not None
+    assert live.meta["stage"] == "fakeout"
+    assert live.meta["fake_side"] == "up"
+    assert live.meta["direction"] is None
+    assert live.status_fa == "فیک‌اوت صعودی"
+    assert "در حال فشردگی" not in live.status_fa
+    assert detect_triangle(bars, "5m", require_breakout=True) is None
+
+
+def test_wick_through_the_line_is_a_fakeout() -> None:
+    bars = _empty(125, 99_400)
+    _set_swing(bars, 40, 100_000, "high")
+    _set_swing(bars, 55, 98_400, "low")
+    _set_swing(bars, 70, 100_020, "high")
+    _set_swing(bars, 85, 98_900, "low")
+    _set_swing(bars, 100, 99_980, "high")
+    _set_swing(bars, 115, 99_350, "low")
+    for i in range(116, 125):
+        px = 99_600
+        bars[i] = OhlcBar(bars[i].ts, px, px + 40, px - 40, px, 1.0)
+    bars[-1] = OhlcBar(bars[-1].ts, 99_700, 100_450, 99_650, 99_720, 1.0)
+    live = detect_triangle(bars, "5m")
+    assert live is not None
+    assert live.meta["stage"] == "fakeout"
+    assert live.meta["fake_side"] == "up"
+
+
+def test_two_closes_stay_a_breakout_on_the_retest() -> None:
+    bars = _ascending_ready()
+    t1 = bars[-1].ts + timedelta(minutes=5)
+    bars.append(OhlcBar(t1, 100_220, 100_400, 100_180, 100_320, 1.0))
+    t2 = bars[-1].ts + timedelta(minutes=5)
+    bars.append(OhlcBar(t2, 100_200, 100_280, 99_900, 99_960, 1.0))
+    live = detect_triangle(bars, "5m")
+    assert live is not None
     assert live.meta["stage"] == "breakout"
+    assert live.meta["held"] is True
     assert live.meta["direction"] == "up"
     assert live.meta["retest"] is True
-    assert live.status_fa == "شکست صعودی"
-    assert "هنوز داخل" not in live.summary_fa
 
 
 def test_replay_keeps_triangle_touches_local() -> None:

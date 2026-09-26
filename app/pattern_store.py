@@ -187,14 +187,16 @@ def event_key_for_hit(hit: PatternHit) -> str:
     return f"{hit.category}:{hit.timeframe}:{sig}"
 
 
-def _triangle_row_is_breakout(row: dict[str, Any]) -> bool:
+def _triangle_row_rank(row: dict[str, Any]) -> int:
+    """فشردگی ضعیف‌تر از فیک‌اوت و شکست است. بین آن دو، ردیف جدیدتر می‌ماند."""
     if str(row.get("category") or "") != "triangle":
-        return False
+        return 1
     meta = row.get("meta") or {}
-    if str(meta.get("stage") or "") == "breakout":
-        return True
+    stage = str(meta.get("stage") or "")
     status = str(row.get("status_fa") or "")
-    return "شکست صعودی" in status or "شکست نزولی" in status
+    if stage in ("breakout", "fakeout") or "فیک" in status or "شکست" in status:
+        return 2
+    return 0
 
 
 def _event_bucket(row: dict[str, Any]) -> str:
@@ -222,7 +224,7 @@ def _dedupe_event_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             best[bucket] = d
             order.append(bucket)
             continue
-        if _triangle_row_is_breakout(d) and not _triangle_row_is_breakout(prev):
+        if _triangle_row_rank(d) > _triangle_row_rank(prev):
             best[bucket] = d
     return [best[key] for key in order]
 
@@ -258,7 +260,8 @@ def save_pattern_hit(hit: PatternHit, *, created_at: str | None = None) -> int |
                 ),
             )
             if cur.rowcount == 0:
-                if str((hit.meta or {}).get("stage") or "") != "breakout":
+                new_stage = str((hit.meta or {}).get("stage") or "")
+                if new_stage not in ("breakout", "fakeout"):
                     return None
                 row = conn.execute(
                     "SELECT id, status_fa, meta_json FROM pattern_events WHERE event_key = ?",
@@ -271,10 +274,8 @@ def save_pattern_hit(hit: PatternHit, *, created_at: str | None = None) -> int |
                     prev_meta = json.loads(row["meta_json"] or "{}")
                 except json.JSONDecodeError:
                     prev_meta = {}
-                was_breakout = str(prev_meta.get("stage") or "") == "breakout" or (
-                    "شکست" in str(row["status_fa"] or "")
-                )
-                if was_breakout:
+                prev_stage = str(prev_meta.get("stage") or "")
+                if prev_stage == new_stage:
                     conn.execute(
                         """
                         UPDATE pattern_events

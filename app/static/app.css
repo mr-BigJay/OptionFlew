@@ -2799,6 +2799,11 @@ bdi[dir="ltr"] {
   color: #cbd5e1;
   border: 1px solid rgba(148, 163, 184, 0.28);
 }
+.pat-status-fakeout {
+  background: rgba(251, 191, 36, 0.14);
+  color: #fcd34d;
+  border: 1px solid rgba(251, 191, 36, 0.4);
+}
 
 .timeline-body {
   flex: 1;

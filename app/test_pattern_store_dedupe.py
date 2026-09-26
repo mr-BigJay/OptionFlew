@@ -167,3 +167,10 @@ def test_breakout_updates_saved_compressing_row(tmp_path, monkeypatch) -> None:
     ev = get_pattern_event(first)
     assert ev is not None
     assert ev["status_fa"] == "شکست صعودی"
+
+    fake = _triangle_hit("fakeout", "فیک‌اوت صعودی", 84_040.0)
+    assert save_pattern_hit(fake, created_at="2026-09-26T19:22:00Z") == first
+    ev = get_pattern_event(first)
+    assert ev is not None
+    assert ev["status_fa"] == "فیک‌اوت صعودی"
+    assert ev["created_at"] == "2026-09-26T19:22:00Z"

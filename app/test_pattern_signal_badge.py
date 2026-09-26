@@ -15,6 +15,10 @@ def test_triangle_breakout_badge_kinds() -> None:
         == "neutral"
     )
     assert (
+        _pattern_signal_kind({"status_fa": "فیک‌اوت صعودی", "meta": {"stage": "fakeout"}})
+        == "fakeout"
+    )
+    assert (
         _pattern_signal_kind({"status_fa": "سیگنال اولیه", "meta": {"stage": "early"}})
         == "neutral"
     )

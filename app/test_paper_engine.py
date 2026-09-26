@@ -17,6 +17,26 @@ def test_try_open_requires_direction_in_meta() -> None:
     assert try_open_from_pattern_hit(999_999, hit) is None
 
 
+def test_triangle_entry_waits_for_two_closes() -> None:
+    from app.paper_engine import pattern_hit_allows_entry
+
+    def hit(stage: str, held: bool) -> PatternHit:
+        return PatternHit(
+            category="triangle",
+            timeframe="15m",
+            pattern_id="triangle_descending",
+            title_fa="مثلث",
+            status_fa="",
+            summary_fa="",
+            forecast_fa="",
+            meta={"direction": "up", "stage": stage, "held": held},
+        )
+
+    assert pattern_hit_allows_entry(hit("breakout", False)) is False
+    assert pattern_hit_allows_entry(hit("fakeout", False)) is False
+    assert pattern_hit_allows_entry(hit("breakout", True)) is True
+
+
 def test_trendline_entry_requires_a_touch() -> None:
     from app.paper_engine import pattern_hit_allows_entry
 

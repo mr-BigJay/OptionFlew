@@ -11,8 +11,6 @@ _MIN_SWINGS = 5  # حداقل یک فنر کامل: مثلاً H-L-H-L-H
 _MIN_SPAN = {"5m": 20, "15m": 16, "1h": 30, "4h": 14, "1d": 10}
 _FLAT_PCT = {"5m": 0.0028, "15m": 0.0038, "1h": 0.005, "4h": 0.007, "1d": 0.01}
 _MAX_PIVOT_AGE = {"5m": 20, "15m": 14, "1h": 18, "4h": 10, "1d": 8}
-# بعد از بسته شدن بیرون خط، چند کندلِ برگشت هنوز «شکست» می‌ماند
-_BREAKOUT_HOLD = 4
 
 
 def _y(slope: float, intercept: float, i: float) -> float:
@@ -225,40 +223,110 @@ def _close_side(close: float, upper: float, lower: float, buf: float) -> str | N
     return None
 
 
-def _breakout_state(
-    window: list[OhlcBar], best: dict, atr_now: float
-) -> tuple[str | None, bool, bool]:
-    """جهت شکست، تازه بودن عبور، و برگشت روی خط.
+def _wick_side(bar: OhlcBar, upper: float, lower: float, buf: float) -> str | None:
+    """سایه از یک ضلع گذشته و بسته شدن داخل مثلث مانده."""
+    up = bar.high > upper + buf
+    down = bar.low < lower - buf
+    if up and down:
+        return None
+    if up:
+        return "up"
+    if down:
+        return "down"
+    return None
 
-    عبور فقط وقتی «تازه» است که کندل قبلی داخل دو خط باشد.
-    اگر قیمت بیرون بماند، وضعیت شکست می‌ماند.
-    برگشت کوتاه داخل محدوده هم تأیید را پاک نمی‌کند.
-    """
+
+def _resolve_triangle_break(window: list[OhlcBar], best: dict, atr_now: float) -> dict:
+    """شکست معتبر دو کلوز پشت‌سرهم است. خروج یک کندل یا سایه که برگردد فیک‌اوت است."""
     n = len(window)
     su, iu = best["su"], best["iu"]
     sl, il = best["sl"], best["il"]
     buf = atr_now * 0.12
-    end_i = int(best["end_i"])
-    apex = best["apex"]
-    apex_reached = isinstance(apex, (int, float)) and float(apex) <= (n - 1)
+    start = max(0, int(best["end_i"]))
+    pending: str | None = None
+    confirmed: str | None = None
+    failed: str | None = None
+    remembered: str | None = None
+    run = 0
+    just_held = False
 
-    def side_at(i: int) -> str | None:
-        return _close_side(window[i].close, _y(su, iu, i), _y(sl, il, i), buf)
+    for i in range(start, n):
+        upper = _y(su, iu, i)
+        lower = _y(sl, il, i)
+        bar = window[i]
+        closed = _close_side(bar.close, upper, lower, buf)
+        if closed:
+            if pending == closed:
+                confirmed = closed
+                pending = None
+                failed = None
+                if remembered == closed:
+                    remembered = None
+                run = 2
+                just_held = i == n - 1
+            elif confirmed == closed:
+                pending = None
+                failed = None
+                run = max(run, 2) + 1
+                just_held = False
+            else:
+                if pending and pending != closed:
+                    remembered = pending
+                pending = closed
+                run = 1
+                just_held = False
+            continue
+        wick = _wick_side(bar, upper, lower, buf)
+        if pending and confirmed != pending:
+            failed = pending
+            remembered = pending
+        elif wick and confirmed is None:
+            failed = wick
+            remembered = wick
+        pending = None
+        run = 0
+        just_held = False
 
-    last_side = side_at(n - 1)
+    last_side = _close_side(
+        window[-1].close, _y(su, iu, n - 1), _y(sl, il, n - 1), buf
+    )
     if last_side:
-        prev_inside = True
-        if n >= 2:
-            prev = window[-2].close
-            prev_inside = _y(sl, il, n - 2) <= prev <= _y(su, iu, n - 2)
-        return last_side, prev_inside, False
-
-    floor = end_i if apex_reached else max(end_i, (n - 1) - _BREAKOUT_HOLD)
-    for i in range(n - 2, floor - 1, -1):
-        side = side_at(i)
-        if side:
-            return side, False, True
-    return None, False, False
+        held = confirmed == last_side and run >= 2
+        fake = remembered if remembered and remembered != last_side else None
+        return {
+            "direction": last_side,
+            "fresh": just_held and held,
+            "retesting": False,
+            "fake_side": fake,
+            "held": held,
+            "stage": "breakout",
+        }
+    if confirmed and failed is None:
+        return {
+            "direction": confirmed,
+            "fresh": False,
+            "retesting": True,
+            "fake_side": None,
+            "held": True,
+            "stage": "breakout",
+        }
+    if failed:
+        return {
+            "direction": None,
+            "fresh": False,
+            "retesting": False,
+            "fake_side": failed,
+            "held": False,
+            "stage": "fakeout",
+        }
+    return {
+        "direction": None,
+        "fresh": False,
+        "retesting": False,
+        "fake_side": None,
+        "held": False,
+        "stage": "forming",
+    }
 
 
 def detect_triangle(
@@ -327,34 +395,65 @@ def detect_triangle(
     }
     title, forecast = titles[kind]
     u_now, l_now = best["u_now"], best["l_now"]
-    direction, fresh, retesting = _breakout_state(window, best, atr_now)
+    state = _resolve_triangle_break(window, best, atr_now)
+    direction = state["direction"]
+    fresh = state["fresh"]
+    retesting = state["retesting"]
+    fake_side = state["fake_side"]
+    held = state["held"]
+    stage = state["stage"]
     apex = best["apex"]
     apex_reached = isinstance(apex, (int, float)) and float(apex) <= (n - 1)
-    if direction is None and apex_reached:
+    if stage == "forming" and apex_reached:
         return None
     if require_breakout and not fresh:
         return None
 
-    if direction == "up" and retesting:
-        status = "شکست صعودی"
+    side_fa = {"up": "صعودی", "down": "نزولی"}
+    where_fa = {"up": "بالای خط", "down": "پایین خط"}
+    if stage == "fakeout" and fake_side in side_fa:
+        status = f"فیک‌اوت {side_fa[fake_side]}"
         forecast = (
-            f"شکست بالای خط تأیید شده. قیمت {last.close:,.0f} دوباره نزدیک خط است."
+            f"خروج {where_fa[fake_side]} نگه داشته نشد. "
+            f"قیمت {last.close:,.0f} داخل مثلث است و مسیر معتبر سمت مقابل است."
         )
-        resolution = " — شکست صعودی تأیید شده؛ قیمت روی خط برگشته."
-    elif direction == "down" and retesting:
-        status = "شکست نزولی"
+        resolution = f" — فیک‌اوت {side_fa[fake_side]}؛ قیمت داخل مثلث برگشته."
+    elif direction in side_fa and retesting:
+        status = f"شکست {side_fa[direction]}"
         forecast = (
-            f"شکست پایین خط تأیید شده. قیمت {last.close:,.0f} دوباره نزدیک خط است."
+            f"شکست {where_fa[direction]} تأیید شده. "
+            f"قیمت {last.close:,.0f} برای لمس دوباره نزدیک خط است."
         )
-        resolution = " — شکست نزولی تأیید شده؛ قیمت روی خط برگشته."
-    elif direction == "up":
-        status = "شکست صعودی"
-        forecast = f"شکست بالای خط در قیمت {last.close:,.0f}."
-        resolution = " — تأیید شکست صعودی."
-    elif direction == "down":
-        status = "شکست نزولی"
-        forecast = f"شکست پایین خط در قیمت {last.close:,.0f}."
-        resolution = " — تأیید شکست نزولی."
+        resolution = f" — شکست {side_fa[direction]} تأیید شده؛ قیمت روی خط برگشته."
+    elif direction in side_fa and held and fake_side in side_fa:
+        status = f"شکست {side_fa[direction]}"
+        forecast = (
+            f"فیک‌اوت {side_fa[fake_side]} تمام شد. "
+            f"شکست {where_fa[direction]} در قیمت {last.close:,.0f}."
+        )
+        resolution = (
+            f" — فیک‌اوت {side_fa[fake_side]}، بعد تأیید شکست {side_fa[direction]}."
+        )
+    elif direction in side_fa and held:
+        status = f"شکست {side_fa[direction]}"
+        forecast = f"شکست {where_fa[direction]} در قیمت {last.close:,.0f}."
+        resolution = f" — تأیید شکست {side_fa[direction]}."
+    elif direction in side_fa and fake_side in side_fa:
+        status = f"شکست {side_fa[direction]}"
+        forecast = (
+            f"فیک‌اوت {side_fa[fake_side]} بود. "
+            f"کندل اول {where_fa[direction]} در {last.close:,.0f} بسته شد."
+        )
+        resolution = (
+            f" — فیک‌اوت {side_fa[fake_side]}؛ خروج {side_fa[direction]} هنوز یک کندل است."
+        )
+    elif direction in side_fa:
+        status = f"شکست {side_fa[direction]}"
+        forecast = (
+            f"کندل اول {where_fa[direction]} بسته شد ({last.close:,.0f}). "
+            f"کندل بعد اگر بیرون بماند شکست معتبر است."
+        )
+        resolution = " — خروج کندل اول؛ منتظر کندل تأیید."
     else:
         status = "در حال فشردگی"
         forecast = titles[kind][1]
@@ -391,8 +490,10 @@ def detect_triangle(
             "touch_high_prices": [float(p) for p in best["hi_px"]],
             "touch_low_prices": [float(p) for p in best["lo_px"]],
             "direction": direction,
-            "stage": "breakout" if direction else "forming",
+            "stage": stage,
             "retest": retesting,
+            "held": held,
+            "fake_side": fake_side,
             "confirm_index": n - 1 + (len(bars) - n),
             "upper_now": u_now,
             "lower_now": l_now,
