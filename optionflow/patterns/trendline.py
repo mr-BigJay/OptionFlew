@@ -424,6 +424,11 @@ def _fit_line(
                 "slope": slope,
                 "intercept": intercept,
                 "touches": window,
+                "touch_count": sum(
+                    1
+                    for i, p in pts
+                    if i >= i0 and abs(p - _y(slope, intercept, i)) <= tol
+                ),
                 "start_i": i0,
                 "end_i": i1,
                 "y_now": y_now,
@@ -578,6 +583,7 @@ def detect_trendline(
             "window_offset": wo,
             "touch_highs": touch_highs,
             "touch_lows": touch_lows,
+            "touch_count": int(primary.get("touch_count") or n_pri),
             "y_now": primary["y_now"],
             "testing": bool(primary.get("testing")),
             "early_index": early_ix,

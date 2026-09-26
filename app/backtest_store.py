@@ -43,6 +43,7 @@ def create_backtest_run(
     target_profit_pct: float | None = None,
     stop_loss_pct: float | None = None,
     entry_on_early: bool = False,
+    skip_four_touches: bool = False,
 ) -> int:
     ensure_backtest_schema()
     _ensure_backtest_option_columns()
@@ -52,8 +53,8 @@ def create_backtest_run(
             """
             INSERT INTO backtest_runs
             (created_at, category, timeframe, from_iso, to_iso, status, progress_pct,
-             target_profit_pct, stop_loss_pct, entry_on_early)
-            VALUES (?, ?, ?, ?, ?, 'running', 0, ?, ?, ?)
+             target_profit_pct, stop_loss_pct, entry_on_early, skip_four_touches)
+            VALUES (?, ?, ?, ?, ?, 'running', 0, ?, ?, ?, ?)
             """,
             (
                 now,
@@ -64,6 +65,7 @@ def create_backtest_run(
                 target_profit_pct,
                 stop_loss_pct,
                 1 if entry_on_early else 0,
+                1 if skip_four_touches else 0,
             ),
         )
         return int(cur.lastrowid)
@@ -75,6 +77,7 @@ def _ensure_backtest_option_columns() -> None:
             "ALTER TABLE backtest_runs ADD COLUMN target_profit_pct REAL",
             "ALTER TABLE backtest_runs ADD COLUMN stop_loss_pct REAL",
             "ALTER TABLE backtest_runs ADD COLUMN entry_on_early INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE backtest_runs ADD COLUMN skip_four_touches INTEGER NOT NULL DEFAULT 0",
         ):
             try:
                 conn.execute(ddl)
@@ -180,4 +183,5 @@ def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
     except json.JSONDecodeError:
         d["findings"] = []
     d["entry_on_early"] = bool(d.get("entry_on_early"))
+    d["skip_four_touches"] = bool(d.get("skip_four_touches"))
     return d

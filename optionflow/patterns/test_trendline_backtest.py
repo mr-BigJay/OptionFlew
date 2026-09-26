@@ -200,6 +200,49 @@ def test_two_touch_line_is_only_in_the_early_backtest() -> None:
     assert final == []
 
 
+def test_four_touches_are_skipped_when_the_option_is_on() -> None:
+    from optionflow.patterns.backtest import replay_category, trendline_touch_count
+    from optionflow.patterns.test_trendline import _empty, _set_swing
+
+    bars = _empty(96, 99_780)
+    _set_swing(bars, 18, 98_600, "low")
+    _set_swing(bars, 36, 98_900, "low")
+    _set_swing(bars, 54, 99_200, "low")
+    _set_swing(bars, 72, 99_500, "low")
+    _set_swing(bars, 30, 101_400, "high")
+    _set_swing(bars, 48, 101_500, "high")
+    _set_swing(bars, 66, 101_450, "high")
+    kept = [
+        hit
+        for _i, hit in replay_category(
+            bars,
+            category="trendline",
+            timeframe="15m",
+            scan_start=80,
+            scan_end=95,
+            stride=1,
+            skip_four_touches=False,
+        )
+        if hit.meta.get("side") == "low"
+    ]
+    assert kept
+    assert trendline_touch_count(kept[0]) >= 4
+    skipped = [
+        hit
+        for _i, hit in replay_category(
+            bars,
+            category="trendline",
+            timeframe="15m",
+            scan_start=80,
+            scan_end=95,
+            stride=1,
+            skip_four_touches=True,
+        )
+        if hit.meta.get("side") == "low"
+    ]
+    assert skipped == []
+
+
 def test_path_timeout_counts_as_fail() -> None:
     from optionflow.patterns.test_trendline import _empty, _support_hit
 

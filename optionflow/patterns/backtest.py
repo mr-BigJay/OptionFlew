@@ -123,6 +123,7 @@ class BacktestResult:
     target_profit_pct: float | None = None
     stop_loss_pct: float | None = None
     entry_on_early: bool = False
+    skip_four_touches: bool = False
 
     def to_dict(self) -> dict:
         return {
@@ -140,6 +141,7 @@ class BacktestResult:
             "target_profit_pct": self.target_profit_pct,
             "stop_loss_pct": self.stop_loss_pct,
             "entry_on_early": self.entry_on_early,
+            "skip_four_touches": self.skip_four_touches,
         }
 
 
@@ -164,6 +166,18 @@ def _detector(category: str, *, entry_on_early: bool = False):
             bars, tf, allow_early=False
         ),
     }[category]
+
+
+def trendline_touch_count(hit: PatternHit) -> int:
+    """تعداد برخوردهای واقعاً روی خط؛ پنجرهٔ فیت حداکثر ۴ تا نگه می‌دارد."""
+    meta = hit.meta or {}
+    counted = meta.get("touch_count")
+    if isinstance(counted, int) and counted > 0:
+        return counted
+    side = str(meta.get("side") or "")
+    key = "touch_lows" if side == "low" else "touch_highs"
+    pts = meta.get(key) or []
+    return len(pts) if isinstance(pts, list) else 0
 
 
 def expected_direction(hit: PatternHit) -> str | None:
@@ -716,6 +730,7 @@ def _replay_sliding_window(
     on_progress: ProgressFn | None = None,
     should_cancel: CancelFn | None = None,
     entry_on_early: bool = False,
+    skip_four_touches: bool = False,
 ) -> list[tuple[int, PatternHit]]:
     dedupe = _dedupe_window(category, timeframe)
     detect = _detector(category, entry_on_early=entry_on_early)
@@ -739,6 +754,12 @@ def _replay_sliding_window(
         if hit is None:
             continue
         _shift_hit_bar_indices(hit, lo)
+        if (
+            skip_four_touches
+            and category == "trendline"
+            and trendline_touch_count(hit) >= 4
+        ):
+            continue
         if _should_skip_dedupe(last_key, hit, i, dedupe, once=once):
             continue
         out.append((i, hit))
@@ -758,6 +779,7 @@ def replay_category(
     on_progress: ProgressFn | None = None,
     should_cancel: CancelFn | None = None,
     entry_on_early: bool = False,
+    skip_four_touches: bool = False,
 ) -> list[tuple[int, PatternHit]]:
     st = _replay_stride(category, timeframe, stride)
     if category == "three_rp":
@@ -791,6 +813,7 @@ def replay_category(
         on_progress=on_progress,
         should_cancel=should_cancel,
         entry_on_early=entry_on_early,
+        skip_four_touches=skip_four_touches,
     )
 
 
@@ -809,6 +832,7 @@ def run_backtest(
     target_profit_pct: float | None = None,
     stop_loss_pct: float | None = None,
     entry_on_early: bool = False,
+    skip_four_touches: bool = False,
     should_cancel: CancelFn | None = None,
 ) -> BacktestResult:
     if category not in CATEGORIES:
@@ -827,6 +851,7 @@ def run_backtest(
             target_profit_pct=target_profit_pct,
             stop_loss_pct=stop_loss_pct,
             entry_on_early=entry_on_early,
+            skip_four_touches=skip_four_touches,
         )
         result.error = "۳BRP فقط روی تایم‌فریم ۱ ساعت قابل بکتست است."
         return result
@@ -845,6 +870,7 @@ def run_backtest(
         target_profit_pct=target_profit_pct,
         stop_loss_pct=stop_loss_pct,
         entry_on_early=entry_on_early,
+        skip_four_touches=skip_four_touches,
     )
 
     if not bars:
@@ -875,6 +901,7 @@ def run_backtest(
         on_progress=scan_progress if on_progress else None,
         should_cancel=should_cancel,
         entry_on_early=entry_on_early,
+        skip_four_touches=skip_four_touches,
     )
 
     n_findings = max(1, len(raw_hits))

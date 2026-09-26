@@ -14,6 +14,9 @@
   {% if active_run.entry_on_early %}
   <span class="bt-stat-item">ورود اولیه</span>
   {% endif %}
+  {% if active_run.skip_four_touches %}
+  <span class="bt-stat-item">بدون ۴+ برخورد</span>
+  {% endif %}
   <span class="bt-stat-item bt-stat-ok">موفق <bdi dir="ltr">{{ active_run.success_count }}</bdi></span>
   <span class="bt-stat-item bt-stat-fail">ناموفق <bdi dir="ltr">{{ active_run.fail_count }}</bdi></span>
   <span class="bt-stat-item">کل <bdi dir="ltr">{{ active_run.findings_count }}</bdi></span>

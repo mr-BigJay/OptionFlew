@@ -1555,6 +1555,7 @@ async def backtest_start(
     target_profit_pct: str = Form(""),
     stop_loss_pct: str = Form(""),
     entry_on_early: str = Form(""),
+    skip_four_touches: str = Form(""),
 ):
     if tab not in BACKTEST_TABS:
         tab = "triangle"
@@ -1565,6 +1566,7 @@ async def backtest_start(
     tp = _parse_backtest_pct(target_profit_pct)
     sl = _parse_backtest_pct(stop_loss_pct)
     early_entry = (entry_on_early or "").strip().lower() in ("1", "on", "true", "yes")
+    skip_four = (skip_four_touches or "").strip().lower() in ("1", "on", "true", "yes")
     run_id = start_backtest_job(
         category=tab,
         timeframe=timeframe,
@@ -1573,6 +1575,7 @@ async def backtest_start(
         target_profit_pct=tp,
         stop_loss_pct=sl,
         entry_on_early=early_entry,
+        skip_four_touches=skip_four and tab == "trendline",
     )
     return RedirectResponse(f"/backtest?tab={tab}&run_id={run_id}", status_code=303)
 
